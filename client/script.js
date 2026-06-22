@@ -18,7 +18,7 @@ const DOCS = {
 </ul>
 <h3>2. Start the dev server</h3>
 <pre><span class="c-dim">$</span> cd my-api
-<span class="c-dim">$</span> npm run dev
+<span class="c-dim">$</span> efc start dev
 
 <span class="c-green">✔ Worker 1 ready on :3000
 → GET  /health       src/api/health.ts

@@ -146,8 +146,8 @@ async function writeGitignore(dest: string): Promise<void> {
 
 async function writeEnvFiles(dest: string): Promise<void> {
   const secret = crypto.randomBytes(64).toString('hex');
-  const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=\nJWT_SECRET=${secret}\nREDIS_URL=redis://localhost:6379\n`;
-  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=\nJWT_SECRET=<generate with: openssl rand -hex 64>\nREDIS_URL=redis://localhost:6379\n`;
+  const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=\nJWT_SECRET=${secret}\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000\n`;
+  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=\nJWT_SECRET=<generate with: openssl rand -hex 64>\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com\n`;
   await fs.outputFile(path.join(dest, '.env'), dotenv);
   await fs.outputFile(path.join(dest, '.env.example'), example);
 }
