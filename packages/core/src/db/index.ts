@@ -26,3 +26,6 @@ export const db: AnyClient = new Proxy({} as AnyClient, {
     return true;
   },
 });
+
+export { connectMongo } from './mongo.js';
+export { defineModel } from './model.js';
