@@ -1,4 +1,6 @@
+import 'dotenv/config';
 import express from 'express';
+import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import cluster from 'node:cluster';
 import os from 'node:os';
@@ -15,7 +17,7 @@ import { initBullMQ } from './tasks/bullmq-backend.js';
 
 export async function ignite(config: EFCConfig): Promise<void> {
   const {
-    port = 3000,
+    port: _port,
     cluster: clusterEnabled = true,
     workers,
     apiDir,
@@ -27,6 +29,11 @@ export async function ignite(config: EFCConfig): Promise<void> {
     onError,
   } = config;
 
+  const port =
+    _port != null && !Number.isNaN(_port)
+      ? _port
+      : Number(process.env['PORT']) || 3000;
+
   if (clusterEnabled && cluster.isPrimary) {
     runMaster({
       workers: workers ?? os.cpus().length,
@@ -37,6 +44,22 @@ export async function ignite(config: EFCConfig): Promise<void> {
   }
 
   const app = express();
+
+  const corsOption = config.cors ?? true;
+  if (corsOption !== false) {
+    const envOrigins = process.env['CORS_ORIGINS'];
+    let origin: string | string[] | boolean;
+    if (envOrigins) {
+      const list = envOrigins.split(',').map((o) => o.trim()).filter(Boolean);
+      origin = list.length === 1 ? list[0]! : list;
+    } else if (typeof corsOption === 'object' && corsOption.origin !== undefined) {
+      origin = corsOption.origin;
+    } else {
+      origin = true;
+    }
+    const corsOpts = typeof corsOption === 'object' ? { ...corsOption, origin } : { origin };
+    app.use(cors(corsOpts));
+  }
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
@@ -117,6 +140,7 @@ export { db, setDbClient, getDbClient, defineModel } from './db/index.js';
 export { scanDir } from './router/scan.js';
 export type {
   EFCConfig,
+  CorsConfig,
   RouteEntry,
   TaskOptions,
   TaskDefinition,

@@ -10,6 +10,14 @@ export interface TaskConfig {
   concurrency?: number;
 }
 
+export interface CorsConfig {
+  origin?: string | string[] | boolean;
+  methods?: string | string[];
+  allowedHeaders?: string | string[];
+  credentials?: boolean;
+  maxAge?: number;
+}
+
 export interface EFCConfig {
   port?: number;
   apiDir: string;
@@ -21,6 +29,7 @@ export interface EFCConfig {
   cluster?: boolean;
   workers?: number;
   tasks?: TaskConfig | false;
+  cors?: boolean | CorsConfig;
   globalMiddlewares?: RequestHandler[];
   onWorkerReady?: (id: number) => void;
   onWorkerCrash?: (id: number, code: number) => void;
