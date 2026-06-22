@@ -21,14 +21,14 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   await writeEfcConfig(dest, opts);
   await writeEntryPoint(dest, opts);
   await writeGitignore(dest);
-  await writeEnvFiles(dest);
+  await writeEnvFiles(dest, opts);
   await writeExampleRoute(dest, opts);
   if (opts.tasks) await writeExampleTask(dest, opts);
 }
 
 async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<void> {
   const deps: Record<string, string> = {
-    'express-file-cluster': '^0.1.1',
+    'express-file-cluster': '^0.1.3',
   };
   if (opts.database === 'mongodb') deps['mongoose'] = '^8.0.0';
   if (opts.database === 'postgresql') {
@@ -88,24 +88,16 @@ async function writeTsConfig(dest: string, opts: ScaffoldOptions): Promise<void>
 async function writeEfcConfig(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const tasks = opts.tasks
-    ? `{
-    backend: '${opts.taskBackend ?? 'bullmq'}',
-    redisUrl: process.env.REDIS_URL,
-    concurrency: 5,
-  }`
+    ? `{ backend: '${opts.taskBackend ?? 'bullmq'}', concurrency: 5 }`
     : 'false';
 
   const content = `import type { EFCConfig } from 'express-file-cluster';
 
+// Structural config only — runtime values (PORT, DATABASE_URL, JWT_SECRET, etc.) are read from .env
 const config: EFCConfig = {
-  port: Number(process.env.PORT) || 3000,
   apiDir: './src/api',
   tasksDir: './src/tasks',
-  database: '${opts.database}',
-  databaseUrl: process.env.DATABASE_URL!,
   authStrategy: '${opts.authStrategy}',
-  jwtSecret: process.env.JWT_SECRET!,
-  cluster: process.env.NODE_ENV === 'production',
   tasks: ${tasks},
   globalMiddlewares: [],
 };
@@ -117,22 +109,20 @@ export default config;
 
 async function writeEntryPoint(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
+  const taskLine = opts.tasks
+    ? `  tasks: { backend: '${opts.taskBackend ?? 'bullmq'}' },\n`
+    : '';
   const content = `import { ignite } from 'express-file-cluster';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// PORT, DATABASE_URL, JWT_SECRET, CORS_ORIGINS are read from .env automatically
 ignite({
-  port: Number(process.env.PORT) || 3000,
   apiDir: path.join(__dirname, 'api'),
   tasksDir: path.join(__dirname, 'tasks'),
-  database: '${opts.database}',
-  databaseUrl: process.env.DATABASE_URL,
-  authStrategy: '${opts.authStrategy}',
-  jwtSecret: process.env.JWT_SECRET,
-  cluster: process.env.NODE_ENV === 'production',
-}).catch(console.error);
+${taskLine}}).catch(console.error);
 `;
   await fs.outputFile(path.join(dest, 'src', `index.${ext}`), content);
 }
@@ -144,10 +134,20 @@ async function writeGitignore(dest: string): Promise<void> {
   );
 }
 
-async function writeEnvFiles(dest: string): Promise<void> {
+async function writeEnvFiles(dest: string, opts: ScaffoldOptions): Promise<void> {
   const secret = crypto.randomBytes(64).toString('hex');
-  const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=\nJWT_SECRET=${secret}\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000\n`;
-  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=\nJWT_SECRET=<generate with: openssl rand -hex 64>\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com\n`;
+  const projectName = path.basename(dest);
+  const dbUrl =
+    opts.database === 'mongodb'
+      ? `mongodb://localhost:27017/${projectName}`
+      : `postgresql://localhost:5432/${projectName}`;
+  const dbExampleUrl =
+    opts.database === 'mongodb'
+      ? `mongodb://localhost:27017/${projectName}`
+      : `postgresql://user:password@localhost:5432/${projectName}`;
+
+  const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbUrl}\nJWT_SECRET=${secret}\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000\n`;
+  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com\n`;
   await fs.outputFile(path.join(dest, '.env'), dotenv);
   await fs.outputFile(path.join(dest, '.env.example'), example);
 }

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import http from 'node:http';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -15,24 +16,32 @@ import { setDbClient } from './db/index.js';
 import { scanTasks } from './tasks/scanner.js';
 import { initBullMQ } from './tasks/bullmq-backend.js';
 
-export async function ignite(config: EFCConfig): Promise<void> {
+function detectDatabase(url?: string): 'mongodb' | 'postgresql' | undefined {
+  if (!url) return undefined;
+  if (url.startsWith('mongodb')) return 'mongodb';
+  if (url.startsWith('postgres')) return 'postgresql';
+  return undefined;
+}
+
+export async function ignite(config: EFCConfig): Promise<http.Server | undefined> {
   const {
     port: _port,
-    cluster: clusterEnabled = true,
     workers,
     apiDir,
-    jwtSecret,
-    authStrategy = 'http-only',
     globalMiddlewares = [],
     onWorkerReady,
     onWorkerCrash,
     onError,
   } = config;
 
+  // All runtime values fall back to environment variables
   const port =
-    _port != null && !Number.isNaN(_port)
-      ? _port
-      : Number(process.env['PORT']) || 3000;
+    _port != null && !Number.isNaN(_port) ? _port : Number(process.env['PORT']) || 3000;
+  const databaseUrl = config.databaseUrl ?? process.env['DATABASE_URL'];
+  const database = config.database ?? detectDatabase(databaseUrl);
+  const jwtSecret = config.jwtSecret ?? process.env['JWT_SECRET'];
+  const authStrategy = config.authStrategy ?? 'http-only';
+  const clusterEnabled = config.cluster ?? process.env['NODE_ENV'] === 'production';
 
   if (clusterEnabled && cluster.isPrimary) {
     runMaster({
@@ -51,7 +60,7 @@ export async function ignite(config: EFCConfig): Promise<void> {
     let origin: string | string[] | boolean;
     if (envOrigins) {
       const list = envOrigins.split(',').map((o) => o.trim()).filter(Boolean);
-      origin = list.length === 1 ? list[0]! : list;
+      origin = list; // always array so cors validates against the request Origin
     } else if (typeof corsOption === 'object' && corsOption.origin !== undefined) {
       origin = corsOption.origin;
     } else {
@@ -70,8 +79,8 @@ export async function ignite(config: EFCConfig): Promise<void> {
   }
 
   // Pre-Flight step 1: Connect database
-  if (config.database === 'mongodb' && config.databaseUrl) {
-    const conn = await connectMongo(config.databaseUrl);
+  if (database === 'mongodb' && databaseUrl) {
+    const conn = await connectMongo(databaseUrl);
     setDbClient(conn as unknown as Record<string, unknown>);
   }
 
@@ -115,8 +124,10 @@ export async function ignite(config: EFCConfig): Promise<void> {
         res: express.Response,
         _next: express.NextFunction,
       ) => {
-        if (err instanceof HttpError) {
-          res.status(err.statusCode).json({ error: err.message, statusCode: err.statusCode });
+        const asHttp = err instanceof Error && 'statusCode' in err
+          ? (err as HttpError) : null;
+        if (asHttp) {
+          res.status(asHttp.statusCode).json({ error: asHttp.message, statusCode: asHttp.statusCode });
         } else {
           console.error('[EFC] Unhandled error:', err);
           res.status(500).json({ error: 'Internal Server Error', statusCode: 500 });
@@ -125,11 +136,11 @@ export async function ignite(config: EFCConfig): Promise<void> {
     );
   }
 
-  await new Promise<void>((resolve) => {
-    app.listen(port, () => {
+  return new Promise<http.Server>((resolve) => {
+    const server = app.listen(port, () => {
       const wid = (cluster.worker as { id: number } | undefined)?.id ?? 'primary';
       console.log(`[EFC] Worker ${wid} listening on :${port}`);
-      resolve();
+      resolve(server);
     });
   });
 }

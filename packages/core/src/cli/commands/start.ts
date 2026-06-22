@@ -24,14 +24,20 @@ export function startCommand(): Command {
   return cmd;
 }
 
-function buildDevEnv(cwd: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'development' };
+function parseDotenv(cwd: string): Record<string, string> {
   const envFile = path.join(cwd, '.env');
-  if (fs.existsSync(envFile)) {
-    const existing = (process.env['NODE_OPTIONS'] ?? '').trim();
-    env['NODE_OPTIONS'] = `${existing} --env-file ${envFile}`.trim();
+  if (!fs.existsSync(envFile)) return {};
+  const vars: Record<string, string> = {};
+  for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const raw = trimmed.slice(eq + 1).trim();
+    vars[key] = raw.replace(/^(['"])(.*)\1$/, '$2');
   }
-  return env;
+  return vars;
 }
 
 function startDev(): void {
@@ -48,11 +54,10 @@ function startDev(): void {
   const localTsx = path.join(cwd, 'node_modules', '.bin', 'tsx');
   const tsx = fs.existsSync(localTsx) ? localTsx : 'tsx';
 
-  const child = spawn(tsx, ['watch', entry], {
-    stdio: 'inherit',
-    env: buildDevEnv(cwd),
-  });
+  // .env values are base; existing process.env takes precedence (same as dotenv default)
+  const env: NodeJS.ProcessEnv = { ...parseDotenv(cwd), ...process.env, NODE_ENV: 'development' };
 
+  const child = spawn(tsx, ['watch', entry], { stdio: 'inherit', env });
   child.on('exit', (code) => process.exit(code ?? 0));
 }
 
@@ -67,14 +72,9 @@ function startProd(): void {
 
   console.log(chalk.cyan('[EFC] Starting production server…'));
 
-  const envFile = path.join(cwd, '.env');
-  const nodeArgs = fs.existsSync(envFile) ? ['--env-file', envFile, distEntry] : [distEntry];
+  const env: NodeJS.ProcessEnv = { ...parseDotenv(cwd), ...process.env, NODE_ENV: 'production' };
 
-  const child = spawn('node', nodeArgs, {
-    stdio: 'inherit',
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-
+  const child = spawn('node', [distEntry], { stdio: 'inherit', env });
   child.on('exit', (code) => process.exit(code ?? 0));
 }
 
