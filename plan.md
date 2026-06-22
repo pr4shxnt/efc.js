@@ -236,7 +236,8 @@ ignite({
   },
 
   // --- Global Middleware (runs before every route) ---
-  globalMiddlewares: [corsMiddleware, rateLimiter],
+  // CORS is built-in — set CORS_ORIGINS in .env instead of passing a cors package
+  globalMiddlewares: [rateLimiter],
 
   // --- Hooks ---
   onWorkerReady: (workerId) => console.log(`Worker ${workerId} is live.`),
@@ -439,7 +440,8 @@ EFC supports three tiers of middleware, each with a specific scope.
 Configured in `ignite()`. Applied to **every** request before route resolution.
 
 ```typescript
-ignite({ globalMiddlewares: [corsMiddleware, rateLimiter, requestLogger] });
+ignite({ globalMiddlewares: [rateLimiter, requestLogger] });
+// CORS is built-in — configure origins via CORS_ORIGINS in .env
 ```
 
 ### 2. Route-Level Middleware
@@ -697,6 +699,7 @@ export default config;
 | `JWT_EXPIRES_IN` | No (default `7d`)   | Token lifetime (`15m`, `1h`, `7d`, …).                                                  |
 | `COOKIE_DOMAIN`  | No                  | Cookie domain for `http-only` auth; blank for localhost.                                |
 | `REDIS_URL`      | If tasks use BullMQ | Redis connection for the task queue. (pg-boss reuses `DATABASE_URL`.)                   |
+| `CORS_ORIGINS`   | No                  | Comma-separated allowed origins — e.g. `http://localhost:3000,https://myapp.com`. Allows all when unset. |
 
 > **Secret hygiene:** `.env` is never committed (the CLI adds it to `.gitignore`). Use a different `JWT_SECRET` per environment, and rotate it if it's ever exposed — rotating invalidates all existing tokens.
 

@@ -24,6 +24,11 @@ export function startCommand(): Command {
   return cmd;
 }
 
+function buildEnvFileArgs(cwd: string): string[] {
+  const envFile = path.join(cwd, '.env');
+  return fs.existsSync(envFile) ? ['--env-file', envFile] : [];
+}
+
 function startDev(): void {
   const entry = resolveEntry();
   if (!entry) {
@@ -34,12 +39,10 @@ function startDev(): void {
   console.log(chalk.cyan('[EFC] Starting development server…'));
   console.log(chalk.dim(`  Entry: ${entry}`));
 
-  const localTsx = path.join(process.cwd(), 'node_modules', '.bin', 'tsx');
-  const tsx = fs.existsSync(localTsx) ? localTsx : 'tsx';
-
+  const cwd = process.cwd();
   const child = spawn(
-    tsx,
-    ['watch', entry],
+    'node',
+    [...buildEnvFileArgs(cwd), '--import', 'tsx/esm', '--watch', entry],
     { stdio: 'inherit', env: { ...process.env, NODE_ENV: 'development' } },
   );
 
@@ -57,7 +60,7 @@ function startProd(): void {
 
   console.log(chalk.cyan('[EFC] Starting production server…'));
 
-  const child = spawn('node', [distEntry], {
+  const child = spawn('node', [...buildEnvFileArgs(cwd), distEntry], {
     stdio: 'inherit',
     env: { ...process.env, NODE_ENV: 'production' },
   });

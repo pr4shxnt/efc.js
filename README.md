@@ -114,7 +114,8 @@ Three tiers, each with a clear scope:
 
 ```ts
 // 1. Global — applies to every request
-ignite({ globalMiddlewares: [cors(), rateLimiter()] });
+// CORS is built-in — configure it via CORS_ORIGINS in .env, not a separate package
+ignite({ globalMiddlewares: [rateLimiter()] });
 
 // 2. Route-level — applies to every handler in this file
 export const middlewares = [requireAuth];
@@ -266,6 +267,7 @@ ignite({
 | `cluster` | `boolean` | `true` | Enable multi-core clustering |
 | `workers` | `number` | `os.cpus().length` | Worker count override |
 | `tasks` | `TaskConfig \| false` | `false` | Background task runtime |
+| `cors` | `boolean \| CorsConfig` | `true` | CORS — origins driven by `CORS_ORIGINS` env var |
 | `globalMiddlewares` | `RequestHandler[]` | `[]` | Applied to every route |
 | `onWorkerReady` | `(id) => void` | — | Called when a worker boots |
 | `onWorkerCrash` | `(id, code) => void` | — | Called before respawn |
@@ -358,6 +360,7 @@ ignite({
 | `JWT_EXPIRES_IN` | No (default `7d`) | Token lifetime |
 | `COOKIE_DOMAIN` | No | Cookie domain for `http-only` auth |
 | `REDIS_URL` | If using BullMQ | Redis connection for the task queue |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins — e.g. `http://localhost:3000,https://myapp.com` |
 
 ---
 
