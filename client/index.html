@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EFC — Express File Cluster</title>
+  <meta name="description" content="File-based routing. Multi-core clustering. Background tasks. Zero boilerplate. The opinionated backend framework built on Express." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/icon-512.png" />
+  <meta name="theme-color" content="#080b0f" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav id="navbar">
+    <div class="nav-inner">
+      <a href="#" class="logo">
+        <svg class="logo-img" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="EFC logo">
+          <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor"/>
+          <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85"/>
+          <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor"/>
+        </svg>
+        efc<span class="logo-dot">.</span>js
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#docs">Docs</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="https://github.com/pr4shxnt/efc.js" target="_blank">GitHub</a>
+      </div>
+      <a href="#docs" class="btn-primary nav-cta">Get Started</a>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <div class="mobile-menu" id="mobileMenu">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#docs">Docs</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="https://github.com/pr4shxnt/efc.js" target="_blank">GitHub</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero" id="hero">
+    <div class="hero-glow"></div>
+    <div class="container">
+      <div class="badge">Pre-alpha · Architecture locked · Code in progress</div>
+      <h1 class="hero-title">
+        Express, but your folder<br/>
+        <span class="accent">is your router.</span>
+      </h1>
+      <p class="hero-sub">Drop a file in <code>src/api/</code> and it's a route. Every CPU core serves traffic by default. Heavy work gets its own queue. One <code>ignite()</code> call. No ceremony.</p>
+      <div class="hero-actions">
+        <a href="#docs" class="btn-primary">Read the docs</a>
+        <a href="#how-it-works" class="btn-ghost">See it in code →</a>
+      </div>
+      <div class="hero-code-wrap">
+        <div class="code-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="code-bar-label">terminal</span></div>
+        <pre class="hero-code"><span class="c-dim">$</span> <span class="c-accent">npx</span> create-efc-app my-api
+<span class="c-dim">$</span> <span class="c-accent">cd</span> my-api <span class="c-dim">&amp;&amp;</span> npm run dev
+
+<span class="c-dim">✔ Worker 1 ready on :3000
+✔ Worker 2 ready on :3000
+✔ Worker 3 ready on :3000
+✔ Worker 4 ready on :3000</span>
+<span class="c-accent">→ GET  /health         src/api/health.ts
+→ GET  /users          src/api/users/index.ts
+→ POST /users          src/api/users/index.ts
+→ GET  /users/:id      src/api/users/[id].ts</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-label">What's actually different</div>
+      <h2 class="section-title">Three things Express<br/><em>never gave you out of the box.</em></h2>
+      <p class="section-sub">Most Express apps end up with the same three pain points. EFC solves all three at the convention level.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+          </div>
+          <h3>Routing by filesystem</h3>
+          <p><code>src/api/users/[id].ts</code> becomes <code>/users/:id</code>. No router files, no <code>app.use()</code> chains. Add a file, get a route. Rename it, the URL renames too.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="6" y1="8" x2="6" y2="12"/><line x1="10" y1="6" x2="10" y2="12"/><line x1="14" y1="9" x2="14" y2="12"/><line x1="18" y1="7" x2="18" y2="12"/></svg>
+          </div>
+          <h3>CPU-aware from day one</h3>
+          <p>Node runs on one core by default. EFC forks one worker per CPU at startup, lets the OS distribute connections, and respawns crashed workers before you notice.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          </div>
+          <h3>Tasks aren't routes</h3>
+          <p>Sending an email or resizing an image shouldn't block a response. Files in <code>src/tasks/</code> run off the request path — in a queue, with retries, optionally in their own thread.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <h3>Auth picked at scaffold time</h3>
+          <p>You choose <code>http-only</code> cookies or Bearer tokens once, during <code>create-efc-app</code>. A real <code>JWT_SECRET</code> lands in <code>.env</code> automatically. <code>export const middlewares = [requireAuth]</code> is all protection takes.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+          </div>
+          <h3>Same model, any database</h3>
+          <p><code>defineModel</code> gives you identical <code>.find()</code>, <code>.create()</code>, <code>.delete()</code> calls whether you're on MongoDB or PostgreSQL. The engine is an implementation detail.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <h3><code>efc doctor</code> ships with it</h3>
+          <p>Run <code>efc doctor</code> to check config, env vars, DB connectivity, and worker setup before you deploy. <code>efc routes</code> prints the resolved route table if something looks wrong.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-label">Show me the code</div>
+      <h2 class="section-title">Less setup.<br/><em>More shipping.</em></h2>
+      <div class="tabs-wrap">
+        <div class="tabs" id="tabs">
+          <button class="tab active" data-tab="routing">Routing</button>
+          <button class="tab" data-tab="tasks">Tasks</button>
+          <button class="tab" data-tab="auth">Auth</button>
+          <button class="tab" data-tab="ignite">Bootstrap</button>
+        </div>
+        <div class="tab-content">
+
+          <div class="tab-pane active" id="tab-routing">
+            <div class="tab-pane-inner">
+              <div class="tab-pane-text">
+                <h3>Your folder structure <em>is</em> your API</h3>
+                <p>EFC walks <code>src/api/</code> at boot and registers every file as a route. <code>[id].ts</code> → <code>:id</code>. <code>index.ts</code> → the directory path. Unregistered HTTP verbs get a <strong>405</strong> back — you don't write that logic.</p>
+                <ul class="check-list">
+                  <li>Rename a file → rename the route</li>
+                  <li>Per-file middleware: <code>export const middlewares = [...]</code></li>
+                  <li>Per-handler guards via <code>compose()</code></li>
+                </ul>
+              </div>
+              <div class="code-block-wrap">
+                <div class="code-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="code-bar-label">src/api/users/[id].ts</span></div>
+                <pre><span class="c-purple">import</span> <span class="c-dim">type</span> { Request, Response } <span class="c-purple">from</span> <span class="c-green">'express'</span>;
+<span class="c-purple">import</span> { User } <span class="c-purple">from</span> <span class="c-green">'../../models/User'</span>;
+<span class="c-purple">import</span> { HttpError } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster'</span>;
+
+<span class="c-purple">export const</span> <span class="c-blue">GET</span> = <span class="c-purple">async</span> (req: Request, res: Response) => {
+  <span class="c-purple">const</span> user = <span class="c-purple">await</span> User.<span class="c-blue">findById</span>(req.params.id);
+  <span class="c-purple">if</span> (!user) <span class="c-purple">throw new</span> <span class="c-blue">HttpError</span>(<span class="c-orange">404</span>, <span class="c-green">'User not found'</span>);
+  res.<span class="c-blue">json</span>(user);
+};
+
+<span class="c-purple">export const</span> <span class="c-blue">DELETE</span> = <span class="c-purple">async</span> (req: Request, res: Response) => {
+  <span class="c-purple">await</span> User.<span class="c-blue">delete</span>(req.params.id);
+  res.<span class="c-blue">status</span>(<span class="c-orange">204</span>).<span class="c-blue">send</span>();
+};</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="tab-tasks">
+            <div class="tab-pane-inner">
+              <div class="tab-pane-text">
+                <h3>202 now, do the work later</h3>
+                <p>A file in <code>src/tasks/</code> is a named job. Call <code>enqueue('SendEmail', payload)</code> from any handler and return immediately. EFC picks the right execution model — event loop for I/O, <code>worker_threads</code> for CPU.</p>
+                <ul class="check-list">
+                  <li>BullMQ (Redis) or pg-boss — you pick</li>
+                  <li>Automatic retries + exponential backoff</li>
+                  <li>Cron scheduling: set <code>schedule</code> in <code>defineTask</code></li>
+                </ul>
+              </div>
+              <div class="code-block-wrap">
+                <div class="code-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="code-bar-label">src/tasks/SendEmail.ts</span></div>
+                <pre><span class="c-purple">import</span> { defineTask } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster/tasks'</span>;
+
+<span class="c-dim">// Task name = filename</span>
+<span class="c-purple">export default</span> <span class="c-blue">defineTask</span>&lt;{ to: string; subject: string }&gt;(
+  <span class="c-purple">async</span> (payload) => {
+    <span class="c-purple">await</span> mailer.<span class="c-blue">send</span>(payload);
+  }
+);
+
+<span class="c-dim">// Trigger from a route — respond immediately</span>
+<span class="c-purple">export const</span> <span class="c-blue">POST</span> = <span class="c-purple">async</span> (req, res) => {
+  <span class="c-purple">const</span> user = <span class="c-purple">await</span> User.<span class="c-blue">create</span>(req.body);
+  <span class="c-purple">await</span> <span class="c-blue">enqueue</span>(<span class="c-green">'SendEmail'</span>, { to: user.email });
+  res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span class="c-blue">json</span>({ id: user.id, queued: <span class="c-orange">true</span> });
+};</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="tab-auth">
+            <div class="tab-pane-inner">
+              <div class="tab-pane-text">
+                <h3>Pick once, forget about it</h3>
+                <p>Answer one question during scaffolding: SSR app or SPA? EFC writes the login/logout route stubs, sets the cookie flags, generates a real <code>JWT_SECRET</code>, and puts <code>requireAuth</code> in scope. You protect a route with a single export.</p>
+                <ul class="check-list">
+                  <li>HttpOnly + Secure + SameSite=Strict out of the box</li>
+                  <li>No secret management ceremony — it's in <code>.env</code></li>
+                  <li>Role payload baked into the token, readable in any handler</li>
+                </ul>
+              </div>
+              <div class="code-block-wrap">
+                <div class="code-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="code-bar-label">src/api/auth/login.ts</span></div>
+                <pre><span class="c-purple">import</span> { issueToken, requireAuth }
+  <span class="c-purple">from</span> <span class="c-green">'express-file-cluster/auth'</span>;
+
+<span class="c-purple">export const</span> <span class="c-blue">POST</span> = <span class="c-purple">async</span> (req, res) => {
+  <span class="c-purple">const</span> user = <span class="c-purple">await</span> <span class="c-blue">verifyCredentials</span>(req.body);
+  <span class="c-blue">issueToken</span>(res, { sub: user.id, role: user.role });
+  res.<span class="c-blue">json</span>({ message: <span class="c-green">'Logged in'</span> });
+};
+
+<span class="c-dim">// src/api/users/index.ts — protect with one line</span>
+<span class="c-purple">export const</span> middlewares = [requireAuth];
+
+<span class="c-purple">export const</span> <span class="c-blue">GET</span> = <span class="c-purple">async</span> (req, res) => {
+  res.<span class="c-blue">json</span>(<span class="c-purple">await</span> User.<span class="c-blue">find</span>());
+};</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="tab-ignite">
+            <div class="tab-pane-inner">
+              <div class="tab-pane-text">
+                <h3><code>ignite()</code> — one entry point</h3>
+                <p>Pass your dirs, your DB, your auth strategy. EFC runs the Pre-Flight sequence on every worker: connect → configure auth → scan routes → register tasks → listen. Each worker owns its own connection pool — nothing shared across cores.</p>
+                <ul class="check-list">
+                  <li>Worker count defaults to <code>os.cpus().length</code></li>
+                  <li>Crashed workers are replaced before the next request lands</li>
+                  <li><code>dev</code> mode: single process, hot reload, source maps</li>
+                </ul>
+              </div>
+              <div class="code-block-wrap">
+                <div class="code-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="code-bar-label">src/index.ts</span></div>
+                <pre><span class="c-purple">import</span> { ignite } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster'</span>;
+
+<span class="c-blue">ignite</span>({
+  port: <span class="c-orange">3000</span>,
+  apiDir: <span class="c-green">'./src/api'</span>,
+  tasksDir: <span class="c-green">'./src/tasks'</span>,
+
+  database: <span class="c-green">'mongodb'</span>,
+  databaseUrl: process.env.<span class="c-blue">DATABASE_URL</span>,
+
+  authStrategy: <span class="c-green">'http-only'</span>,
+  jwtSecret: process.env.<span class="c-blue">JWT_SECRET</span>,
+
+  cluster: <span class="c-orange">true</span>,
+  tasks: {
+    backend: <span class="c-green">'bullmq'</span>,
+    redisUrl: process.env.<span class="c-blue">REDIS_URL</span>,
+    concurrency: <span class="c-orange">5</span>,
+  },
+
+  <span class="c-blue">onWorkerReady</span>: (id) => console.<span class="c-blue">log</span>(<span class="c-green">`Worker <span class="c-orange">${id}</span> ready`</span>),
+});</pre>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DOCS -->
+  <section class="docs-section" id="docs">
+    <div class="container">
+      <div class="section-label">Documentation</div>
+      <h2 class="section-title">Read the spec.<br/><em>Then build.</em></h2>
+      <div class="docs-layout">
+        <aside class="docs-sidebar" id="docsSidebar">
+          <div class="docs-nav-group">
+            <div class="docs-nav-label">Getting Started</div>
+            <a href="#" class="docs-nav-link active" data-doc="quickstart">Quick Start</a>
+            <a href="#" class="docs-nav-link" data-doc="structure">Project Structure</a>
+            <a href="#" class="docs-nav-link" data-doc="config">Configuration</a>
+          </div>
+          <div class="docs-nav-group">
+            <div class="docs-nav-label">Core</div>
+            <a href="#" class="docs-nav-link" data-doc="routing">File-Based Routing</a>
+            <a href="#" class="docs-nav-link" data-doc="handlers">Route Handlers</a>
+            <a href="#" class="docs-nav-link" data-doc="middleware">Middleware</a>
+            <a href="#" class="docs-nav-link" data-doc="errors">Error Handling</a>
+          </div>
+          <div class="docs-nav-group">
+            <div class="docs-nav-label">Features</div>
+            <a href="#" class="docs-nav-link" data-doc="clustering">Clustering</a>
+            <a href="#" class="docs-nav-link" data-doc="tasks">Background Tasks</a>
+            <a href="#" class="docs-nav-link" data-doc="auth">Authentication</a>
+            <a href="#" class="docs-nav-link" data-doc="database">Database</a>
+          </div>
+          <div class="docs-nav-group">
+            <div class="docs-nav-label">Reference</div>
+            <a href="#" class="docs-nav-link" data-doc="cli">CLI Reference</a>
+            <a href="#" class="docs-nav-link" data-doc="envvars">Environment Variables</a>
+          </div>
+        </aside>
+        <main class="docs-content" id="docsContent">
+          <!-- Content injected by JS -->
+        </main>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section class="roadmap" id="roadmap">
+    <div class="container">
+      <div class="section-label">Roadmap</div>
+      <h2 class="section-title">Architecture done.<br/><em>Code next.</em></h2>
+      <div class="roadmap-grid">
+        <div class="roadmap-phase done">
+          <div class="phase-header">
+            <div class="phase-badge">Phase 0</div>
+            <div class="phase-tag">Now</div>
+          </div>
+          <h3>Design &amp; Planning</h3>
+          <ul>
+            <li>API surface design</li>
+            <li>Architecture documentation</li>
+            <li>Monorepo scaffold</li>
+          </ul>
+        </div>
+        <div class="roadmap-phase active">
+          <div class="phase-header">
+            <div class="phase-badge">Phase 1</div>
+            <div class="phase-tag">Q3 2026</div>
+          </div>
+          <h3>Core MVP</h3>
+          <ul>
+            <li>File-based router</li>
+            <li>Multi-core clustering</li>
+            <li>Auth + MongoDB adapter</li>
+            <li>Background tasks (BullMQ)</li>
+            <li><code>npx create-efc-app</code></li>
+          </ul>
+        </div>
+        <div class="roadmap-phase">
+          <div class="phase-header">
+            <div class="phase-badge">Phase 2</div>
+            <div class="phase-tag">Q4 2026</div>
+          </div>
+          <h3>Beta</h3>
+          <ul>
+            <li>PostgreSQL adapter</li>
+            <li>Zod validation integration</li>
+            <li>Structured logging</li>
+            <li>Cron task scheduling</li>
+          </ul>
+        </div>
+        <div class="roadmap-phase">
+          <div class="phase-header">
+            <div class="phase-badge">Phase 3</div>
+            <div class="phase-tag">Q1 2027</div>
+          </div>
+          <h3>Stable v1.0</h3>
+          <ul>
+            <li>Plugin / adapter API</li>
+            <li>WebSocket support</li>
+            <li>OpenAPI spec generation</li>
+            <li>OpenTelemetry tracing</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="cta-inner">
+        <div class="cta-glow"></div>
+        <div class="section-label">Open source · Pre-alpha</div>
+        <h2>The spec is written.<br/><em>The code needs you.</em></h2>
+        <p>Every routing rule, clustering decision, and task API is documented and designed. Phase 1 implementation starts now — if you've wanted to build a framework from scratch, this is the repo.</p>
+        <div class="cta-actions">
+          <a href="https://github.com/pr4shxnt/efc.js" target="_blank" class="btn-primary">View on GitHub</a>
+          <a href="#docs" class="btn-ghost">Read the architecture →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <div class="logo">
+            <svg class="logo-img" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="EFC logo">
+              <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor"/>
+              <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85"/>
+              <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor"/>
+            </svg>
+            efc<span class="logo-dot">.</span>js
+          </div>
+          <p>An opinionated Express framework where your<br/>folder structure is your API contract.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <div class="footer-col-label">Product</div>
+            <a href="#features">Features</a>
+            <a href="#roadmap">Roadmap</a>
+            <a href="#how-it-works">How it works</a>
+          </div>
+          <div class="footer-col">
+            <div class="footer-col-label">Developers</div>
+            <a href="#docs">Documentation</a>
+            <a href="#docs" onclick="document.querySelector('[data-doc=cli]').click()">CLI Reference</a>
+            <a href="https://github.com/pr4shxnt/efc.js" target="_blank">GitHub</a>
+          </div>
+          <div class="footer-col">
+            <div class="footer-col-label">Project</div>
+            <a href="https://github.com/pr4shxnt/efc.js/blob/main/plan.md" target="_blank">Architecture</a>
+            <a href="https://github.com/pr4shxnt/efc.js/blob/main/todo.md" target="_blank">Todo</a>
+            <a href="https://github.com/pr4shxnt/efc.js/blob/main/LICENSE" target="_blank">MIT License</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EFC Contributors</span>
+        <span>MIT License</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
