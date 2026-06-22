@@ -28,7 +28,7 @@ const DOCS = {
 <span class="c-dim">$</span> efc generate route posts/[slug]
 <span class="c-green">→ Created src/api/posts/[slug].ts</span></pre>
 <p>That's it — the file is automatically registered as <code>GET /posts/:slug</code>.</p>
-`
+`,
   },
   structure: {
     label: 'Project Structure',
@@ -59,7 +59,7 @@ const DOCS = {
   <li><code>index.ts</code> maps to the directory path</li>
   <li>Every file in <code>src/tasks/</code> registers a named background task</li>
 </ul>
-`
+`,
   },
   config: {
     label: 'Configuration',
@@ -83,7 +83,7 @@ const DOCS = {
 };
 
 <span class="c-purple">export default</span> config;</pre>
-`
+`,
   },
   routing: {
     label: 'File-Based Routing',
@@ -108,7 +108,7 @@ const DOCS = {
 <span class="c-purple">export const</span> <span class="c-blue">PUT</span>    = <span class="c-purple">async</span> (req, res) => { <span class="c-dim">/* ... */</span> };
 <span class="c-purple">export const</span> <span class="c-blue">PATCH</span>  = <span class="c-purple">async</span> (req, res) => { <span class="c-dim">/* ... */</span> };
 <span class="c-purple">export const</span> <span class="c-blue">DELETE</span> = <span class="c-purple">async</span> (req, res) => { <span class="c-dim">/* ... */</span> };</pre>
-`
+`,
   },
   handlers: {
     label: 'Route Handlers',
@@ -130,7 +130,7 @@ const DOCS = {
   <span class="c-purple">if</span> (!user) <span class="c-purple">throw new</span> <span class="c-blue">HttpError</span>(<span class="c-orange">404</span>, <span class="c-green">'User not found'</span>);
   res.<span class="c-blue">json</span>(user);
 };</pre>
-`
+`,
   },
   middleware: {
     label: 'Middleware',
@@ -154,7 +154,7 @@ const DOCS = {
     <span class="c-dim">// req.body is validated here</span>
   }
 );</pre>
-`
+`,
   },
   errors: {
     label: 'Error Handling',
@@ -177,7 +177,7 @@ const DOCS = {
     res.<span class="c-blue">status</span>(err.statusCode ?? <span class="c-orange">500</span>).<span class="c-blue">json</span>({ error: err.message });
   },
 });</pre>
-`
+`,
   },
   clustering: {
     label: 'Clustering',
@@ -202,7 +202,7 @@ const DOCS = {
   <span class="c-blue">onWorkerReady</span>: (id) => console.<span class="c-blue">log</span>(<span class="c-green">\`Worker \${id} ready\`</span>),
   <span class="c-blue">onWorkerCrash</span>: (id, code) => console.<span class="c-blue">error</span>(<span class="c-green">\`Worker \${id} crashed (\${code})\`</span>),
 });</pre>
-`
+`,
   },
   tasks: {
     label: 'Background Tasks',
@@ -235,7 +235,7 @@ const DOCS = {
     <tr><td>schedule</td><td>—</td><td>Cron expression for recurring tasks</td></tr>
   </tbody>
 </table>
-`
+`,
   },
   auth: {
     label: 'Authentication',
@@ -264,7 +264,7 @@ const DOCS = {
   <span class="c-purple">const</span> token = <span class="c-blue">signToken</span>({ sub: user.id });
   res.<span class="c-blue">json</span>({ token }); <span class="c-dim">// client: Authorization: Bearer &lt;token&gt;</span>
 };</pre>
-`
+`,
   },
   database: {
     label: 'Database',
@@ -298,7 +298,7 @@ const DOCS = {
 <span class="c-dim">// MongoDB: db is a mongoose.Connection</span>
 <span class="c-dim">// PostgreSQL: db is a pg.Pool</span>
 <span class="c-purple">const</span> { rows } = <span class="c-purple">await</span> db.<span class="c-blue">query</span>(<span class="c-green">'SELECT * FROM users WHERE id = $1'</span>, [id]);</pre>
-`
+`,
   },
   cli: {
     label: 'CLI Reference',
@@ -333,7 +333,7 @@ const DOCS = {
     <tr><td>efc doctor</td><td>Validate config, env vars, DB connectivity</td></tr>
   </tbody>
 </table>
-`
+`,
   },
   envvars: {
     label: 'Environment Variables',
@@ -353,8 +353,8 @@ const DOCS = {
     <tr><td>REDIS_URL</td><td>If BullMQ</td><td>Redis connection for task queue</td></tr>
   </tbody>
 </table>
-`
-  }
+`,
+  },
 };
 
 /* ─── DOCS RENDERING ─── */
@@ -362,7 +362,7 @@ function renderDoc(key) {
   const doc = DOCS[key];
   if (!doc) return;
 
-  document.querySelectorAll('.docs-nav-link').forEach(l => {
+  document.querySelectorAll('.docs-nav-link').forEach((l) => {
     l.classList.toggle('active', l.dataset.doc === key);
   });
 
@@ -372,8 +372,8 @@ function renderDoc(key) {
   `;
 }
 
-document.querySelectorAll('.docs-nav-link').forEach(link => {
-  link.addEventListener('click', e => {
+document.querySelectorAll('.docs-nav-link').forEach((link) => {
+  link.addEventListener('click', (e) => {
     e.preventDefault();
     renderDoc(link.dataset.doc);
     document.getElementById('docs').scrollIntoView({ behavior: 'smooth' });
@@ -383,10 +383,10 @@ document.querySelectorAll('.docs-nav-link').forEach(link => {
 renderDoc('quickstart');
 
 /* ─── TABS ─── */
-document.querySelectorAll('.tab').forEach(tab => {
+document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
   });
@@ -403,16 +403,19 @@ document.getElementById('hamburger').addEventListener('click', () => {
 });
 
 /* ─── INTERSECTION OBSERVER — fade in on scroll ─── */
-const observer = new IntersectionObserver(entries => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.style.opacity = '1';
-      entry.target.style.transform = 'translateY(0)';
-    }
-  });
-}, { threshold: 0.1 });
+const observer = new IntersectionObserver(
+  (entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.style.opacity = '1';
+        entry.target.style.transform = 'translateY(0)';
+      }
+    });
+  },
+  { threshold: 0.1 },
+);
 
-document.querySelectorAll('.feature-card, .roadmap-phase, .cta-inner').forEach(el => {
+document.querySelectorAll('.feature-card, .roadmap-phase, .cta-inner').forEach((el) => {
   el.style.opacity = '0';
   el.style.transform = 'translateY(20px)';
   el.style.transition = 'opacity .5s ease, transform .5s ease';
