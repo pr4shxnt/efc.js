@@ -45,6 +45,7 @@ export interface TaskDefinition<TPayload = unknown> {
   handler: (payload: TPayload) => Promise<void>;
   options: TaskOptions;
   name: string;
+  filePath?: string;
 }
 
 export interface FieldDefinition {

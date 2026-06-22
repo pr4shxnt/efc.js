@@ -45,15 +45,23 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^22.0.0",
+    "bullmq": "^5.79.1",
+    "mongoose": "^9.7.2",
     "tsup": "^8.2.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   },
   "peerDependencies": {
+    "bullmq": ">=5.0.0",
     "mongoose": ">=8.0.0"
   },
   "peerDependenciesMeta": {
-    "mongoose": { "optional": true }
+    "bullmq": {
+      "optional": true
+    },
+    "mongoose": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=18.0.0"

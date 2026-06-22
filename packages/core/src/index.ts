@@ -8,6 +8,10 @@ import { mountRoutes } from './router/mount.js';
 import { runMaster } from './cluster/index.js';
 import { configureAuth } from './auth/index.js';
 import { HttpError } from './errors.js';
+import { connectMongo } from './db/mongo.js';
+import { setDbClient } from './db/index.js';
+import { scanTasks } from './tasks/scanner.js';
+import { initBullMQ } from './tasks/bullmq-backend.js';
 
 export async function ignite(config: EFCConfig): Promise<void> {
   const {
@@ -42,6 +46,13 @@ export async function ignite(config: EFCConfig): Promise<void> {
     app.use(mw);
   }
 
+  // Pre-Flight step 1: Connect database
+  if (config.database === 'mongodb' && config.databaseUrl) {
+    const conn = await connectMongo(config.databaseUrl);
+    setDbClient(conn as unknown as Record<string, unknown>);
+  }
+
+  // Pre-Flight step 2: Configure auth
   if (jwtSecret) {
     const cookieDomain = process.env['COOKIE_DOMAIN'];
     configureAuth({
@@ -52,6 +63,22 @@ export async function ignite(config: EFCConfig): Promise<void> {
     });
   }
 
+  // Pre-Flight step 3: Scan and register tasks
+  if (config.tasksDir) {
+    await scanTasks(config.tasksDir);
+  }
+
+  // Pre-Flight step 4: Start task queue backend
+  if (config.tasks) {
+    if (config.tasks.backend === 'bullmq') {
+      await initBullMQ({
+        redisUrl: config.tasks.redisUrl ?? 'redis://localhost:6379',
+        concurrency: config.tasks.concurrency ?? 5,
+      });
+    }
+  }
+
+  // Pre-Flight step 5: Scan routes and mount
   const routes = scanDir(apiDir);
   await mountRoutes(app, routes);
 
@@ -86,7 +113,7 @@ export async function ignite(config: EFCConfig): Promise<void> {
 
 export { HttpError } from './errors.js';
 export { compose } from './compose.js';
-export { db, setDbClient, getDbClient } from './db/index.js';
+export { db, setDbClient, getDbClient, defineModel } from './db/index.js';
 export { scanDir } from './router/scan.js';
 export type {
   EFCConfig,
