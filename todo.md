@@ -44,9 +44,9 @@
 ### 1.4 Database Adapters
 
 - [x] `db` proxy export — thread-local client slot (`db/index.ts`)
-- [ ] **MongoDB adapter** — connect mongoose in Pre-Flight, expose `db` as `mongoose.Connection`
-- [ ] **`defineModel`** — unified CRUD surface compiling to mongoose schema
-- [ ] Normalised record shape (`id` mapped from `_id`)
+- [x] **MongoDB adapter** — connect mongoose in Pre-Flight, expose `db` as `mongoose.Connection`
+- [x] **`defineModel`** — unified CRUD surface compiling to mongoose schema
+- [x] Normalised record shape (`id` mapped from `_id`)
 - [ ] PostgreSQL adapter (`pg` / Drizzle) — Phase 2
 
 ### 1.5 Auth + Errors
@@ -62,10 +62,10 @@
 - [x] `defineTask` API — I/O-bound and CPU-bound (`tasks/index.ts`)
 - [x] `enqueue` stub — throws until a backend is wired
 - [x] `taskRegistry` map
-- [ ] **`tasksDir` scanner** — auto-import task files on startup, register into `taskRegistry`
-- [ ] **BullMQ backend** — wire `setEnqueueImpl` to a real BullMQ queue + worker
+- [x] **`tasksDir` scanner** — auto-import task files on startup, register into `taskRegistry`
+- [x] **BullMQ backend** — wire `setEnqueueImpl` to a real BullMQ queue + worker
 - [ ] pg-boss backend — Phase 2
-- [ ] `thread: true` → `worker_threads` execution for CPU-bound tasks
+- [x] `thread: true` → `worker_threads` execution for CPU-bound tasks
 - [ ] Cron/scheduled tasks (`schedule` option on `defineTask`)
 
 ### 1.7 CLI (`efc`)
@@ -108,7 +108,7 @@
 
 - [ ] `npx create-efc-app` works end-to-end without manual steps
 - [x] `efc start dev` serves routes (binary wired, tsx delegation works)
-- [ ] `enqueue('SendEmail', …)` runs off the request path with retries
+- [x] `enqueue('SendEmail', …)` runs off the request path with retries
 - [x] Clustering spawns correct worker count and respawns on crash
 - [ ] `efc run tests` is green in CI
 
@@ -145,9 +145,6 @@
 
 ## What to Build Next (Priority Order)
 
-1. **MongoDB adapter** — `tasksDir` scanner and BullMQ backend are blocked until DB is wired; most example apps need this immediately
-2. **`tasksDir` scanner** — auto-register task files on startup so `enqueue()` actually works
-3. **BullMQ backend** — wire `setEnqueueImpl` so tasks run with retries/backoff
-4. **`worker_threads` for CPU-bound tasks** — `thread: true` option
-5. **Integration tests** — route resolution, clustering, task lifecycle
-6. **GitHub Actions CI** — lint + test on every PR
+1. **Integration tests** — route resolution, clustering, task lifecycle
+2. **GitHub Actions CI** — lint + test on every PR
+3. **End-to-end scaffolding test** — ensure `create-efc-app` works flawlessly
