@@ -93,10 +93,15 @@ async function main(): Promise<void> {
   await npmInstall(projectName as string);
   spinner.stop('Dependencies installed');
 
+  spinner.start('Installing efc CLI globally…');
+  await npmInstallGlobal().catch(() => {/* non-fatal */});
+  spinner.stop('efc CLI ready');
+
   p.outro(
     chalk.green(`\nYour project is ready!\n\n`) +
     chalk.dim(`  cd ${projectName as string}\n`) +
-    chalk.dim(`  efc start dev\n`),
+    chalk.dim(`  efc start dev\n`) +
+    chalk.dim(`\n  (or: npm run dev)\n`),
   );
 }
 
@@ -107,6 +112,15 @@ function npmInstall(projectDir: string): Promise<void> {
       stdio: 'ignore',
     });
     child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`npm install failed`))));
+  });
+}
+
+function npmInstallGlobal(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('npm', ['install', '-g', 'express-file-cluster'], {
+      stdio: 'ignore',
+    });
+    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error('global install failed'))));
   });
 }
 
