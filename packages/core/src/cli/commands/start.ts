@@ -34,9 +34,12 @@ function startDev(): void {
   console.log(chalk.cyan('[EFC] Starting development server…'));
   console.log(chalk.dim(`  Entry: ${entry}`));
 
+  const localTsx = path.join(process.cwd(), 'node_modules', '.bin', 'tsx');
+  const tsx = fs.existsSync(localTsx) ? localTsx : 'tsx';
+
   const child = spawn(
-    'node',
-    ['--import', 'tsx/esm', '--watch', entry],
+    tsx,
+    ['watch', entry],
     { stdio: 'inherit', env: { ...process.env, NODE_ENV: 'development' } },
   );
 
