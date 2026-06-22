@@ -96,7 +96,7 @@ async function main(): Promise<void> {
   p.outro(
     chalk.green(`\nYour project is ready!\n\n`) +
     chalk.dim(`  cd ${projectName as string}\n`) +
-    chalk.dim(`  npm run dev\n`),
+    chalk.dim(`  efc start dev\n`),
   );
 }
 

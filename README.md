@@ -26,7 +26,7 @@ Most Express apps grow the same way: a working prototype, then a maze of `router
 ```bash
 npx create-efc-app my-api
 cd my-api
-npm run dev
+efc start dev
 ```
 
 The interactive scaffolder asks for language, database, auth strategy, and whether you want clustering and background tasks — then writes the boilerplate, generates a `.env` with a real `JWT_SECRET`, and runs `npm install`.
