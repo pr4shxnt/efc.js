@@ -24,9 +24,14 @@ export function startCommand(): Command {
   return cmd;
 }
 
-function buildEnvFileArgs(cwd: string): string[] {
+function buildDevEnv(cwd: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'development' };
   const envFile = path.join(cwd, '.env');
-  return fs.existsSync(envFile) ? ['--env-file', envFile] : [];
+  if (fs.existsSync(envFile)) {
+    const existing = (process.env['NODE_OPTIONS'] ?? '').trim();
+    env['NODE_OPTIONS'] = `${existing} --env-file ${envFile}`.trim();
+  }
+  return env;
 }
 
 function startDev(): void {
@@ -40,11 +45,13 @@ function startDev(): void {
   console.log(chalk.dim(`  Entry: ${entry}`));
 
   const cwd = process.cwd();
-  const child = spawn(
-    'node',
-    [...buildEnvFileArgs(cwd), '--import', 'tsx/esm', '--watch', entry],
-    { stdio: 'inherit', env: { ...process.env, NODE_ENV: 'development' } },
-  );
+  const localTsx = path.join(cwd, 'node_modules', '.bin', 'tsx');
+  const tsx = fs.existsSync(localTsx) ? localTsx : 'tsx';
+
+  const child = spawn(tsx, ['watch', entry], {
+    stdio: 'inherit',
+    env: buildDevEnv(cwd),
+  });
 
   child.on('exit', (code) => process.exit(code ?? 0));
 }
@@ -60,7 +67,10 @@ function startProd(): void {
 
   console.log(chalk.cyan('[EFC] Starting production server…'));
 
-  const child = spawn('node', [...buildEnvFileArgs(cwd), distEntry], {
+  const envFile = path.join(cwd, '.env');
+  const nodeArgs = fs.existsSync(envFile) ? ['--env-file', envFile, distEntry] : [distEntry];
+
+  const child = spawn('node', nodeArgs, {
     stdio: 'inherit',
     env: { ...process.env, NODE_ENV: 'production' },
   });
