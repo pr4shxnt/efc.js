@@ -6,7 +6,12 @@ interface SendEmailPayload {
   body: string;
 }
 
-export default defineTask<SendEmailPayload>(async (payload) => {
-  // TODO: wire up your mailer
-  console.log('[SendEmail] Sending to', payload.to);
+export default defineTask<SendEmailPayload>(async ({ to, subject, body }) => {
+  console.log('[SendEmail] Sending to', to);
+  console.log('[SendEmail] Subject:', subject);
+  console.log('[SendEmail] Body:', body);
+
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+
+  console.log('[SendEmail] Sent to', to);
 });
