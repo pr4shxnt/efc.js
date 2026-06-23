@@ -4,7 +4,6 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import cluster from 'node:cluster';
 import os from 'node:os';
-import dotenv from 'dotenv';
 import type { EFCConfig } from './types.js';
 import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
@@ -15,11 +14,6 @@ import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
 import { scanTasks } from './tasks/scanner.js';
 import { initBullMQ } from './tasks/bullmq-backend.js';
-
-// Load .env only outside production — production envs are injected by the platform
-if (process.env['NODE_ENV'] !== 'production') {
-  dotenv.config();
-}
 
 function detectDatabase(url?: string): 'mongodb' | 'postgresql' | undefined {
   if (!url) return undefined;

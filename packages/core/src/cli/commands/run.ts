@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { spawn } from 'node:child_process';
-import chalk from 'chalk';
+import pc from 'picocolors';
 
 export function runCommand(): Command {
   const cmd = new Command('run');
@@ -13,7 +13,7 @@ export function runCommand(): Command {
       if (runner === 'tests') {
         runTests(cmd.args.slice(1));
       } else {
-        console.error(chalk.red(`Unknown runner: ${runner}. Use 'tests'.`));
+        console.error(pc.red(`Unknown runner: ${runner}. Use 'tests'.`));
         process.exit(1);
       }
     });
@@ -22,7 +22,7 @@ export function runCommand(): Command {
 }
 
 function runTests(extraArgs: string[]): void {
-  console.log(chalk.cyan('[EFC] Running tests via Vitest…'));
+  console.log(pc.cyan('[EFC] Running tests via Vitest…'));
   const child = spawn('npx', ['vitest', 'run', ...extraArgs], { stdio: 'inherit' });
   child.on('exit', (code) => process.exit(code ?? 0));
 }

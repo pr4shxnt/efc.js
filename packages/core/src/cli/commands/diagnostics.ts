@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { scanDir } from '../../router/scan.js';
 import path from 'node:path';
 import fs from 'node:fs';
-import chalk from 'chalk';
+import pc from 'picocolors';
 
 export function diagnosticsCommands(): Command[] {
   return [routesCommand(), tasksCommand(), doctorCommand()];
@@ -14,24 +14,24 @@ function routesCommand(): Command {
     .action(() => {
       const apiDir = resolveApiDir();
       if (!apiDir) {
-        console.error(chalk.red('[EFC] Could not find apiDir (expected src/api)'));
+        console.error(pc.red('[EFC] Could not find apiDir (expected src/api)'));
         process.exit(1);
       }
 
       const routes = scanDir(apiDir);
       if (routes.length === 0) {
-        console.log(chalk.yellow('No routes found.'));
+        console.log(pc.yellow('No routes found.'));
         return;
       }
 
-      console.log(chalk.bold('\n  Route Table\n'));
-      console.log(chalk.dim('  ' + '─'.repeat(60)));
+      console.log(pc.bold('\n  Route Table\n'));
+      console.log(pc.dim('  ' + '─'.repeat(60)));
       for (const route of routes) {
         const rel = path.relative(process.cwd(), route.filePath);
-        console.log(`  ${chalk.cyan(route.urlPath.padEnd(35))} ${chalk.dim(rel)}`);
+        console.log(`  ${pc.cyan(route.urlPath.padEnd(35))} ${pc.dim(rel)}`);
       }
-      console.log(chalk.dim('  ' + '─'.repeat(60)));
-      console.log(chalk.dim(`\n  ${routes.length} route(s) found\n`));
+      console.log(pc.dim('  ' + '─'.repeat(60)));
+      console.log(pc.dim(`\n  ${routes.length} route(s) found\n`));
     });
 }
 
@@ -41,19 +41,19 @@ function tasksCommand(): Command {
     .action(() => {
       const tasksDir = resolveTasksDir();
       if (!tasksDir || !fs.existsSync(tasksDir)) {
-        console.log(chalk.yellow('No tasks directory found.'));
+        console.log(pc.yellow('No tasks directory found.'));
         return;
       }
 
       const files = fs.readdirSync(tasksDir).filter((f) => /\.(ts|js)$/.test(f));
       if (files.length === 0) {
-        console.log(chalk.yellow('No tasks found.'));
+        console.log(pc.yellow('No tasks found.'));
         return;
       }
 
-      console.log(chalk.bold('\n  Background Tasks\n'));
+      console.log(pc.bold('\n  Background Tasks\n'));
       for (const file of files) {
-        console.log(`  ${chalk.cyan(path.basename(file, path.extname(file)))}`);
+        console.log(`  ${pc.cyan(path.basename(file, path.extname(file)))}`);
       }
       console.log();
     });
@@ -91,21 +91,21 @@ function doctorCommand(): Command {
         },
       ];
 
-      console.log(chalk.bold('\n  EFC Doctor\n'));
+      console.log(pc.bold('\n  EFC Doctor\n'));
       let allOk = true;
       for (const check of checks) {
-        const icon = check.ok ? chalk.green('✓') : chalk.red('✗');
+        const icon = check.ok ? pc.green('✓') : pc.red('✗');
         console.log(`  ${icon}  ${check.label}`);
         if (!check.ok) {
           allOk = false;
-          if (check.hint) console.log(chalk.dim(`       → ${check.hint}`));
+          if (check.hint) console.log(pc.dim(`       → ${check.hint}`));
         }
       }
       console.log();
       if (allOk) {
-        console.log(chalk.green('  All checks passed!\n'));
+        console.log(pc.green('  All checks passed!\n'));
       } else {
-        console.log(chalk.yellow('  Some checks failed. Fix the issues above.\n'));
+        console.log(pc.yellow('  Some checks failed. Fix the issues above.\n'));
         process.exit(1);
       }
     });

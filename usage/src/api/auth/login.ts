@@ -24,7 +24,7 @@ export const POST = async (req: Request, res: Response) => {
   }
 
   // 3. Issue a JWT cookie automatically using EFC's auth helper
-  issueToken(res, { userId: user.id, email: user.email });
+  await issueToken(res, { userId: user.id, email: user.email });
 
   res.json({ message: 'Logged in successfully' });
 };
