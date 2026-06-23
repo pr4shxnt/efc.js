@@ -1,0 +1,134 @@
+# File-Based Routing
+
+EFC turns your directory tree into your route tree. The scanner walks `apiDir` recursively, converts each file path to a URL, and mounts the handlers on Express — no explicit registration required.
+
+---
+
+## Naming rules
+
+| Rule | Example file | Resolved URL |
+|---|---|---|
+| Plain file | `api/health.ts` | `/health` |
+| `index.ts` in a directory | `api/users/index.ts` | `/users` |
+| Nested directory | `api/posts/recent.ts` | `/posts/recent` |
+| Dynamic segment | `api/users/[id].ts` | `/users/:id` |
+| Dynamic directory | `api/posts/[slug]/comments.ts` | `/posts/:slug/comments` |
+
+**`[bracket]` → `:param`** — any path segment wrapped in square brackets becomes an Express route parameter accessible as `req.params.<name>`.
+
+**`index.ts` → parent path** — a file named `index.ts` (or `.js`) inside a directory maps to the directory's URL without a trailing `/index`.
+
+---
+
+## Supported file extensions
+
+The scanner recognises `.ts`, `.js`, `.mts`, `.mjs`, `.cts`, and `.cjs`.
+
+---
+
+## Route priority
+
+Static routes are registered before dynamic routes at each segment level. Given:
+
+```
+api/users/me.ts        →  /users/me        (static)
+api/users/[id].ts      →  /users/:id       (dynamic)
+```
+
+A request to `/users/me` matches the static route first and never falls through to `/users/:id`.
+
+---
+
+## Exporting handlers
+
+Each route file exports one or more uppercase HTTP method names as async functions:
+
+```ts
+// src/api/users/index.ts
+import type { Request, Response } from 'express';
+
+export const GET = async (req: Request, res: Response) => {
+  res.json({ users: [] });
+};
+
+export const POST = async (req: Request, res: Response) => {
+  res.status(201).json({ id: 'new-id' });
+};
+```
+
+Supported method names: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`.
+
+Any method not exported on a route that does export at least one method returns **405 Method Not Allowed** with an `Allow` header listing the implemented methods:
+
+```
+HTTP/1.1 405 Method Not Allowed
+Allow: GET, POST
+Content-Type: application/json
+
+{ "error": "Method Not Allowed" }
+```
+
+---
+
+## Dynamic parameters
+
+```ts
+// src/api/users/[id].ts
+import type { Request, Response } from 'express';
+import { HttpError } from 'express-file-cluster';
+import { User } from '../../models/User';
+
+export const GET = async (req: Request, res: Response) => {
+  const user = await User.findById(req.params.id);
+  if (!user) throw new HttpError(404, 'User not found');
+  res.json(user);
+};
+
+export const DELETE = async (req: Request, res: Response) => {
+  await User.delete(req.params.id);
+  res.status(204).send();
+};
+```
+
+---
+
+## Route-level middleware
+
+Export a `middlewares` array from a route file. The middlewares apply to every handler in that file and run after global middleware.
+
+```ts
+// src/api/admin/settings.ts
+import { requireAuth } from 'express-file-cluster/auth';
+
+export const middlewares = [requireAuth];
+
+export const GET = async (req, res) => {
+  // Only reached if requireAuth passes
+  res.json({ settings: {} });
+};
+```
+
+---
+
+## How the scanner works internally
+
+`scanDir(apiDir)` in `packages/core/src/router/scan.ts`:
+
+1. Walks `apiDir` recursively with `fs.readdirSync`.
+2. For each file, converts the path relative to `apiDir` to a URL:
+   - Strips the extension.
+   - Replaces `/index` with `''` (parent path).
+   - Replaces `[param]` with `:param`.
+   - Prepends `/` if missing.
+3. Sorts results so static routes precede dynamic routes.
+4. Returns a `RouteEntry[]` array with `urlPath`, `filePath`, and `params`.
+
+`mountRoutes(app, routes)` in `packages/core/src/router/mount.ts`:
+
+1. Iterates `RouteEntry[]`.
+2. Dynamically `import()`s each route module.
+3. Reads the optional `middlewares` export.
+4. For each known HTTP method that is exported as a function, registers it with `app.<method>(urlPath, ...middlewares, asyncWrap(handler))`.
+5. Registers an `app.all()` catch for unimplemented methods that returns 405.
+
+`asyncWrap` wraps every handler in `Promise.resolve(...).catch(next)` so that thrown errors and rejected promises are forwarded to the Express error handler automatically.
