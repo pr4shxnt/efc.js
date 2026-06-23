@@ -72,9 +72,12 @@ function startProd(): void {
 
   console.log(chalk.cyan('[EFC] Starting production server…'));
 
-  const env: NodeJS.ProcessEnv = { ...parseDotenv(cwd), ...process.env, NODE_ENV: 'production' };
-
-  const child = spawn('node', [distEntry], { stdio: 'inherit', env });
+  // Production env comes exclusively from process.env — no .env file loading.
+  // Platforms (Docker, Kubernetes, Railway, Heroku, etc.) inject vars directly.
+  const child = spawn('node', [distEntry], {
+    stdio: 'inherit',
+    env: { ...process.env, NODE_ENV: 'production' },
+  });
   child.on('exit', (code) => process.exit(code ?? 0));
 }
 

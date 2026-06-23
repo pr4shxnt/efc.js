@@ -1,10 +1,10 @@
-import 'dotenv/config';
 import http from 'node:http';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import cluster from 'node:cluster';
 import os from 'node:os';
+import dotenv from 'dotenv';
 import type { EFCConfig } from './types.js';
 import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
@@ -15,6 +15,11 @@ import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
 import { scanTasks } from './tasks/scanner.js';
 import { initBullMQ } from './tasks/bullmq-backend.js';
+
+// Load .env only outside production — production envs are injected by the platform
+if (process.env['NODE_ENV'] !== 'production') {
+  dotenv.config();
+}
 
 function detectDatabase(url?: string): 'mongodb' | 'postgresql' | undefined {
   if (!url) return undefined;
@@ -35,8 +40,10 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   } = config;
 
   // All runtime values fall back to environment variables
-  const port =
-    _port != null && !Number.isNaN(_port) ? _port : Number(process.env['PORT']) || 3000;
+  const envPort = process.env['PORT'] != null ? Number(process.env['PORT']) : NaN;
+  const port = (_port != null && !Number.isNaN(_port)) ? _port
+    : !Number.isNaN(envPort) ? envPort
+    : 3000;
   const databaseUrl = config.databaseUrl ?? process.env['DATABASE_URL'];
   const database = config.database ?? detectDatabase(databaseUrl);
   const jwtSecret = config.jwtSecret ?? process.env['JWT_SECRET'];
@@ -136,13 +143,35 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
     );
   }
 
-  return new Promise<http.Server>((resolve) => {
-    const server = app.listen(port, () => {
+  return new Promise<http.Server>((resolve, reject) => {
+    const server = app.listen(port);
+
+    server.once('listening', () => {
       const wid = (cluster.worker as { id: number } | undefined)?.id ?? 'primary';
-      console.log(`[EFC] Worker ${wid} listening on :${port}`);
+      const addr = server.address() as { port: number } | null;
+      console.log(`[EFC] Worker ${wid} listening on :${addr?.port ?? port}`);
       resolve(server);
     });
+
+    server.once('error', reject);
   });
+}
+
+export function gracefulShutdown(server: http.Server, timeoutMs = 10_000): void {
+  const shutdown = (signal: string) => {
+    console.log(`[EFC] ${signal} received — closing server gracefully…`);
+    server.closeIdleConnections();
+    server.close(() => {
+      console.log('[EFC] Server closed');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.error('[EFC] Forced exit after timeout');
+      process.exit(1);
+    }, timeoutMs).unref();
+  };
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT', () => shutdown('SIGINT'));
 }
 
 export { HttpError } from './errors.js';
