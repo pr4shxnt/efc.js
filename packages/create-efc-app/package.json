@@ -1,9 +1,12 @@
 {
   "name": "create-efc-app",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Interactive scaffolder for Express File Cluster projects",
   "license": "MIT",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "bin": {
     "create-efc-app": "./dist/index.js"
   },
