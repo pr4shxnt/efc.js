@@ -9,4 +9,6 @@ ignite({
   apiDir: path.join(__dirname, 'api'),
   tasksDir: path.join(__dirname, 'tasks'),
   tasks: { backend: 'bullmq' },
-}).then(gracefulShutdown).catch(console.error);
+})
+  .then(gracefulShutdown)
+  .catch(console.error);

@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import type { EFCConfig } from './types.js';
 import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
-import { runMaster } from './cluster/index.js';
+import { runMaster, shutdownMaster } from './cluster/index.js';
 import { configureAuth } from './auth/index.js';
 import { HttpError } from './errors.js';
 import { connectMongo } from './db/mongo.js';
@@ -157,18 +157,22 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   });
 }
 
-export function gracefulShutdown(server: http.Server, timeoutMs = 10_000): void {
+export function gracefulShutdown(server: http.Server | undefined, timeoutMs = 10_000): void {
   const shutdown = (signal: string) => {
     console.log(`[EFC] ${signal} received — closing server gracefully…`);
-    server.closeIdleConnections();
-    server.close(() => {
-      console.log('[EFC] Server closed');
-      process.exit(0);
-    });
-    setTimeout(() => {
-      console.error('[EFC] Forced exit after timeout');
-      process.exit(1);
-    }, timeoutMs).unref();
+    if (server) {
+      server.closeIdleConnections();
+      server.close(() => {
+        console.log('[EFC] Server closed');
+        process.exit(0);
+      });
+      setTimeout(() => {
+        console.error('[EFC] Forced exit after timeout');
+        process.exit(1);
+      }, timeoutMs).unref();
+    } else {
+      shutdownMaster();
+    }
   };
   process.once('SIGTERM', () => shutdown('SIGTERM'));
   process.once('SIGINT', () => shutdown('SIGINT'));
