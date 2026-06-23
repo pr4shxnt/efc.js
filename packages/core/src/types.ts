@@ -66,7 +66,7 @@ export interface FieldDefinition {
 
 export type ModelSchema = Record<string, FieldDefinition>;
 
-export interface ModelCRUD<T extends Record<string, unknown>> {
+export interface ModelCRUD<T extends Record<string, any>> {
   find(filter?: Partial<T>): Promise<T[]>;
   findById(id: string): Promise<(T & { id: string }) | null>;
   findOne(filter: Partial<T>): Promise<(T & { id: string }) | null>;

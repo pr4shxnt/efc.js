@@ -10,17 +10,11 @@ export default defineConfig({
   format: ['cjs', 'esm'],
   dts: true,
   clean: true,
-  splitting: false,
+  splitting: true,
   sourcemap: true,
   target: 'node18',
   banner: {
     js: '',
   },
-  esbuildOptions(options, context) {
-    if (context.format === 'esm') {
-      options.banner = {
-        js: context.entry === 'src/cli/index.ts' ? '#!/usr/bin/env node' : '',
-      };
-    }
-  },
+
 });
