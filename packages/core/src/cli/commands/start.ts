@@ -57,7 +57,7 @@ function startDev(): void {
   // .env values are base; existing process.env takes precedence (same as dotenv default)
   const env: NodeJS.ProcessEnv = { ...parseDotenv(cwd), ...process.env, NODE_ENV: 'development' };
 
-  const child = spawn(tsx, ['watch', entry], { stdio: 'inherit', env });
+  const child = spawn(tsx, ['watch', '--include', 'src', entry], { stdio: 'inherit', env });
   child.on('exit', (code) => process.exit(code ?? 0));
 }
 
