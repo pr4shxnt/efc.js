@@ -4,7 +4,7 @@
 
 EFC is an opinionated backend framework built on Express. Drop files in `src/api/` and they become routes. Every CPU core serves traffic automatically. Heavy work goes to a queue-backed task subsystem so requests stay fast.
 
-> **Status: Pre-alpha.** The router, clustering, and auth are implemented. The MongoDB adapter and task queue backend are in active development. Not yet published to npm.
+> **Status: v0.2.0 (Beta).** The router, clustering, and auth are implemented. The MongoDB adapter and task queue backend are in active development.
 
 ---
 
