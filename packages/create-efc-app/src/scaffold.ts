@@ -120,6 +120,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // PORT, DATABASE_URL, JWT_SECRET, CORS_ORIGINS are read from .env automatically
 ignite({
+  cluster: ${opts.cluster},
   apiDir: path.join(__dirname, 'api'),
   tasksDir: path.join(__dirname, 'tasks'),
 ${taskLine}}).then(gracefulShutdown).catch(console.error);
