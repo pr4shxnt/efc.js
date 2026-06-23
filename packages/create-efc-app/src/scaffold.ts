@@ -28,7 +28,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
 
 async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<void> {
   const deps: Record<string, string> = {
-    'express-file-cluster': '^0.1.3',
+    'express-file-cluster': '^0.1.4',
   };
   if (opts.database === 'mongodb') deps['mongoose'] = '^8.0.0';
   if (opts.database === 'postgresql') {
@@ -112,7 +112,7 @@ async function writeEntryPoint(dest: string, opts: ScaffoldOptions): Promise<voi
   const taskLine = opts.tasks
     ? `  tasks: { backend: '${opts.taskBackend ?? 'bullmq'}' },\n`
     : '';
-  const content = `import { ignite } from 'express-file-cluster';
+  const content = `import { ignite, gracefulShutdown } from 'express-file-cluster';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -122,7 +122,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 ignite({
   apiDir: path.join(__dirname, 'api'),
   tasksDir: path.join(__dirname, 'tasks'),
-${taskLine}}).catch(console.error);
+${taskLine}}).then(gracefulShutdown).catch(console.error);
 `;
   await fs.outputFile(path.join(dest, 'src', `index.${ext}`), content);
 }

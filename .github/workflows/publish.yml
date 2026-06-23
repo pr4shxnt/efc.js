@@ -1,0 +1,33 @@
+name: Publish to NPM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org/'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Projects
+        run: npm run build
+
+      - name: Publish to NPM
+        # This will publish all your packages. If the version hasn't changed,
+        # npm might throw an error, so we add || true to prevent the workflow from failing 
+        # on non-release commits, or you can remove || true if you want strict failures.
+        run: npm publish --workspaces || echo "Version already exists, skipping publish."
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
