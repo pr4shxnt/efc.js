@@ -1,0 +1,132 @@
+# EFC — Pre-Flight Lifecycle (Exact)
+
+Source: `packages/core/src/index.ts` — `ignite()` function, worker branch.
+
+This is the exact order of operations inside every worker process (or the single process when `cluster: false`).
+
+---
+
+## Step-by-step sequence
+
+```
+ignite() called
+     │
+     ├─ cluster.isPrimary && cluster enabled?
+     │       YES → runMaster() → fork workers → return undefined (master exits here)
+     │       NO  → continue as worker
+     │
+     ▼
+1. Create Express app
+   - Apply CORS middleware (reads CORS_ORIGINS env var)
+   - Apply express.json()
+   - Apply express.urlencoded({ extended: true })
+   - Apply cookieParser()
+   - Apply globalMiddlewares[] (from config)
+
+2. Connect Database  [if database === 'mongodb' && databaseUrl]
+   - connectMongo(databaseUrl) → mongoose.connect()
+   - setDbClient(connection)
+   - db proxy is now live
+
+3. Configure Auth  [if jwtSecret is set]
+   - configureAuth({ secret, strategy, expiresIn, cookieDomain? })
+   - issueToken / requireAuth / signToken are now usable
+
+4. Scan + Register Tasks  [if config.tasksDir is set]
+   - scanTasks(tasksDir)
+   - Walks tasksDir, imports each file, reads default export
+   - Calls registerTask(basename, definition) for each valid TaskDefinition
+
+5. Start Task Queue Backend  [if config.tasks is set]
+   - backend === 'bullmq' → initBullMQ({ redisUrl, concurrency })
+     - Dynamically imports bullmq (peer dep — not bundled)
+     - Creates Queue('efc', connection)
+     - Creates Worker('efc', processor, { connection, concurrency })
+     - Calls setEnqueueImpl(...) → enqueue() is now usable
+
+6. Scan Routes
+   - scanDir(apiDir) → RouteEntry[]
+   - File → URL transformation (see routing-rules.md)
+   - Static before dynamic sort
+
+7. Mount Routes
+   - mountRoutes(app, routes)
+   - Dynamic import of each route module
+   - Register handlers on Express
+
+8. Register error handler  [onError if provided, else built-in]
+
+9. app.listen(port)
+   - Resolves Promise<http.Server> on 'listening' event
+   - Logs: [EFC] Worker <id> listening on :<port>
+```
+
+---
+
+## Key invariants
+
+- **Steps 2–5 run BEFORE routes are mounted.** By the time a handler executes, `db` is live and `enqueue()` works.
+- **Each worker runs all 8 steps independently.** Workers never share DB connections or task registry state.
+- **`cluster: false` is identical** — the same 8 steps run in the single process, skipping the fork branch.
+- **`cluster: true` + `cluster.isPrimary`** — the master process does NOTHING after `runMaster()`. It forks workers and watches `exit` events. It does not run Pre-Flight.
+
+---
+
+## `runMaster()` (cluster/index.ts)
+
+```ts
+runMaster({ workers, onWorkerReady, onWorkerCrash })
+  → cluster.fork() × workers
+  → cluster.on('online', worker => onWorkerReady?.(worker.id))
+  → cluster.on('exit', (worker, code, signal) => {
+      if (!isShuttingDown) {
+        onWorkerCrash?.(worker.id, code ?? -1)
+        cluster.fork()   // immediate respawn, no delay
+      }
+    })
+```
+
+The master never calls `app.listen()`. If `ignite()` is called in the primary process, it returns `undefined` — not a server.
+
+---
+
+## `gracefulShutdown()` — shutdown path
+
+```
+SIGTERM or SIGINT received
+     │
+     ├─ server is defined (worker or single-process)
+     │    → server.closeIdleConnections()
+     │    → server.close(() => process.exit(0))
+     │    → setTimeout(force process.exit(1), timeoutMs)  // default 10s
+     │
+     └─ server is undefined (master process)
+          → shutdownMaster()
+          → isShuttingDown = true
+          → workers exit naturally, master exits when all workers done
+```
+
+---
+
+## Port resolution (exact precedence)
+
+```
+1. config.port  (if provided and not NaN)
+2. process.env.PORT  (if set and parseable as number)
+3. 3000  (hardcoded default)
+```
+
+---
+
+## Cluster enable/disable logic (exact)
+
+```ts
+const clusterEnabled = config.cluster ?? (process.env['NODE_ENV'] === 'production');
+```
+
+- `config.cluster` is `undefined` AND `NODE_ENV !== 'production'` → **clustering OFF** (dev default)
+- `config.cluster` is `undefined` AND `NODE_ENV === 'production'` → **clustering ON**
+- `config.cluster: true` → **ON** regardless of NODE_ENV
+- `config.cluster: false` → **OFF** regardless of NODE_ENV
+
+`efc start dev` sets `NODE_ENV=development` → clustering is automatically off in dev.

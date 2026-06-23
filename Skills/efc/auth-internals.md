@@ -1,0 +1,110 @@
+# EFC — Auth Internals (Exact)
+
+Source: `packages/core/src/auth/index.ts`
+
+---
+
+## Configuration (happens in Pre-Flight)
+
+```ts
+// Called by ignite() at Pre-Flight step 2
+configureAuth({
+  secret: jwtSecret,
+  strategy: authStrategy,          // 'http-only' | 'localStorage'
+  expiresIn: JWT_EXPIRES_IN ?? '7d',
+  cookieDomain: COOKIE_DOMAIN,     // optional
+})
+```
+
+`_config` is a module-level singleton. All auth functions throw `'[EFC] Auth not configured — pass jwtSecret to ignite()'` if called before `configureAuth`.
+
+---
+
+## `issueToken(res, payload)`
+
+```ts
+// Signs JWT (HS256), sets HttpOnly cookie
+const token = await new SignJWT(payload)
+  .setProtectedHeader({ alg: 'HS256' })
+  .setExpirationTime(expiresIn)
+  .sign(new TextEncoder().encode(secret))
+
+res.cookie('efc_token', token, {
+  httpOnly: true,
+  secure: process.env['NODE_ENV'] === 'production',
+  sameSite: 'strict',
+  ...(cookieDomain && { domain: cookieDomain }),
+})
+```
+
+Cookie name: exactly `'efc_token'` (hardcoded).
+`secure` is only set in production. In dev, the cookie is sent over HTTP.
+**Does NOT set `path` explicitly** — defaults to `/`.
+**Does NOT set `maxAge` or `expires`** — cookie is session-scoped (expires when browser closes), but the JWT itself has an expiry enforced server-side by `jwtVerify`.
+
+---
+
+## `revokeToken(res)`
+
+```ts
+res.clearCookie('efc_token')
+```
+
+That's the entire implementation. Clears the cookie. The JWT itself is not invalidated (no blocklist).
+
+---
+
+## `signToken(payload)`
+
+```ts
+// Signs JWT, returns string (no cookie)
+return await new SignJWT(payload)
+  .setProtectedHeader({ alg: 'HS256' })
+  .setExpirationTime(expiresIn)
+  .sign(new TextEncoder().encode(secret))
+```
+
+No `res` argument. Token must be sent in the response body by the route handler.
+
+---
+
+## `requireAuth` — middleware internals
+
+```ts
+// Strategy 'http-only': reads req.cookies.efc_token
+// Strategy 'localStorage': reads Authorization header → strips 'Bearer '
+
+if (!token) → res.status(401).json({ error: 'Unauthorized' }); return
+
+const { payload } = await jwtVerify(token, new TextEncoder().encode(secret))
+(req as any).user = payload   // ← attaches to req.user
+next()
+```
+
+On any error (expired, invalid signature, malformed): catches and returns `{ error: 'Unauthorized' }` with status 401. **Does NOT call next(err)** — it handles the 401 response itself and returns.
+
+`req.user` is typed as `unknown` in the source. Cast to your payload type or use `(req as any).user`.
+
+---
+
+## JWT library
+
+Uses `jose` (not `jsonwebtoken`). Key is UTF-8 encoded via `new TextEncoder().encode(secret)` before every call — no pre-computed key object is cached between requests.
+
+---
+
+## Token expiry
+
+`expiresIn` is read once in `configureAuth` from `process.env.JWT_EXPIRES_IN ?? '7d'`. All tokens issued in the same process lifetime use the same expiry value.
+
+Format accepted by `jose`: `'15m'`, `'1h'`, `'7d'`, `'30d'`, integer seconds, etc.
+
+---
+
+## What auth does NOT do
+
+- No refresh tokens.
+- No token blocklist / revocation list (revoking just clears the cookie — a stolen token remains valid until it expires).
+- No role check built-in to `requireAuth` — it only verifies the JWT. Role checks are in your own middleware.
+- No CSRF token — relies on `SameSite: Strict` for http-only strategy.
+- No multi-strategy per-route override — `authStrategy` is global, set once in `ignite()`.
