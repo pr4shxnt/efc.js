@@ -1,4 +1,4 @@
-import { ignite } from 'express-file-cluster';
+import { ignite, gracefulShutdown } from 'express-file-cluster';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -9,4 +9,4 @@ ignite({
   apiDir: path.join(__dirname, 'api'),
   tasksDir: path.join(__dirname, 'tasks'),
   tasks: { backend: 'bullmq' },
-}).catch(console.error);
+}).then(gracefulShutdown).catch(console.error);
