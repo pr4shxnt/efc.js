@@ -1,11 +1,11 @@
 import * as p from '@clack/prompts';
-import chalk from 'chalk';
+import pc from 'picocolors';
 import { spawn } from 'node:child_process';
 import { scaffold, type ScaffoldOptions } from './scaffold.js';
 
 async function main(): Promise<void> {
   console.log();
-  p.intro(chalk.bgCyan(chalk.black(' create-efc-app ')));
+  p.intro(pc.bgCyan(pc.black(' create-efc-app ')));
 
   const projectName = await p.text({
     message: 'Project name:',
@@ -98,10 +98,10 @@ async function main(): Promise<void> {
   spinner.stop('efc CLI ready');
 
   p.outro(
-    chalk.green(`\nYour project is ready!\n\n`) +
-    chalk.dim(`  cd ${projectName as string}\n`) +
-    chalk.dim(`  efc start dev\n`) +
-    chalk.dim(`\n  (or: npm run dev)\n`),
+    pc.green(`\nYour project is ready!\n\n`) +
+    pc.dim(`  cd ${projectName as string}\n`) +
+    pc.dim(`  efc start dev\n`) +
+    pc.dim(`\n  (or: npm run dev)\n`),
   );
 }
 

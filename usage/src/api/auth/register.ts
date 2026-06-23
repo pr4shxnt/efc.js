@@ -23,7 +23,7 @@ export const POST = async (req: Request, res: Response) => {
   const newUser = await User.create({ email, password: hashedPassword });
 
   // 4. Issue a JWT cookie automatically using EFC's auth helper
-  issueToken(res, { userId: newUser.id, email: newUser.email });
+  await issueToken(res, { userId: newUser.id, email: newUser.email });
 
   res.status(201).json({
     message: 'User registered successfully',

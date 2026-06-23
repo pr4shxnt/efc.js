@@ -251,7 +251,7 @@ const DOCS = {
 <span class="c-dim">// Login route</span>
 <span class="c-purple">export const</span> <span class="c-blue">POST</span> = <span class="c-purple">async</span> (req, res) => {
   <span class="c-purple">const</span> user = <span class="c-purple">await</span> <span class="c-blue">verifyCredentials</span>(req.body);
-  <span class="c-blue">issueToken</span>(res, { sub: user.id, role: user.role });
+  <span class="c-purple">await</span> <span class="c-blue">issueToken</span>(res, { sub: user.id, role: user.role });
   res.<span class="c-blue">json</span>({ message: <span class="c-green">'Logged in'</span> });
 };
 
@@ -261,7 +261,7 @@ const DOCS = {
 <pre><span class="c-purple">import</span> { signToken } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster/auth'</span>;
 
 <span class="c-purple">export const</span> <span class="c-blue">POST</span> = <span class="c-purple">async</span> (req, res) => {
-  <span class="c-purple">const</span> token = <span class="c-blue">signToken</span>({ sub: user.id });
+  <span class="c-purple">const</span> token = <span class="c-purple">await</span> <span class="c-blue">signToken</span>({ sub: user.id });
   res.<span class="c-blue">json</span>({ token }); <span class="c-dim">// client: Authorization: Bearer &lt;token&gt;</span>
 };</pre>
 `,
@@ -358,29 +358,47 @@ const DOCS = {
 };
 
 /* ─── DOCS RENDERING ─── */
-function renderDoc(key) {
-  const doc = DOCS[key];
-  if (!doc) return;
-
-  document.querySelectorAll('.docs-nav-link').forEach((l) => {
-    l.classList.toggle('active', l.dataset.doc === key);
-  });
-
-  document.getElementById('docsContent').innerHTML = `
-    <div class="docs-breadcrumb">docs <span>/</span> ${doc.breadcrumb.split(' / ').join('</span> <span> / </span> <span>')}</span></div>
-    ${doc.html}
-  `;
+function renderAllDocs() {
+  const contentEl = document.getElementById('docsContent');
+  contentEl.innerHTML = '';
+  
+  for (const [key, doc] of Object.entries(DOCS)) {
+    const wrappedHtml = doc.html.replace(/<table/g, '<div class="table-responsive"><table').replace(/<\/table>/g, '</table></div>');
+    const sectionHtml = `
+      <div id="doc-${key}" class="doc-section">
+        ${wrappedHtml}
+      </div>
+    `;
+    contentEl.insertAdjacentHTML('beforeend', sectionHtml);
+  }
 }
+
+renderAllDocs();
+
+/* ─── DOCS SCROLLSPY & NAVIGATION ─── */
+const docsObserver = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) {
+      const key = entry.target.id.replace('doc-', '');
+      document.querySelectorAll('.docs-nav-link').forEach((l) => {
+        l.classList.toggle('active', l.dataset.doc === key);
+      });
+    }
+  });
+}, { rootMargin: '-100px 0px -60% 0px' });
+
+document.querySelectorAll('.doc-section').forEach((sec) => docsObserver.observe(sec));
 
 document.querySelectorAll('.docs-nav-link').forEach((link) => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
-    renderDoc(link.dataset.doc);
-    document.getElementById('docs').scrollIntoView({ behavior: 'smooth' });
+    const key = link.dataset.doc;
+    const target = document.getElementById('doc-' + key);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth' });
+    }
   });
 });
-
-renderDoc('quickstart');
 
 /* ─── TABS ─── */
 document.querySelectorAll('.tab').forEach((tab) => {
