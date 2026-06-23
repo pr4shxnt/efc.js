@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import chalk from 'chalk';
+import pc from 'picocolors';
 
 export function startCommand(): Command {
   const cmd = new Command('start');
@@ -16,7 +16,7 @@ export function startCommand(): Command {
       } else if (mode === 'prod') {
         startProd();
       } else {
-        console.error(chalk.red(`Unknown mode: ${mode}. Use 'dev' or 'prod'.`));
+        console.error(pc.red(`Unknown mode: ${mode}. Use 'dev' or 'prod'.`));
         process.exit(1);
       }
     });
@@ -43,12 +43,12 @@ function parseDotenv(cwd: string): Record<string, string> {
 function startDev(): void {
   const entry = resolveEntry();
   if (!entry) {
-    console.error(chalk.red('[EFC] Could not find entry point. Expected src/index.ts or index.ts'));
+    console.error(pc.red('[EFC] Could not find entry point. Expected src/index.ts or index.ts'));
     process.exit(1);
   }
 
-  console.log(chalk.cyan('[EFC] Starting development server…'));
-  console.log(chalk.dim(`  Entry: ${entry}`));
+  console.log(pc.cyan('[EFC] Starting development server…'));
+  console.log(pc.dim(`  Entry: ${entry}`));
 
   const cwd = process.cwd();
   const localTsx = path.join(cwd, 'node_modules', '.bin', 'tsx');
@@ -66,11 +66,11 @@ function startProd(): void {
   const distEntry = path.join(cwd, 'dist', 'index.js');
 
   if (!fs.existsSync(distEntry)) {
-    console.error(chalk.red('[EFC] dist/index.js not found. Run `efc build prod` first.'));
+    console.error(pc.red('[EFC] dist/index.js not found. Run `efc build prod` first.'));
     process.exit(1);
   }
 
-  console.log(chalk.cyan('[EFC] Starting production server…'));
+  console.log(pc.cyan('[EFC] Starting production server…'));
 
   // Production env comes exclusively from process.env — no .env file loading.
   // Platforms (Docker, Kubernetes, Railway, Heroku, etc.) inject vars directly.

@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
-import chalk from 'chalk';
+import pc from 'picocolors';
 
 export function generateCommand(): Command {
   const cmd = new Command('generate').alias('g').description('Scaffold EFC modules');
@@ -28,11 +28,11 @@ function writeFile(filePath: string, content: string): void {
   const dir = path.dirname(filePath);
   fs.mkdirSync(dir, { recursive: true });
   if (fs.existsSync(filePath)) {
-    console.error(chalk.red(`File already exists: ${filePath}`));
+    console.error(pc.red(`File already exists: ${filePath}`));
     process.exit(1);
   }
   fs.writeFileSync(filePath, content, 'utf8');
-  console.log(chalk.green(`  created  ${path.relative(process.cwd(), filePath)}`));
+  console.log(pc.green(`  created  ${path.relative(process.cwd(), filePath)}`));
 }
 
 function generateRoute(routePath: string): void {
@@ -51,7 +51,7 @@ export const POST = async (req: Request, res: Response) => {
 `;
 
   writeFile(filePath, content);
-  console.log(chalk.cyan(`[EFC] Route scaffolded`));
+  console.log(pc.cyan(`[EFC] Route scaffolded`));
 }
 
 function generateTask(name: string): void {
@@ -71,7 +71,7 @@ export default defineTask<${name}Payload>(async (payload) => {
 `;
 
   writeFile(filePath, content);
-  console.log(chalk.cyan(`[EFC] Task scaffolded`));
+  console.log(pc.cyan(`[EFC] Task scaffolded`));
 }
 
 function generateMiddleware(name: string): void {
@@ -87,5 +87,5 @@ export function ${name}(req: Request, res: Response, next: NextFunction): void {
 `;
 
   writeFile(filePath, content);
-  console.log(chalk.cyan(`[EFC] Middleware scaffolded`));
+  console.log(pc.cyan(`[EFC] Middleware scaffolded`));
 }

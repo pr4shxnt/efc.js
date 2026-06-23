@@ -1,5 +1,5 @@
 import type { RequestHandler, Response } from 'express';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 import type { AuthStrategy } from '../types.js';
 
 interface AuthConfig {
@@ -20,10 +20,14 @@ function getConfig(): AuthConfig {
   return _config;
 }
 
-export function issueToken(res: Response, payload: Record<string, unknown>): void {
+export async function issueToken(res: Response, payload: Record<string, unknown>): Promise<void> {
   const { secret, expiresIn, cookieDomain } = getConfig();
-  // expiresIn is a plain string (e.g. '7d'); cast satisfies jwt's branded StringValue
-  const token = jwt.sign(payload, secret, { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] & string });
+  const encodedSecret = new TextEncoder().encode(secret);
+  const token = await new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime(expiresIn)
+    .sign(encodedSecret);
+    
   res.cookie('efc_token', token, {
     httpOnly: true,
     secure: process.env['NODE_ENV'] === 'production',
@@ -36,12 +40,16 @@ export function revokeToken(res: Response): void {
   res.clearCookie('efc_token');
 }
 
-export function signToken(payload: Record<string, unknown>): string {
+export async function signToken(payload: Record<string, unknown>): Promise<string> {
   const { secret, expiresIn } = getConfig();
-  return jwt.sign(payload, secret, { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] & string });
+  const encodedSecret = new TextEncoder().encode(secret);
+  return await new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime(expiresIn)
+    .sign(encodedSecret);
 }
 
-export const requireAuth: RequestHandler = (req, res, next) => {
+export const requireAuth: RequestHandler = async (req, res, next) => {
   const { secret, strategy } = getConfig();
 
   try {
@@ -49,7 +57,7 @@ export const requireAuth: RequestHandler = (req, res, next) => {
 
     if (strategy === 'http-only') {
       const cookies = (req as typeof req & { cookies: Record<string, string> }).cookies;
-      token = cookies['efc_token'];
+      token = cookies?.['efc_token'];
     } else {
       const auth = req.headers['authorization'];
       if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
@@ -62,8 +70,9 @@ export const requireAuth: RequestHandler = (req, res, next) => {
       return;
     }
 
-    const decoded = jwt.verify(token, secret);
-    (req as typeof req & { user: unknown }).user = decoded;
+    const encodedSecret = new TextEncoder().encode(secret);
+    const { payload } = await jwtVerify(token, encodedSecret);
+    (req as typeof req & { user: unknown }).user = payload;
     next();
   } catch {
     res.status(401).json({ error: 'Unauthorized' });
