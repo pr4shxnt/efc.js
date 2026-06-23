@@ -362,64 +362,6 @@ ignite({
 | `REDIS_URL` | If using BullMQ | Redis connection for the task queue |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins — e.g. `http://localhost:3000,https://myapp.com` |
 
----
-
-## Monorepo Layout
-
-```
-packages/
-  core/             → express-file-cluster  (the framework)
-  create-efc-app/   → interactive scaffolder
-```
-
-```bash
-# Install
-npm install
-
-# Build all packages
-npm run build
-
-# Run tests
-npm test
-
-# Type-check
-npm run typecheck
-
-# Lint
-npm run lint
-```
-
----
-
-## Roadmap
-
-See [`todo.md`](./todo.md) for the full implementation checklist.
-
-| Phase | Target | Focus |
-|---|---|---|
-| **0** | Now | Design & planning ✅ |
-| **1** | Q3 2026 | Core MVP — router, clustering, auth, DB, tasks, CLI |
-| **2** | Q4 2026 | Beta — PostgreSQL, Zod validation, structured logging, cron tasks |
-| **3** | Q1 2027 | Stable v1.0 — plugins, WebSockets, OpenAPI, OpenTelemetry |
-| **4** | 2027+ | Edge/serverless, gRPC, GraphQL |
-
----
-
-## Contributing
-
-```bash
-git clone https://github.com/your-org/efc.js.git
-cd efc.js
-npm install
-npm test
-```
-
-- **Branches:** `feat/<topic>` · `fix/<topic>` · `docs/<topic>`
-- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/)
-- **PRs:** must include tests and a changelog entry
-
----
-
 ## License
 
 MIT © 2026 EFC Contributors
