@@ -8,9 +8,7 @@ async function loadMongoose(): Promise<typeof import('mongoose')> {
     mongoose = await import('mongoose');
     return mongoose;
   } catch {
-    throw new Error(
-      '[EFC] mongoose is not installed. Run: npm install mongoose',
-    );
+    throw new Error('[EFC] mongoose is not installed. Run: npm install mongoose');
   }
 }
 

@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import cluster from 'node:cluster';
 import os from 'node:os';
+import path from 'node:path';
 import type { EFCConfig } from './types.js';
 import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
@@ -26,7 +27,6 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   const {
     port: _port,
     workers,
-    apiDir,
     globalMiddlewares = [],
     onWorkerReady,
     onWorkerCrash,
@@ -34,10 +34,14 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   } = config;
 
   // All runtime values fall back to environment variables
+  const baseDir = process.argv[1] ? path.dirname(process.argv[1]) : process.cwd();
+  const apiDir = path.join(baseDir, 'api');
+  const tasksDir = path.join(baseDir, 'tasks');
+  const basePath = config.basePath ?? '/v1/api';
+
   const envPort = process.env['PORT'] != null ? Number(process.env['PORT']) : NaN;
-  const port = (_port != null && !Number.isNaN(_port)) ? _port
-    : !Number.isNaN(envPort) ? envPort
-    : 3000;
+  const port =
+    _port != null && !Number.isNaN(_port) ? _port : !Number.isNaN(envPort) ? envPort : 3000;
   const databaseUrl = config.databaseUrl ?? process.env['DATABASE_URL'];
   const database = config.database ?? detectDatabase(databaseUrl);
   const jwtSecret = config.jwtSecret ?? process.env['JWT_SECRET'];
@@ -60,7 +64,10 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
     const envOrigins = process.env['CORS_ORIGINS'];
     let origin: string | string[] | boolean;
     if (envOrigins) {
-      const list = envOrigins.split(',').map((o) => o.trim()).filter(Boolean);
+      const list = envOrigins
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean);
       origin = list; // always array so cors validates against the request Origin
     } else if (typeof corsOption === 'object' && corsOption.origin !== undefined) {
       origin = corsOption.origin;
@@ -97,8 +104,8 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   }
 
   // Pre-Flight step 3: Scan and register tasks
-  if (config.tasksDir) {
-    await scanTasks(config.tasksDir);
+  if (tasksDir) {
+    await scanTasks(tasksDir);
   }
 
   // Pre-Flight step 4: Start task queue backend
@@ -113,22 +120,20 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
 
   // Pre-Flight step 5: Scan routes and mount
   const routes = scanDir(apiDir);
-  await mountRoutes(app, routes);
+  const apiRouter = express.Router();
+  await mountRoutes(apiRouter, routes);
+  app.use(basePath, apiRouter);
 
   if (onError) {
     app.use(onError);
   } else {
     app.use(
-      (
-        err: unknown,
-        _req: express.Request,
-        res: express.Response,
-        _next: express.NextFunction,
-      ) => {
-        const asHttp = err instanceof Error && 'statusCode' in err
-          ? (err as HttpError) : null;
+      (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+        const asHttp = err instanceof Error && 'statusCode' in err ? (err as HttpError) : null;
         if (asHttp) {
-          res.status(asHttp.statusCode).json({ error: asHttp.message, statusCode: asHttp.statusCode });
+          res
+            .status(asHttp.statusCode)
+            .json({ error: asHttp.message, statusCode: asHttp.statusCode });
         } else {
           console.error('[EFC] Unhandled error:', err);
           res.status(500).json({ error: 'Internal Server Error', statusCode: 500 });

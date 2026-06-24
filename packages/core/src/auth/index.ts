@@ -27,7 +27,7 @@ export async function issueToken(res: Response, payload: Record<string, unknown>
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime(expiresIn)
     .sign(encodedSecret);
-    
+
   res.cookie('efc_token', token, {
     httpOnly: true,
     secure: process.env['NODE_ENV'] === 'production',

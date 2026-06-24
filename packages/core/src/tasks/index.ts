@@ -39,9 +39,7 @@ export function setEnqueueImpl(impl: EnqueueImpl): void {
 
 export async function enqueue<T>(name: string, payload: T): Promise<void> {
   if (!_impl) {
-    throw new Error(
-      `[EFC] Task queue not initialised. Set tasks.backend in ignite() config.`,
-    );
+    throw new Error(`[EFC] Task queue not initialised. Set tasks.backend in ignite() config.`);
   }
   return _impl(name, payload as unknown);
 }
