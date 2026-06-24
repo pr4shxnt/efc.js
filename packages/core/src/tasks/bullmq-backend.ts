@@ -46,7 +46,9 @@ export async function initBullMQ(opts: BullMQOpts): Promise<void> {
   setEnqueueImpl(async (name, payload) => {
     const def = taskRegistry.get(name);
     if (!def) {
-      throw new Error(`[EFC] Cannot enqueue unknown task: "${name}". Is the task file in tasksDir?`);
+      throw new Error(
+        `[EFC] Cannot enqueue unknown task: "${name}". Is the task file in tasksDir?`,
+      );
     }
 
     await queue.add(name, payload, {

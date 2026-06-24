@@ -37,7 +37,7 @@ export function runMaster(options: ClusterOptions = {}): void {
       }
       return;
     }
-    
+
     console.warn(`[EFC] Worker ${worker.id} exited (code=${exitCode}), respawning…`);
     options.onWorkerCrash?.(worker.id, exitCode);
     cluster.fork();

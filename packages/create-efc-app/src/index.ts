@@ -13,7 +13,10 @@ async function main(): Promise<void> {
     defaultValue: 'my-api',
     validate: (v) => (!v.trim() ? 'Project name is required' : undefined),
   });
-  if (p.isCancel(projectName)) { p.cancel('Cancelled'); process.exit(0); }
+  if (p.isCancel(projectName)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
 
   const language = await p.select({
     message: 'Language:',
@@ -22,7 +25,10 @@ async function main(): Promise<void> {
       { value: 'javascript', label: 'JavaScript' },
     ],
   });
-  if (p.isCancel(language)) { p.cancel('Cancelled'); process.exit(0); }
+  if (p.isCancel(language)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
 
   const database = await p.select({
     message: 'Database:',
@@ -31,7 +37,10 @@ async function main(): Promise<void> {
       { value: 'postgresql', label: 'PostgreSQL', hint: 'Drizzle ORM' },
     ],
   });
-  if (p.isCancel(database)) { p.cancel('Cancelled'); process.exit(0); }
+  if (p.isCancel(database)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
 
   const authStrategy = await p.select({
     message: 'Authentication strategy:',
@@ -40,19 +49,28 @@ async function main(): Promise<void> {
       { value: 'localStorage', label: 'localStorage', hint: 'bearer token — for SPAs' },
     ],
   });
-  if (p.isCancel(authStrategy)) { p.cancel('Cancelled'); process.exit(0); }
+  if (p.isCancel(authStrategy)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
 
   const cluster = await p.confirm({
     message: 'Enable multi-core clustering?',
     initialValue: true,
   });
-  if (p.isCancel(cluster)) { p.cancel('Cancelled'); process.exit(0); }
+  if (p.isCancel(cluster)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
 
   const tasks = await p.confirm({
     message: 'Enable background tasks?',
     initialValue: true,
   });
-  if (p.isCancel(tasks)) { p.cancel('Cancelled'); process.exit(0); }
+  if (p.isCancel(tasks)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
 
   let taskBackend: ScaffoldOptions['taskBackend'];
   if (tasks) {
@@ -63,7 +81,10 @@ async function main(): Promise<void> {
         { value: 'pg-boss', label: 'pg-boss', hint: 'PostgreSQL' },
       ],
     });
-    if (p.isCancel(backend)) { p.cancel('Cancelled'); process.exit(0); }
+    if (p.isCancel(backend)) {
+      p.cancel('Cancelled');
+      process.exit(0);
+    }
     taskBackend = backend as ScaffoldOptions['taskBackend'];
   }
 
@@ -94,14 +115,16 @@ async function main(): Promise<void> {
   spinner.stop('Dependencies installed');
 
   spinner.start('Installing efc CLI globally…');
-  await npmInstallGlobal().catch(() => {/* non-fatal */});
+  await npmInstallGlobal().catch(() => {
+    /* non-fatal */
+  });
   spinner.stop('efc CLI ready');
 
   p.outro(
     pc.green(`\nYour project is ready!\n\n`) +
-    pc.dim(`  cd ${projectName as string}\n`) +
-    pc.dim(`  efc start dev\n`) +
-    pc.dim(`\n  (or: npm run dev)\n`),
+      pc.dim(`  cd ${projectName as string}\n`) +
+      pc.dim(`  efc start dev\n`) +
+      pc.dim(`\n  (or: npm run dev)\n`),
   );
 }
 
@@ -120,7 +143,9 @@ function npmInstallGlobal(): Promise<void> {
     const child = spawn('npm', ['install', '-g', 'express-file-cluster'], {
       stdio: 'ignore',
     });
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error('global install failed'))));
+    child.on('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error('global install failed')),
+    );
   });
 }
 

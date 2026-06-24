@@ -1,4 +1,4 @@
-import type { Application, RequestHandler } from 'express';
+import type { IRouter, RequestHandler } from 'express';
 import type { RouteEntry } from '../types.js';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
@@ -10,7 +10,7 @@ function asyncWrap(handler: RequestHandler): RequestHandler {
   };
 }
 
-export async function mountRoutes(app: Application, routes: RouteEntry[]): Promise<void> {
+export async function mountRoutes(app: IRouter, routes: RouteEntry[]): Promise<void> {
   for (const route of routes) {
     const mod = (await import(route.filePath)) as Record<string, unknown>;
     const routeMiddlewares: RequestHandler[] = Array.isArray(mod['middlewares'])

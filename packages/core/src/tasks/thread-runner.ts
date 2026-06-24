@@ -7,7 +7,7 @@ if (!isMainThread) {
 
   (async () => {
     try {
-      const mod = await import(handlerPath) as Record<string, unknown>;
+      const mod = (await import(handlerPath)) as Record<string, unknown>;
       const def = mod['default'] as TaskDefinition | undefined;
       if (!def || typeof def.handler !== 'function') {
         throw new Error(`[EFC] Thread runner: no valid task export in ${handlerPath}`);
