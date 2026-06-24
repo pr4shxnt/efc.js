@@ -13,7 +13,7 @@ export async function scanTasks(tasksDir: string): Promise<void> {
     const taskName = path.basename(file, path.extname(file));
 
     try {
-      const mod = await import(filePath) as Record<string, unknown>;
+      const mod = (await import(filePath)) as Record<string, unknown>;
       const def = mod['default'] as TaskDefinition | undefined;
 
       if (!def || typeof def.handler !== 'function') {

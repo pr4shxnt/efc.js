@@ -23,10 +23,7 @@ describe('mountRoutes', () => {
 
   it('mounts a GET handler from a route module', async () => {
     const file = path.join(tmpDir, 'health.js');
-    fs.writeFileSync(
-      file,
-      `export const GET = async (req, res) => res.json({ ok: true });`,
-    );
+    fs.writeFileSync(file, `export const GET = async (req, res) => res.json({ ok: true });`);
 
     const app = makeApp();
     const routes: RouteEntry[] = [{ urlPath: '/health', filePath: file, params: [] }];

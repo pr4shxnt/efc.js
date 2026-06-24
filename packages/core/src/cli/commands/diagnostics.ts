@@ -9,54 +9,50 @@ export function diagnosticsCommands(): Command[] {
 }
 
 function routesCommand(): Command {
-  return new Command('routes')
-    .description('Print the resolved route table')
-    .action(() => {
-      const apiDir = resolveApiDir();
-      if (!apiDir) {
-        console.error(pc.red('[EFC] Could not find apiDir (expected src/api)'));
-        process.exit(1);
-      }
+  return new Command('routes').description('Print the resolved route table').action(() => {
+    const apiDir = resolveApiDir();
+    if (!apiDir) {
+      console.error(pc.red('[EFC] Could not find apiDir (expected src/api)'));
+      process.exit(1);
+    }
 
-      const routes = scanDir(apiDir);
-      if (routes.length === 0) {
-        console.log(pc.yellow('No routes found.'));
-        return;
-      }
+    const routes = scanDir(apiDir);
+    if (routes.length === 0) {
+      console.log(pc.yellow('No routes found.'));
+      return;
+    }
 
-      console.log(pc.bold('\n  Route Table\n'));
-      console.log(pc.dim('  ' + '─'.repeat(60)));
-      for (const route of routes) {
-        const rel = path.relative(process.cwd(), route.filePath);
-        console.log(`  ${pc.cyan(route.urlPath.padEnd(35))} ${pc.dim(rel)}`);
-      }
-      console.log(pc.dim('  ' + '─'.repeat(60)));
-      console.log(pc.dim(`\n  ${routes.length} route(s) found\n`));
-    });
+    console.log(pc.bold('\n  Route Table\n'));
+    console.log(pc.dim('  ' + '─'.repeat(60)));
+    for (const route of routes) {
+      const rel = path.relative(process.cwd(), route.filePath);
+      console.log(`  ${pc.cyan(route.urlPath.padEnd(35))} ${pc.dim(rel)}`);
+    }
+    console.log(pc.dim('  ' + '─'.repeat(60)));
+    console.log(pc.dim(`\n  ${routes.length} route(s) found\n`));
+  });
 }
 
 function tasksCommand(): Command {
-  return new Command('tasks')
-    .description('List registered background tasks')
-    .action(() => {
-      const tasksDir = resolveTasksDir();
-      if (!tasksDir || !fs.existsSync(tasksDir)) {
-        console.log(pc.yellow('No tasks directory found.'));
-        return;
-      }
+  return new Command('tasks').description('List registered background tasks').action(() => {
+    const tasksDir = resolveTasksDir();
+    if (!tasksDir || !fs.existsSync(tasksDir)) {
+      console.log(pc.yellow('No tasks directory found.'));
+      return;
+    }
 
-      const files = fs.readdirSync(tasksDir).filter((f) => /\.(ts|js)$/.test(f));
-      if (files.length === 0) {
-        console.log(pc.yellow('No tasks found.'));
-        return;
-      }
+    const files = fs.readdirSync(tasksDir).filter((f) => /\.(ts|js)$/.test(f));
+    if (files.length === 0) {
+      console.log(pc.yellow('No tasks found.'));
+      return;
+    }
 
-      console.log(pc.bold('\n  Background Tasks\n'));
-      for (const file of files) {
-        console.log(`  ${pc.cyan(path.basename(file, path.extname(file)))}`);
-      }
-      console.log();
-    });
+    console.log(pc.bold('\n  Background Tasks\n'));
+    for (const file of files) {
+      console.log(`  ${pc.cyan(path.basename(file, path.extname(file)))}`);
+    }
+    console.log();
+  });
 }
 
 function doctorCommand(): Command {

@@ -89,6 +89,7 @@
 - [x] Generates `package.json`, `tsconfig.json`, `efc.config.ts`, entry point
 - [x] Generates `.env` (random `JWT_SECRET`) + `.env.example` + `.gitignore`
 - [x] Generates example route (`src/api/health.ts`)
+- [x] Generates default admin/user panels and auth routes
 - [x] Generates example task (`src/tasks/SendEmail.ts`) when tasks enabled
 - [x] Runs `npm install` after scaffold
 - [ ] End-to-end test of the full scaffold flow

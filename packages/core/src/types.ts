@@ -20,8 +20,7 @@ export interface CorsConfig {
 
 export interface EFCConfig {
   port?: number;
-  apiDir: string;
-  tasksDir?: string;
+  basePath?: string;
   database?: DatabaseEngine;
   databaseUrl?: string;
   authStrategy?: AuthStrategy;

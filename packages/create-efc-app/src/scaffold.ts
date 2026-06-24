@@ -23,6 +23,9 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   await writeGitignore(dest);
   await writeEnvFiles(dest, opts);
   await writeExampleRoute(dest, opts);
+  await writeAuthRoutes(dest, opts);
+  await writeAdminRoutes(dest, opts);
+  await writeUserRoutes(dest, opts);
   if (opts.tasks) await writeExampleTask(dest, opts);
 }
 
@@ -39,7 +42,7 @@ async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<vo
   if (opts.tasks && opts.taskBackend === 'pg-boss') deps['pg-boss'] = '^10.0.0';
 
   const devDeps: Record<string, string> = {
-    vitest: '^2.0.0',
+    vitest: '^4.1.9',
   };
   if (opts.language === 'typescript') {
     devDeps['typescript'] = '^5.5.0';
@@ -95,8 +98,6 @@ async function writeEfcConfig(dest: string, opts: ScaffoldOptions): Promise<void
 
 // Structural config only — runtime values (PORT, DATABASE_URL, JWT_SECRET, etc.) are read from .env
 const config: EFCConfig = {
-  apiDir: './src/api',
-  tasksDir: './src/tasks',
   authStrategy: '${opts.authStrategy}',
   tasks: ${tasks},
   globalMiddlewares: [],
@@ -109,20 +110,12 @@ export default config;
 
 async function writeEntryPoint(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const taskLine = opts.tasks
-    ? `  tasks: { backend: '${opts.taskBackend ?? 'bullmq'}' },\n`
-    : '';
+  const taskLine = opts.tasks ? `  tasks: { backend: '${opts.taskBackend ?? 'bullmq'}' },\n` : '';
   const content = `import { ignite, gracefulShutdown } from 'express-file-cluster';
-import { fileURLToPath } from 'url';
-import path from 'path';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // PORT, DATABASE_URL, JWT_SECRET, CORS_ORIGINS are read from .env automatically
 ignite({
   cluster: ${opts.cluster},
-  apiDir: path.join(__dirname, 'api'),
-  tasksDir: path.join(__dirname, 'tasks'),
 ${taskLine}}).then(gracefulShutdown).catch(console.error);
 `;
   await fs.outputFile(path.join(dest, 'src', `index.${ext}`), content);
@@ -194,4 +187,144 @@ export default defineTask(async (payload) => {
 });
 `;
   await fs.outputFile(path.join(dest, 'src', 'tasks', `SendEmail.${ext}`), content);
+}
+
+async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const ext = opts.language === 'typescript' ? 'ts' : 'js';
+  const loginContent =
+    opts.language === 'typescript'
+      ? `import { issueToken } from 'express-file-cluster/auth';
+import type { Request, Response } from 'express';
+
+export const POST = async (req: Request, res: Response) => {
+  const { email, password } = req.body;
+  
+  if (email === 'admin@example.com' && password === 'admin') {
+    await issueToken(res, { id: '1', role: 'admin', email });
+    return res.json({ message: 'Logged in as admin' });
+  }
+  
+  if (email === 'user@example.com' && password === 'user') {
+    await issueToken(res, { id: '2', role: 'user', email });
+    return res.json({ message: 'Logged in as user' });
+  }
+  
+  res.status(401).json({ error: 'Invalid credentials' });
+};
+`
+      : `import { issueToken } from 'express-file-cluster/auth';
+
+export const POST = async (req, res) => {
+  const { email, password } = req.body;
+  
+  if (email === 'admin@example.com' && password === 'admin') {
+    await issueToken(res, { id: '1', role: 'admin', email });
+    return res.json({ message: 'Logged in as admin' });
+  }
+  
+  if (email === 'user@example.com' && password === 'user') {
+    await issueToken(res, { id: '2', role: 'user', email });
+    return res.json({ message: 'Logged in as user' });
+  }
+  
+  res.status(401).json({ error: 'Invalid credentials' });
+};
+`;
+
+  const logoutContent =
+    opts.language === 'typescript'
+      ? `import { revokeToken } from 'express-file-cluster/auth';
+import type { Request, Response } from 'express';
+
+export const POST = async (_req: Request, res: Response) => {
+  revokeToken(res);
+  res.json({ message: 'Logged out successfully' });
+};
+`
+      : `import { revokeToken } from 'express-file-cluster/auth';
+
+export const POST = async (_req, res) => {
+  revokeToken(res);
+  res.json({ message: 'Logged out successfully' });
+};
+`;
+
+  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `login.${ext}`), loginContent);
+  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `logout.${ext}`), logoutContent);
+}
+
+async function writeAdminRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const ext = opts.language === 'typescript' ? 'ts' : 'js';
+  const content =
+    opts.language === 'typescript'
+      ? `import { requireAuth } from 'express-file-cluster/auth';
+import type { Request, Response } from 'express';
+
+export const middlewares = [requireAuth];
+
+export const GET = async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: Admin access required' });
+  }
+  
+  res.json({
+    message: 'Welcome to the Admin Panel',
+    stats: { users: 120, revenue: 5000 }
+  });
+};
+`
+      : `import { requireAuth } from 'express-file-cluster/auth';
+
+export const middlewares = [requireAuth];
+
+export const GET = async (req, res) => {
+  const user = req.user;
+  if (user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: Admin access required' });
+  }
+  
+  res.json({
+    message: 'Welcome to the Admin Panel',
+    stats: { users: 120, revenue: 5000 }
+  });
+};
+`;
+
+  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', `dashboard.${ext}`), content);
+}
+
+async function writeUserRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const ext = opts.language === 'typescript' ? 'ts' : 'js';
+  const content =
+    opts.language === 'typescript'
+      ? `import { requireAuth } from 'express-file-cluster/auth';
+import type { Request, Response } from 'express';
+
+export const middlewares = [requireAuth];
+
+export const GET = async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  
+  res.json({
+    message: 'User Profile Panel',
+    user
+  });
+};
+`
+      : `import { requireAuth } from 'express-file-cluster/auth';
+
+export const middlewares = [requireAuth];
+
+export const GET = async (req, res) => {
+  const user = req.user;
+  
+  res.json({
+    message: 'User Profile Panel',
+    user
+  });
+};
+`;
+
+  await fs.outputFile(path.join(dest, 'src', 'api', 'user', `profile.${ext}`), content);
 }
