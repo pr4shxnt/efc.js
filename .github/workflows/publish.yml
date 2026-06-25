@@ -18,16 +18,16 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org/'
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Use latest npm
+        run: npm i -g npm@latest
+
+      - name: Install Dependencies (workspace-aware)
+        run: npm ci --workspaces --include-workspace-root
 
       - name: Build Projects
-        run: npm run build
+        run: npm run build --workspaces --if-present
 
-      - name: Publish to NPM
-        # This will publish all your packages. If the version hasn't changed,
-        # npm might throw an error, so we add || true to prevent the workflow from failing 
-        # on non-release commits, or you can remove || true if you want strict failures.
-        run: npm publish --workspaces || echo "Version already exists, skipping publish."
+      - name: Publish core package only
+        run: npm publish -w packages/core || echo "Version already exists, skipping publish."
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
