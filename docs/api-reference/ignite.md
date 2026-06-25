@@ -20,7 +20,7 @@ const server = await ignite(config);
 ```ts
 interface EFCConfig {
   // Routing
-  apiDir: string;
+  basePath?: string;
 
   // Clustering
   cluster?: boolean;
@@ -37,7 +37,6 @@ interface EFCConfig {
   jwtSecret?: string;
 
   // Background tasks
-  tasksDir?: string;
   tasks?: TaskConfig | false;
 
   // HTTP
@@ -45,6 +44,9 @@ interface EFCConfig {
   cors?: boolean | CorsConfig;
   globalMiddlewares?: RequestHandler[];
   onError?: ErrorRequestHandler;
+
+  // Developer tools
+  dashboard?: boolean;
 }
 ```
 
@@ -52,17 +54,25 @@ interface EFCConfig {
 
 ## Option details
 
-### `apiDir` _(required)_
+### `basePath`
 
-Absolute path to the directory containing route modules. Use `path.join(__dirname, 'api')` or `path.resolve('src/api')`.
+URL prefix prepended to every route. Default: `'/v1/api'`.
 
 ```ts
-import path from 'path';
-import { fileURLToPath } from 'url';
+ignite({ basePath: '/api' });
+// routes: /api/health, /api/users/:id, ...
+```
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+Set to `'/'` to mount routes directly at the root with no prefix.
 
-ignite({ apiDir: path.join(__dirname, 'api') });
+---
+
+### `dashboard`
+
+When `true`, EFC mounts a live API documentation page at `GET /` (or `GET <basePath>/`) that is only active in development (`NODE_ENV === 'development'`). The page lists every registered route with its method, path, description, and request/response examples derived from each file's `meta` export.
+
+```ts
+ignite({ dashboard: true });
 ```
 
 ---
@@ -144,12 +154,6 @@ Default: `'http-only'`.
 ### `jwtSecret`
 
 Secret used to sign and verify JWTs (HS256). Falls back to the `JWT_SECRET` environment variable. Must be at least 32 random bytes for production use.
-
----
-
-### `tasksDir`
-
-Absolute path to the directory containing task modules. If omitted, no tasks are registered.
 
 ---
 
@@ -238,7 +242,7 @@ ignite({
 Registers `SIGTERM` and `SIGINT` handlers for clean shutdown. Pass the `http.Server` returned by `ignite()`.
 
 ```ts
-ignite({ apiDir: '...' })
+ignite({ port: 3000 })
   .then(gracefulShutdown);
 // or with a custom timeout:
   .then((server) => gracefulShutdown(server, 30_000));
