@@ -4,7 +4,9 @@ import { ignite, gracefulShutdown } from 'express-file-cluster';
 ignite({
   cluster: true,
   workers: 2,
+  basePath: '/',
   tasks: { backend: 'bullmq' },
+  dashboard: true,
 })
   .then(gracefulShutdown)
   .catch(console.error);

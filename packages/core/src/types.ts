@@ -21,6 +21,7 @@ export interface CorsConfig {
 export interface EFCConfig {
   port?: number;
   basePath?: string;
+  dashboard?: boolean;
   database?: DatabaseEngine;
   databaseUrl?: string;
   authStrategy?: AuthStrategy;
@@ -39,6 +40,25 @@ export interface RouteEntry {
   urlPath: string;
   filePath: string;
   params: string[];
+}
+
+export interface RouteMeta {
+  description?: string;
+  request?: {
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
+    query?: Record<string, string>;
+    body?: unknown;
+  };
+  response?: {
+    status?: number;
+    body?: unknown;
+  };
+}
+
+export interface MountedRoute extends RouteEntry {
+  methods: string[];
+  meta?: RouteMeta;
 }
 
 export interface TaskOptions {

@@ -11,7 +11,7 @@ efc start dev
 **Behaviour:**
 
 - Reads `.env` from the project root and injects variables into `process.env`. Variables already present in the environment take precedence.
-- Sets `NODE_ENV=development`.
+- Defaults `NODE_ENV` to `'development'`. A `NODE_ENV` value in `.env` or in the parent environment overrides this default.
 - Locates the entry point by checking these paths in order:
   1. `src/index.ts`
   2. `index.ts`

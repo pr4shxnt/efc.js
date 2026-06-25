@@ -92,6 +92,53 @@ export const DELETE = async (req: Request, res: Response) => {
 
 ---
 
+## Route metadata (`meta` export)
+
+A route file can export a `meta` object to provide documentation shown in the [dashboard](../api-reference/ignite.md#dashboard). All fields are optional.
+
+```ts
+// src/api/users/[id].ts
+export const meta = {
+  description: 'Fetch a user by ID.',
+  request: {
+    headers: { Authorization: 'Bearer <token>' },
+    params:  { id: 'usr_01HXZ' },
+    query:   { include: 'profile' },
+    body:    undefined,
+  },
+  response: {
+    status: 200,
+    body: {
+      id:        'usr_01HXZ',
+      name:      'Ada Lovelace',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+};
+```
+
+**`RouteMeta` interface:**
+
+```ts
+interface RouteMeta {
+  description?: string;
+  request?: {
+    headers?: Record<string, string>;
+    params?:  Record<string, string>;
+    query?:   Record<string, string>;
+    body?:    unknown;
+  };
+  response?: {
+    status?: number;
+    body?:   unknown;
+  };
+}
+```
+
+The dashboard renders `response.body` values as their **type names** (`String`, `Number`, `Boolean`, `Date`) rather than the literal values you provide. ISO 8601 date strings (e.g., `'2026-01-01T00:00:00.000Z'`) are automatically detected and shown as `Date`.
+
+---
+
 ## Route-level middleware
 
 Export a `middlewares` array from a route file. The middlewares apply to every handler in that file and run after global middleware.

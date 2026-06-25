@@ -1,11 +1,12 @@
 import http from 'node:http';
+import fs from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import cluster from 'node:cluster';
 import os from 'node:os';
 import path from 'node:path';
-import type { EFCConfig } from './types.js';
+import type { EFCConfig, MountedRoute } from './types.js';
 import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
 import { runMaster, shutdownMaster } from './cluster/index.js';
@@ -15,6 +16,7 @@ import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
 import { scanTasks } from './tasks/scanner.js';
 import { initBullMQ } from './tasks/bullmq-backend.js';
+import { generateDashboard } from './dashboard.js';
 
 function detectDatabase(url?: string): 'mongodb' | 'postgresql' | undefined {
   if (!url) return undefined;
@@ -33,11 +35,31 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
     onError,
   } = config;
 
-  // All runtime values fall back to environment variables
-  const baseDir = process.argv[1] ? path.dirname(process.argv[1]) : process.cwd();
-  const apiDir = path.join(baseDir, 'api');
-  const tasksDir = path.join(baseDir, 'tasks');
+  // Resolve api/tasks dirs from convention. argv[1]-based resolution is unreliable in tsx watch
+  // + cluster workers (argv[1] can point to the tsx binary instead of the user's script), so we
+  // probe multiple candidates and use the first that exists on disk.
+  function resolveConventionDir(name: string): string {
+    const candidates: string[] = [
+      ...(process.argv[1] ? [path.join(path.dirname(process.argv[1]), name)] : []),
+      path.join(process.cwd(), 'src', name),
+      path.join(process.cwd(), name),
+      path.join(process.cwd(), 'dist', name),
+    ];
+    return candidates.find((c) => fs.existsSync(c)) ?? candidates[0]!;
+  }
+  const apiDir = resolveConventionDir('api');
+  const tasksDir = resolveConventionDir('tasks');
   const basePath = config.basePath ?? '/v1/api';
+
+  function readProjectMeta(): { name: string; version: string } {
+    try {
+      const raw = fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8');
+      const pkg = JSON.parse(raw) as { name?: string; version?: string };
+      return { name: pkg.name ?? 'API', version: pkg.version ?? '' };
+    } catch {
+      return { name: 'API', version: '' };
+    }
+  }
 
   const envPort = process.env['PORT'] != null ? Number(process.env['PORT']) : NaN;
   const port =
@@ -121,8 +143,16 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   // Pre-Flight step 5: Scan routes and mount
   const routes = scanDir(apiDir);
   const apiRouter = express.Router();
-  await mountRoutes(apiRouter, routes);
+  const mounted: MountedRoute[] = await mountRoutes(apiRouter, routes);
   app.use(basePath, apiRouter);
+
+  if (config.dashboard && process.env['NODE_ENV'] === 'development') {
+    app.get('/', (_req, res) => {
+      const { name, version } = readProjectMeta();
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(generateDashboard(mounted, basePath, port, name, version));
+    });
+  }
 
   if (onError) {
     app.use(onError);
@@ -185,6 +215,7 @@ export type {
   EFCConfig,
   CorsConfig,
   RouteEntry,
+  RouteMeta,
   TaskOptions,
   TaskDefinition,
   DatabaseEngine,
