@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "bullmq": "^5.0.0",
-    "express-file-cluster": "*",
+    "express-file-cluster": "workspace:*",
     "mongoose": "^8.0.0"
   },
   "devDependencies": {
