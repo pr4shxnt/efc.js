@@ -55,7 +55,7 @@ export async function mountRoutes(
       });
     }
 
-    mounted.push({ ...route, methods: implemented, meta });
+    mounted.push({ ...route, methods: implemented, ...(meta !== undefined && { meta }) });
   }
 
   return mounted;
