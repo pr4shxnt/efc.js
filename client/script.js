@@ -71,8 +71,8 @@ const DOCS = {
 
 <span class="c-purple">const</span> config: EFCConfig = {
   port: Number(process.env.PORT) || <span class="c-orange">3000</span>,
-  apiDir:   <span class="c-green">'./src/api'</span>,
-  tasksDir: <span class="c-green">'./src/tasks'</span>,
+  basePath:  <span class="c-green">'/api'</span>,
+  dashboard: process.env.NODE_ENV !== <span class="c-green">'production'</span>,
   database:    <span class="c-green">'mongodb'</span>,
   databaseUrl: process.env.DATABASE_URL!,
   authStrategy: <span class="c-green">'http-only'</span>,
@@ -90,15 +90,15 @@ const DOCS = {
     breadcrumb: 'Core / File-Based Routing',
     html: `
 <h2>File-Based Routing</h2>
-<p>EFC scans your <code>apiDir</code> at startup and builds the route map from the file tree.</p>
+<p>EFC scans <code>src/api/</code> at startup and builds the route map from the file tree. No registration required — add a file, get a route.</p>
 <h3>Routing Rules</h3>
 <table class="docs-table">
   <thead><tr><th>File</th><th>URL</th></tr></thead>
   <tbody>
-    <tr><td>api/health.ts</td><td>/health</td></tr>
-    <tr><td>api/users/index.ts</td><td>/users</td></tr>
-    <tr><td>api/users/[id].ts</td><td>/users/:id</td></tr>
-    <tr><td>api/posts/[slug]/comments.ts</td><td>/posts/:slug/comments</td></tr>
+    <tr><td>src/api/health.ts</td><td>/health</td></tr>
+    <tr><td>src/api/users/index.ts</td><td>/users</td></tr>
+    <tr><td>src/api/users/[id].ts</td><td>/users/:id</td></tr>
+    <tr><td>src/api/posts/[slug]/comments.ts</td><td>/posts/:slug/comments</td></tr>
   </tbody>
 </table>
 <h3>Method Dispatching</h3>
@@ -108,6 +108,20 @@ const DOCS = {
 <span class="c-purple">export const</span> <span class="c-blue">PUT</span>    = <span class="c-purple">async</span> (req, res) => { <span class="c-dim">/* ... */</span> };
 <span class="c-purple">export const</span> <span class="c-blue">PATCH</span>  = <span class="c-purple">async</span> (req, res) => { <span class="c-dim">/* ... */</span> };
 <span class="c-purple">export const</span> <span class="c-blue">DELETE</span> = <span class="c-purple">async</span> (req, res) => { <span class="c-dim">/* ... */</span> };</pre>
+<h3>Route metadata (<code>meta</code> export)</h3>
+<p>Export a <code>meta</code> object to document the route in the development dashboard. All fields are optional.</p>
+<pre><span class="c-purple">export const</span> meta = {
+  description: <span class="c-green">'Fetch a user by ID.'</span>,
+  request: {
+    params: { id: <span class="c-green">'usr_01HXZ'</span> },
+    query:  { include: <span class="c-green">'profile'</span> },
+  },
+  response: {
+    status: <span class="c-orange">200</span>,
+    body: { id: <span class="c-green">'usr_01HXZ'</span>, name: <span class="c-green">'Ada Lovelace'</span>, createdAt: <span class="c-green">'2026-01-01T00:00:00.000Z'</span> },
+  },
+};</pre>
+<p>The dashboard renders <code>response.body</code> values as their type names — <code>String</code>, <code>Number</code>, <code>Boolean</code>, <code>Date</code>. ISO date strings are detected automatically and shown as <code>Date</code>.</p>
 `,
   },
   handlers: {
@@ -189,8 +203,8 @@ const DOCS = {
 <ul>
   <li>Connect database — establish this worker's pool</li>
   <li>Configure auth — wire JWT keys and cookie options</li>
-  <li>Scan API directory — build route map from the filesystem</li>
-  <li>Register tasks — index tasksDir and attach queue consumers</li>
+  <li>Register tasks — scan <code>src/tasks/</code> and attach queue consumers</li>
+  <li>Scan <code>src/api/</code> — build route map from the filesystem</li>
   <li>Mount routes — register handlers on Express</li>
   <li>Start listening — announce readiness</li>
 </ul>
@@ -300,6 +314,65 @@ const DOCS = {
 <span class="c-purple">const</span> { rows } = <span class="c-purple">await</span> db.<span class="c-blue">query</span>(<span class="c-green">'SELECT * FROM users WHERE id = $1'</span>, [id]);</pre>
 `,
   },
+  dashboard: {
+    label: 'API Dashboard',
+    breadcrumb: 'Features / API Dashboard',
+    html: `
+<h2>API Dashboard</h2>
+<p>When <code>dashboard: true</code> is set and <code>NODE_ENV</code> is <code>development</code>, EFC mounts a live API documentation page at the root of your <code>basePath</code>. It lists every registered route with its method, path, description, and request/response examples — no external tooling required.</p>
+<h3>Enabling it</h3>
+<pre><span class="c-blue">ignite</span>({
+  dashboard: <span class="c-orange">true</span>,
+  basePath:  <span class="c-green">'/api'</span>, <span class="c-dim">// dashboard mounts at GET /api/</span>
+});</pre>
+<p>The page is <strong>only served when <code>NODE_ENV === 'development'</code></strong>. In production, the route does not exist.</p>
+<h3>Documenting routes with <code>meta</code></h3>
+<p>Export a <code>meta</code> object from any route file to populate the dashboard card for that route.</p>
+<pre><span class="c-dim">// src/api/users/[id].ts</span>
+<span class="c-purple">export const</span> meta = {
+  description: <span class="c-green">'Fetch a user by ID.'</span>,
+  request: {
+    headers: { Authorization: <span class="c-green">'Bearer &lt;token&gt;'</span> },
+    params:  { id: <span class="c-green">'usr_01HXZ'</span> },
+    query:   { include: <span class="c-green">'profile'</span> },
+  },
+  response: {
+    status: <span class="c-orange">200</span>,
+    body: {
+      id:        <span class="c-green">'usr_01HXZ'</span>,
+      name:      <span class="c-green">'Ada Lovelace'</span>,
+      createdAt: <span class="c-green">'2026-01-01T00:00:00.000Z'</span>,
+    },
+  },
+};</pre>
+<h3>Type rendering</h3>
+<p>The dashboard renders <code>response.body</code> values as their <strong>type names</strong>, not the literal values you provide. This keeps examples readable without leaking real data.</p>
+<table class="docs-table">
+  <thead><tr><th>Value in meta</th><th>Shown in dashboard</th></tr></thead>
+  <tbody>
+    <tr><td>'Ada Lovelace'</td><td>String</td></tr>
+    <tr><td>42891</td><td>Number</td></tr>
+    <tr><td>true / false</td><td>Boolean</td></tr>
+    <tr><td>'2026-01-01T00:00:00.000Z'</td><td>Date</td></tr>
+  </tbody>
+</table>
+<p>ISO 8601 date strings are detected automatically — no annotation needed.</p>
+<h3>RouteMeta interface</h3>
+<pre><span class="c-purple">interface</span> <span class="c-blue">RouteMeta</span> {
+  description?: string;
+  request?: {
+    headers?: Record&lt;string, string&gt;;
+    params?:  Record&lt;string, string&gt;;
+    query?:   Record&lt;string, string&gt;;
+    body?:    unknown;
+  };
+  response?: {
+    status?: number;
+    body?:   unknown;
+  };
+}</pre>
+`,
+  },
   cli: {
     label: 'CLI Reference',
     breadcrumb: 'Reference / CLI',
@@ -309,7 +382,7 @@ const DOCS = {
 <table class="docs-table">
   <thead><tr><th>Command</th><th>Description</th></tr></thead>
   <tbody>
-    <tr><td>efc start dev</td><td>Dev server — hot-reload, single process, pretty logs</td></tr>
+    <tr><td>efc start dev</td><td>Dev server — hot-reload, single process. <code>NODE_ENV</code> defaults to <code>development</code>; overridden by <code>.env</code> or parent environment</td></tr>
     <tr><td>efc build prod</td><td>Type-check + compile to dist/ (tsup, dual CJS/ESM)</td></tr>
     <tr><td>efc start prod</td><td>Run dist/ with clustering enabled</td></tr>
     <tr><td>efc run tests</td><td>Vitest — pass --watch or --coverage</td></tr>

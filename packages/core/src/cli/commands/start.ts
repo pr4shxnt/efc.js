@@ -51,11 +51,21 @@ function startDev(): void {
   console.log(pc.dim(`  Entry: ${entry}`));
 
   const cwd = process.cwd();
-  const localTsx = path.join(cwd, 'node_modules', '.bin', 'tsx');
-  const tsx = fs.existsSync(localTsx) ? localTsx : 'tsx';
+  // Walk up from cwd looking for tsx in node_modules/.bin (handles workspace hoisting)
+  function findTsx(): string {
+    let dir = cwd;
+    while (true) {
+      const candidate = path.join(dir, 'node_modules', '.bin', 'tsx');
+      if (fs.existsSync(candidate)) return candidate;
+      const parent = path.dirname(dir);
+      if (parent === dir) return 'tsx'; // reached filesystem root, fall back to PATH
+      dir = parent;
+    }
+  }
+  const tsx = findTsx();
 
   // .env values are base; existing process.env takes precedence (same as dotenv default)
-  const env: NodeJS.ProcessEnv = { ...parseDotenv(cwd), ...process.env, NODE_ENV: 'development' };
+  const env: NodeJS.ProcessEnv = { NODE_ENV: 'development', ...parseDotenv(cwd), ...process.env };
 
   const child = spawn(tsx, ['watch', '--include', 'src', entry], { stdio: 'inherit', env });
   child.on('exit', (code) => process.exit(code ?? 0));
