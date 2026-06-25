@@ -54,7 +54,7 @@ describe('ignite() — server integration', () => {
       'health.js',
       `export const GET = async (_req, res) => res.json({ ok: true });`,
     );
-    server = await ignite({ basePath: '/', apiDir, cluster: false, port: 0 });
+    server = await ignite({ basePath: '/', cluster: false, port: 0 });
     const res = await request(server!).get('/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
@@ -66,7 +66,7 @@ describe('ignite() — server integration', () => {
       'echo.js',
       `export const POST = async (req, res) => res.status(201).json(req.body);`,
     );
-    server = await ignite({ basePath: '/', apiDir, cluster: false, port: 0 });
+    server = await ignite({ basePath: '/', cluster: false, port: 0 });
     const res = await request(server!).post('/echo').send({ msg: 'hello' });
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ msg: 'hello' });
@@ -79,7 +79,7 @@ describe('ignite() — server integration', () => {
       '[id].js',
       `export const GET = async (req, res) => res.json({ id: req.params.id });`,
     );
-    server = await ignite({ basePath: '/', apiDir, cluster: false, port: 0 });
+    server = await ignite({ basePath: '/', cluster: false, port: 0 });
     const res = await request(server!).get('/users/42');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ id: '42' });
@@ -87,7 +87,7 @@ describe('ignite() — server integration', () => {
 
   it('returns 405 for an unregistered method', async () => {
     writeRoute(apiDir, 'items.js', `export const GET = async (_req, res) => res.json([]);`);
-    server = await ignite({ basePath: '/', apiDir, cluster: false, port: 0 });
+    server = await ignite({ basePath: '/', cluster: false, port: 0 });
     const res = await request(server!).post('/items');
     expect(res.status).toBe(405);
   });
@@ -96,7 +96,7 @@ describe('ignite() — server integration', () => {
 
   it('parses JSON bodies automatically', async () => {
     writeRoute(apiDir, 'body.js', `export const POST = async (req, res) => res.json(req.body);`);
-    server = await ignite({ basePath: '/', apiDir, cluster: false, port: 0 });
+    server = await ignite({ basePath: '/', cluster: false, port: 0 });
     const res = await request(server!)
       .post('/body')
       .set('Content-Type', 'application/json')
