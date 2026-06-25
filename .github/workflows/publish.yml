@@ -18,9 +18,6 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org/'
 
-      - name: Use latest npm
-        run: npm i -g npm@latest
-
       - name: Install Dependencies (workspace-aware)
         run: npm ci --workspaces --include-workspace-root
 
