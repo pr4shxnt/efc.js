@@ -1,5 +1,5 @@
 import type { IRouter, RequestHandler } from 'express';
-import type { RouteEntry } from '../types.js';
+import type { MountedRoute, RouteMeta, RouteEntry } from '../types.js';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 type HttpMethod = (typeof HTTP_METHODS)[number];
@@ -10,12 +10,23 @@ function asyncWrap(handler: RequestHandler): RequestHandler {
   };
 }
 
-export async function mountRoutes(app: IRouter, routes: RouteEntry[]): Promise<void> {
+export async function mountRoutes(
+  app: IRouter,
+  routes: RouteEntry[],
+): Promise<MountedRoute[]> {
+  const mounted: MountedRoute[] = [];
+
   for (const route of routes) {
     const mod = (await import(route.filePath)) as Record<string, unknown>;
     const routeMiddlewares: RequestHandler[] = Array.isArray(mod['middlewares'])
       ? (mod['middlewares'] as RequestHandler[])
       : [];
+
+    const raw = mod['meta'];
+    const meta: RouteMeta | undefined =
+      raw != null && typeof raw === 'object' && !Array.isArray(raw)
+        ? (raw as RouteMeta)
+        : undefined;
 
     const implemented: HttpMethod[] = [];
     const unimplemented: HttpMethod[] = [];
@@ -43,7 +54,11 @@ export async function mountRoutes(app: IRouter, routes: RouteEntry[]): Promise<v
         }
       });
     }
+
+    mounted.push({ ...route, methods: implemented, meta });
   }
+
+  return mounted;
 }
 
 export { asyncWrap };
