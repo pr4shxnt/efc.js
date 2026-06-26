@@ -75,7 +75,7 @@
     <section class="hero" id="hero">
       <div class="hero-glow"></div>
       <div class="container">
-        <div class="badge">v0.2.3</div>
+        <div class="badge">v0.2.6</div>
         <h1 class="hero-title">
           Express, but your folder<br />
           <span class="accent">is your router.</span>
@@ -417,9 +417,10 @@
                 <div class="tab-pane-text">
                   <h3><code>ignite()</code> — one entry point</h3>
                   <p>
-                    Pass your dirs, your DB, your auth strategy. EFC runs the Pre-Flight sequence on
-                    every worker: connect → configure auth → scan routes → register tasks → listen.
-                    Each worker owns its own connection pool — nothing shared across cores.
+                    Pass <code>cluster</code> and <code>tasks</code>. Everything else — port, database,
+                    auth, secrets, CORS — is read from <code>.env</code> and <code>efc.config.ts</code>.
+                    EFC runs the Pre-Flight sequence on every worker: connect → configure auth →
+                    scan routes → register tasks → listen.
                   </p>
                   <ul class="check-list">
                     <li>Worker count defaults to <code>os.cpus().length</code></li>
@@ -432,28 +433,14 @@
                     <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span
                     ><span class="code-bar-label">src/index.ts</span>
                   </div>
-                  <pre><span class="c-purple">import</span> { ignite } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster'</span>;
+                  <pre><span class="c-purple">import</span> { ignite, gracefulShutdown } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster'</span>;
 
+<span class="c-dim">// PORT, DATABASE_URL, JWT_SECRET, CORS_ORIGINS → read from .env
+// authStrategy, globalMiddlewares → efc.config.ts</span>
 <span class="c-blue">ignite</span>({
-  port: <span class="c-orange">3000</span>,
-  basePath: <span class="c-green">'src/api'</span>,
-  dashboard: <span class="c-orange">true</span>,
-
-  database: <span class="c-green">'mongodb'</span>,
-  databaseUrl: process.env.<span class="c-blue">DATABASE_URL</span>,
-
-  authStrategy: <span class="c-green">'http-only'</span>,
-  jwtSecret: process.env.<span class="c-blue">JWT_SECRET</span>,
-
   cluster: <span class="c-orange">true</span>,
-  tasks: {
-    backend: <span class="c-green">'bullmq'</span>,
-    redisUrl: process.env.<span class="c-blue">REDIS_URL</span>,
-    concurrency: <span class="c-orange">5</span>,
-  },
-
-  <span class="c-blue">onWorkerReady</span>: (id) => console.<span class="c-blue">log</span>(<span class="c-green">`Worker <span class="c-orange">${id}</span> ready`</span>),
-});</pre>
+  tasks: { backend: <span class="c-green">'bullmq'</span> },
+}).<span class="c-blue">then</span>(gracefulShutdown).<span class="c-blue">catch</span>(console.<span class="c-blue">error</span>);</pre>
                 </div>
               </div>
             </div>
@@ -519,7 +506,12 @@
             </div>
             <div class="changelog-content">
               <h3>Dev Dashboard & Route Metadata</h3>
-              <p>Added a live API documentation page (set <code>dashboard: true</code>) that auto-generates from route <code>meta</code> exports in development. Response bodies render as type names. Added <code>basePath</code> config option and fixed <code>NODE_ENV</code> to be a default overridable by <code>.env</code>.</p>
+              <p>
+                Added a live API documentation page (set <code>dashboard: true</code>) that
+                auto-generates from route <code>meta</code> exports in development. Response bodies
+                render as type names. Added <code>basePath</code> config option and fixed
+                <code>NODE_ENV</code> to be a default overridable by <code>.env</code>.
+              </p>
             </div>
           </div>
 
