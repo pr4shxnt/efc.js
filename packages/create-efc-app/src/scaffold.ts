@@ -151,12 +151,23 @@ async function writeExampleRoute(dest: string, opts: ScaffoldOptions): Promise<v
   const content =
     opts.language === 'typescript'
       ? `import type { Request, Response } from 'express';
+import type { RouteMeta } from 'express-file-cluster';
+
+export const meta: RouteMeta = {
+  description: 'Health check — returns server status and current timestamp.',
+  response: { status: 200, body: { status: 'OK', timestamp: '2024-01-01T00:00:00.000Z' } },
+};
 
 export const GET = async (_req: Request, res: Response) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 };
 `
-      : `export const GET = async (_req, res) => {
+      : `export const meta = {
+  description: 'Health check — returns server status and current timestamp.',
+  response: { status: 200, body: { status: 'OK', timestamp: '2024-01-01T00:00:00.000Z' } },
+};
+
+export const GET = async (_req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 };
 `;
@@ -195,6 +206,13 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     opts.language === 'typescript'
       ? `import { issueToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
+import type { RouteMeta } from 'express-file-cluster';
+
+export const meta: RouteMeta = {
+  description: 'Authenticate a user and issue a JWT via http-only cookie.',
+  request: { body: { email: 'user@example.com', password: 'user' } },
+  response: { status: 200, body: { message: 'Logged in as user' } },
+};
 
 export const POST = async (req: Request, res: Response) => {
   const { email, password } = req.body;
@@ -214,19 +232,25 @@ export const POST = async (req: Request, res: Response) => {
 `
       : `import { issueToken } from 'express-file-cluster/auth';
 
+export const meta = {
+  description: 'Authenticate a user and issue a JWT via http-only cookie.',
+  request: { body: { email: 'user@example.com', password: 'user' } },
+  response: { status: 200, body: { message: 'Logged in as user' } },
+};
+
 export const POST = async (req, res) => {
   const { email, password } = req.body;
-  
+
   if (email === 'admin@example.com' && password === 'admin') {
     await issueToken(res, { id: '1', role: 'admin', email });
     return res.json({ message: 'Logged in as admin' });
   }
-  
+
   if (email === 'user@example.com' && password === 'user') {
     await issueToken(res, { id: '2', role: 'user', email });
     return res.json({ message: 'Logged in as user' });
   }
-  
+
   res.status(401).json({ error: 'Invalid credentials' });
 };
 `;
@@ -235,6 +259,12 @@ export const POST = async (req, res) => {
     opts.language === 'typescript'
       ? `import { revokeToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
+import type { RouteMeta } from 'express-file-cluster';
+
+export const meta: RouteMeta = {
+  description: 'Clear the auth cookie and log the user out.',
+  response: { status: 200, body: { message: 'Logged out successfully' } },
+};
 
 export const POST = async (_req: Request, res: Response) => {
   revokeToken(res);
@@ -242,6 +272,11 @@ export const POST = async (_req: Request, res: Response) => {
 };
 `
       : `import { revokeToken } from 'express-file-cluster/auth';
+
+export const meta = {
+  description: 'Clear the auth cookie and log the user out.',
+  response: { status: 200, body: { message: 'Logged out successfully' } },
+};
 
 export const POST = async (_req, res) => {
   revokeToken(res);
@@ -259,6 +294,12 @@ async function writeAdminRoutes(dest: string, opts: ScaffoldOptions): Promise<vo
     opts.language === 'typescript'
       ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
+import type { RouteMeta } from 'express-file-cluster';
+
+export const meta: RouteMeta = {
+  description: 'Admin dashboard stats. Requires authentication with admin role.',
+  response: { status: 200, body: { message: 'Welcome to the Admin Panel', stats: { users: 120, revenue: 5000 } } },
+};
 
 export const middlewares = [requireAuth];
 
@@ -276,6 +317,11 @@ export const GET = async (req: Request, res: Response) => {
 `
       : `import { requireAuth } from 'express-file-cluster/auth';
 
+export const meta = {
+  description: 'Admin dashboard stats. Requires authentication with admin role.',
+  response: { status: 200, body: { message: 'Welcome to the Admin Panel', stats: { users: 120, revenue: 5000 } } },
+};
+
 export const middlewares = [requireAuth];
 
 export const GET = async (req, res) => {
@@ -283,7 +329,7 @@ export const GET = async (req, res) => {
   if (user?.role !== 'admin') {
     return res.status(403).json({ error: 'Forbidden: Admin access required' });
   }
-  
+
   res.json({
     message: 'Welcome to the Admin Panel',
     stats: { users: 120, revenue: 5000 }
@@ -300,6 +346,12 @@ async function writeUserRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     opts.language === 'typescript'
       ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
+import type { RouteMeta } from 'express-file-cluster';
+
+export const meta: RouteMeta = {
+  description: "Fetch the authenticated user's profile. Requires a valid JWT.",
+  response: { status: 200, body: { message: 'User Profile Panel', user: { id: '1', role: 'user', email: 'user@example.com' } } },
+};
 
 export const middlewares = [requireAuth];
 
@@ -314,11 +366,16 @@ export const GET = async (req: Request, res: Response) => {
 `
       : `import { requireAuth } from 'express-file-cluster/auth';
 
+export const meta = {
+  description: "Fetch the authenticated user's profile. Requires a valid JWT.",
+  response: { status: 200, body: { message: 'User Profile Panel', user: { id: '1', role: 'user', email: 'user@example.com' } } },
+};
+
 export const middlewares = [requireAuth];
 
 export const GET = async (req, res) => {
   const user = req.user;
-  
+
   res.json({
     message: 'User Profile Panel',
     user
