@@ -8,9 +8,14 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -24,15 +29,19 @@ jobs:
       - name: Build packages
         run: npm run build --workspaces --if-present
 
-      - name: Publish changed packages
+      - name: Configure git
         run: |
+          git config user.name "Prashant Adhikari"
+          git config user.email "prashant_adhikari_a25@sunway.edu.np"
+
+      - name: Publish packages
+        run: |
+          BUMPED=false
+
           for pkg in packages/*/; do
             PKG_JSON="./$pkg/package.json"
-
-            # skip if no package.json
             [ -f "$PKG_JSON" ] || continue
 
-            # skip private packages
             IS_PRIVATE=$(node -p "require('$PKG_JSON').private ?? false")
             [ "$IS_PRIVATE" = "true" ] && continue
 
@@ -40,12 +49,21 @@ jobs:
             LOCAL_VER=$(node -p "require('$PKG_JSON').version")
             PUBLISHED=$(npm show "$PKG_NAME@$LOCAL_VER" version 2>/dev/null || echo "")
 
-            if [ -z "$PUBLISHED" ]; then
-              echo "→ Publishing $PKG_NAME@$LOCAL_VER"
-              npm publish "./$pkg" --access public
-            else
-              echo "✓ $PKG_NAME@$LOCAL_VER already published, skipping"
+            if [ -n "$PUBLISHED" ]; then
+              echo "↑ $PKG_NAME@$LOCAL_VER already on npm — bumping patch"
+              (cd "./$pkg" && npm version patch --no-git-tag-version)
+              LOCAL_VER=$(node -p "require('$PKG_JSON').version")
+              BUMPED=true
             fi
+
+            echo "→ Publishing $PKG_NAME@$LOCAL_VER"
+            npm publish "./$pkg" --access public
           done
+
+          if [ "$BUMPED" = "true" ]; then
+            git add packages/*/package.json package-lock.json
+            git commit -m "chore: auto-bump versions [skip ci]"
+            git push
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
