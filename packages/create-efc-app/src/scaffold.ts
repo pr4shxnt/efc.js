@@ -14,6 +14,9 @@ export interface ScaffoldOptions {
   userPortal: boolean;
   adminPortal: boolean;
   rbac: boolean;
+  mailer: boolean;
+  smtpHost?: string;
+  smtpPort?: string;
 }
 
 export async function scaffold(opts: ScaffoldOptions): Promise<void> {
@@ -68,6 +71,8 @@ async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<vo
   }
   if (opts.tasks && opts.taskBackend === 'bullmq') deps['bullmq'] = '^5.0.0';
   if (opts.tasks && opts.taskBackend === 'pg-boss') deps['pg-boss'] = '^10.0.0';
+  if (opts.mailer) deps['nodemailer'] = '^6.9.0';
+  if (opts.database === 'mongodb') deps['bcrypt'] = '^5.1.0';
 
   const devDeps: Record<string, string> = {
     vitest: '^4.1.9',
@@ -78,6 +83,8 @@ async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<vo
     devDeps['@types/express'] = '^4.17.21';
     devDeps['tsup'] = '^8.2.0';
     devDeps['tsx'] = '^4.0.0';
+    if (opts.mailer) devDeps['@types/nodemailer'] = '^6.4.0';
+    if (opts.database === 'mongodb') devDeps['@types/bcrypt'] = '^5.0.0';
   }
 
   const pkg = {
@@ -168,8 +175,14 @@ async function writeEnvFiles(dest: string, opts: ScaffoldOptions): Promise<void>
       ? `mongodb://localhost:27017/${projectName}`
       : `postgresql://user:password@localhost:5432/${projectName}`;
 
-  const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbUrl}\nJWT_SECRET=${secret}\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000\n`;
-  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com\n`;
+  const smtpVars = opts.mailer
+    ? `\nSMTP_HOST=${opts.smtpHost ?? 'smtp.gmail.com'}\nSMTP_PORT=${opts.smtpPort ?? '587'}\nSMTP_USER=\nSMTP_PASS=\nSMTP_FROM=noreply@example.com\n`
+    : '';
+  const smtpExample = opts.mailer
+    ? `\nSMTP_HOST=${opts.smtpHost ?? 'smtp.gmail.com'}\nSMTP_PORT=${opts.smtpPort ?? '587'}\nSMTP_USER=your@email.com\nSMTP_PASS=your_app_password\nSMTP_FROM=noreply@yourapp.com\n`
+    : '';
+  const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbUrl}\nJWT_SECRET=${secret}\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000${smtpVars}`;
+  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com${smtpExample}`;
   await fs.outputFile(path.join(dest, '.env'), dotenv);
   await fs.outputFile(path.join(dest, '.env.example'), example);
 }
@@ -191,9 +204,60 @@ async function writeExampleRoute(dest: string, opts: ScaffoldOptions): Promise<v
 
 async function writeExampleTask(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content =
-    opts.language === 'typescript'
-      ? `import { defineTask } from 'express-file-cluster/tasks';
+
+  const tsMailer = `import { defineTask } from 'express-file-cluster/tasks';
+import nodemailer from 'nodemailer';
+
+interface SendEmailPayload {
+  to: string;
+  subject: string;
+  body: string;
+}
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT ?? 587),
+  secure: Number(process.env.SMTP_PORT) === 465,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+export default defineTask<SendEmailPayload>(async (payload) => {
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.body,
+  });
+});
+`;
+
+  const jsMailer = `import { defineTask } from 'express-file-cluster/tasks';
+import nodemailer from 'nodemailer';
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT ?? 587),
+  secure: Number(process.env.SMTP_PORT) === 465,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+export default defineTask(async (payload) => {
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.body,
+  });
+});
+`;
+
+  const tsStub = `import { defineTask } from 'express-file-cluster/tasks';
 
 interface SendEmailPayload {
   to: string;
@@ -205,13 +269,20 @@ export default defineTask<SendEmailPayload>(async (payload) => {
   // TODO: wire up your mailer
   console.log('[SendEmail] Sending to', payload.to);
 });
-`
-      : `import { defineTask } from 'express-file-cluster/tasks';
+`;
+
+  const jsStub = `import { defineTask } from 'express-file-cluster/tasks';
 
 export default defineTask(async (payload) => {
+  // TODO: wire up your mailer
   console.log('[SendEmail] Sending to', payload.to);
 });
 `;
+
+  const content = opts.mailer
+    ? opts.language === 'typescript' ? tsMailer : jsMailer
+    : opts.language === 'typescript' ? tsStub : jsStub;
+
   await fs.outputFile(path.join(dest, 'src', 'tasks', `SendEmail.${ext}`), content);
 }
 
@@ -351,39 +422,74 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
       : `export const meta = {\n  description: 'Authenticate a user and issue a JWT.',\n  request: { body: { email: 'user@example.com', password: 'user' } },\n  response: { status: 200, body: { message: 'Logged in as user' } },\n};\n\n`
     : '';
 
-  const loginContent = ts
-    ? `import { issueToken } from 'express-file-cluster/auth';
+  const loginDbImports = opts.database === 'mongodb'
+    ? ts
+      ? `import bcrypt from 'bcrypt';\nimport { User } from '../../model/User.js';\nimport { Admin } from '../../model/Admin.js';\n`
+      : `import bcrypt from 'bcrypt';\nimport { User } from '../../model/User.js';\nimport { Admin } from '../../model/Admin.js';\n`
+    : '';
+
+  const loginContent = opts.database === 'mongodb'
+    ? ts
+      ? `import { issueToken } from 'express-file-cluster/auth';
+import type { Request, Response } from 'express';
+${loginDbImports}${loginMeta}export const POST = async (req: Request, res: Response) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+
+  const admin = await Admin.findOne({ email });
+  if (admin) {
+    const match = await bcrypt.compare(password, admin.password);
+    if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
+    await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
+    return res.json({ message: 'Logged in as admin' });
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
+  await issueToken(res, { id: user.id, role: user.role, email: user.email });
+  res.json({ message: 'Logged in' });
+};
+`
+      : `import { issueToken } from 'express-file-cluster/auth';
+${loginDbImports}${loginMeta}export const POST = async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+
+  const admin = await Admin.findOne({ email });
+  if (admin) {
+    const match = await bcrypt.compare(password, admin.password);
+    if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
+    await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
+    return res.json({ message: 'Logged in as admin' });
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
+  await issueToken(res, { id: user.id, role: user.role, email: user.email });
+  res.json({ message: 'Logged in' });
+};
+`
+    : ts
+      ? `import { issueToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${loginMeta}export const POST = async (req: Request, res: Response) => {
   const { email, password } = req.body;
-
-  if (email === 'admin@example.com' && password === 'admin') {
-    await issueToken(res, { id: '1', role: 'admin', email });
-    return res.json({ message: 'Logged in as admin' });
-  }
-
-  if (email === 'user@example.com' && password === 'user') {
-    await issueToken(res, { id: '2', role: 'user', email });
-    return res.json({ message: 'Logged in as user' });
-  }
-
+  // TODO: look up user in DB and compare password
   res.status(401).json({ error: 'Invalid credentials' });
 };
 `
-    : `import { issueToken } from 'express-file-cluster/auth';
+      : `import { issueToken } from 'express-file-cluster/auth';
 ${loginMeta}export const POST = async (req, res) => {
   const { email, password } = req.body;
-
-  if (email === 'admin@example.com' && password === 'admin') {
-    await issueToken(res, { id: '1', role: 'admin', email });
-    return res.json({ message: 'Logged in as admin' });
-  }
-
-  if (email === 'user@example.com' && password === 'user') {
-    await issueToken(res, { id: '2', role: 'user', email });
-    return res.json({ message: 'Logged in as user' });
-  }
-
+  // TODO: look up user in DB and compare password
   res.status(401).json({ error: 'Invalid credentials' });
 };
 `;
@@ -420,19 +526,53 @@ ${logoutMeta}export const POST = async (_req, res) => {
       : `export const meta = {\n  description: 'Register a new user account.',\n  request: { body: { name: 'Jane Doe', email: 'jane@example.com', password: 'secret' } },\n  response: { status: 201, body: { message: 'Account created successfully' } },\n};\n\n`
     : '';
 
-  const registerContent = ts
-    ? `import type { Request, Response } from 'express';
+  const registerDbImports = opts.database === 'mongodb'
+    ? ts
+      ? `import bcrypt from 'bcrypt';\nimport { User } from '../../model/User.js';\n`
+      : `import bcrypt from 'bcrypt';\nimport { User } from '../../model/User.js';\n`
+    : '';
+
+  const registerContent = opts.database === 'mongodb'
+    ? ts
+      ? `import type { Request, Response } from 'express';
+${registerDbImports}${registerMeta}export const POST = async (req: Request, res: Response) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'name, email and password are required' });
+  }
+  const existing = await User.findOne({ email });
+  if (existing) return res.status(409).json({ error: 'Email already in use' });
+  const hashed = await bcrypt.hash(password, 10);
+  const user = await User.create({ name, email, password: hashed });
+  const { password: _, ...safe } = user;
+  res.status(201).json({ message: 'Account created successfully', user: safe });
+};
+`
+      : `${registerDbImports}${registerMeta}export const POST = async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'name, email and password are required' });
+  }
+  const existing = await User.findOne({ email });
+  if (existing) return res.status(409).json({ error: 'Email already in use' });
+  const hashed = await bcrypt.hash(password, 10);
+  const user = await User.create({ name, email, password: hashed });
+  const { password: _, ...safe } = user;
+  res.status(201).json({ message: 'Account created successfully', user: safe });
+};
+`
+    : ts
+      ? `import type { Request, Response } from 'express';
 ${registerMeta}export const POST = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
   }
   // TODO: hash password and persist to DB
-  // const user = await UserModel.create({ name, email, password: await hash(password) });
   res.status(201).json({ message: 'Account created successfully' });
 };
 `
-    : `${registerMeta}export const POST = async (req, res) => {
+      : `${registerMeta}export const POST = async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
@@ -526,18 +666,49 @@ async function writeAdminRoutes(dest: string, opts: ScaffoldOptions): Promise<vo
       : `export const meta = {\n  description: 'Admin dashboard stats. Requires admin role.',\n  response: { status: 200, body: { stats: { users: 120, revenue: 5000 } } },\n};\n\n`
     : '';
 
-  const dashboardContent = ts
-    ? `import { requireAuth } from 'express-file-cluster/auth';
+  const dashboardDbImport = opts.database === 'mongodb'
+    ? `import { User } from '../../model/User.js';\n`
+    : '';
+
+  const dashboardContent = opts.database === 'mongodb'
+    ? ts
+      ? `import { requireAuth } from 'express-file-cluster/auth';
 ${requireRoleImport}import type { Request, Response } from 'express';
-${dashboardMeta}${middlewares}
-export const GET = async (req: Request, res: Response) => {
-${roleGuard}  res.json({ stats: { users: 120, revenue: 5000 } });
+${dashboardDbImport}${dashboardMeta}${middlewares}
+export const GET = async (_req: Request, res: Response) => {
+${roleGuard}  const [totalUsers, activeUsers, verifiedUsers] = await Promise.all([
+    User.count({}),
+    User.count({ isActive: true }),
+    User.count({ isVerified: true }),
+  ]);
+  res.json({ stats: { totalUsers, activeUsers, verifiedUsers } });
 };
 `
-    : `import { requireAuth } from 'express-file-cluster/auth';
+      : `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}${dashboardDbImport}${dashboardMeta}${middlewares}
+export const GET = async (_req, res) => {
+${roleGuard}  const [totalUsers, activeUsers, verifiedUsers] = await Promise.all([
+    User.count({}),
+    User.count({ isActive: true }),
+    User.count({ isVerified: true }),
+  ]);
+  res.json({ stats: { totalUsers, activeUsers, verifiedUsers } });
+};
+`
+    : ts
+      ? `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}import type { Request, Response } from 'express';
+${dashboardMeta}${middlewares}
+export const GET = async (_req: Request, res: Response) => {
+${roleGuard}  // TODO: aggregate stats from DB
+  res.json({ stats: { users: 0 } });
+};
+`
+      : `import { requireAuth } from 'express-file-cluster/auth';
 ${requireRoleImport}${dashboardMeta}${middlewares}
-export const GET = async (req, res) => {
-${roleGuard}  res.json({ stats: { users: 120, revenue: 5000 } });
+export const GET = async (_req, res) => {
+${roleGuard}  // TODO: aggregate stats from DB
+  res.json({ stats: { users: 0 } });
 };
 `;
 
@@ -550,8 +721,59 @@ ${roleGuard}  res.json({ stats: { users: 120, revenue: 5000 } });
       : `export const meta = {\n  description: 'List all users (admin only).',\n  response: { status: 200, body: { users: [], total: 0 } },\n};\n\n`
     : '';
 
-  const usersListContent = ts
-    ? `import { requireAuth } from 'express-file-cluster/auth';
+  const adminUsersDbImport = opts.database === 'mongodb'
+    ? ts
+      ? `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`
+      : `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`
+    : '';
+
+  const usersListContent = opts.database === 'mongodb'
+    ? ts
+      ? `import { requireAuth } from 'express-file-cluster/auth';
+${usersRequireRoleImport}import type { Request, Response } from 'express';
+${adminUsersDbImport}${usersListMeta}${middlewares}
+export const GET = async (req: Request, res: Response) => {
+${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Number(req.query.limit) || 20);
+  const [all, total] = await Promise.all([User.find({}), User.count({})]);
+  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, ...u }) => u);
+  res.json({ users, total, page, limit });
+};
+
+export const POST = async (req: Request, res: Response) => {
+${roleGuard}  const { name, email, password, role } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'name, email and password are required' });
+  const existing = await User.findOne({ email });
+  if (existing) return res.status(409).json({ error: 'Email already in use' });
+  const hashed = await bcrypt.hash(password, 10);
+  const user = await User.create({ name, email, password: hashed, role: role ?? 'user' });
+  const { password: _, ...safe } = user;
+  res.status(201).json({ message: 'User created', user: safe });
+};
+`
+      : `import { requireAuth } from 'express-file-cluster/auth';
+${usersRequireRoleImport}${adminUsersDbImport}${usersListMeta}${middlewares}
+export const GET = async (req, res) => {
+${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Number(req.query.limit) || 20);
+  const [all, total] = await Promise.all([User.find({}), User.count({})]);
+  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, ...u }) => u);
+  res.json({ users, total, page, limit });
+};
+
+export const POST = async (req, res) => {
+${roleGuard}  const { name, email, password, role } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'name, email and password are required' });
+  const existing = await User.findOne({ email });
+  if (existing) return res.status(409).json({ error: 'Email already in use' });
+  const hashed = await bcrypt.hash(password, 10);
+  const user = await User.create({ name, email, password: hashed, role: role ?? 'user' });
+  const { password: _, ...safe } = user;
+  res.status(201).json({ message: 'User created', user: safe });
+};
+`
+    : ts
+      ? `import { requireAuth } from 'express-file-cluster/auth';
 ${usersRequireRoleImport}import type { Request, Response } from 'express';
 ${usersListMeta}${middlewares}
 export const GET = async (_req: Request, res: Response) => {
@@ -566,7 +788,7 @@ ${roleGuard}  const { name, email, role } = req.body;
   res.status(201).json({ message: 'User created', user: { id: 'new-id', name, email, role: role ?? 'user' } });
 };
 `
-    : `import { requireAuth } from 'express-file-cluster/auth';
+      : `import { requireAuth } from 'express-file-cluster/auth';
 ${usersRequireRoleImport}${usersListMeta}${middlewares}
 export const GET = async (_req, res) => {
 ${roleGuard}  // TODO: fetch users from DB with pagination
@@ -589,8 +811,69 @@ ${roleGuard}  const { name, email, role } = req.body;
       : `export const meta = {\n  description: 'Get, update, or delete a single user by ID (admin only).',\n};\n\n`
     : '';
 
-  const userByIdContent = ts
-    ? `import { requireAuth } from 'express-file-cluster/auth';
+  const adminUserByIdDbImport = opts.database === 'mongodb'
+    ? `import { User } from '../../../model/User.js';\n`
+    : '';
+
+  const userByIdContent = opts.database === 'mongodb'
+    ? ts
+      ? `import { requireAuth } from 'express-file-cluster/auth';
+${usersRequireRoleImport}import type { Request, Response } from 'express';
+${adminUserByIdDbImport}${userByIdMeta}${middlewares}
+export const GET = async (req: Request, res: Response) => {
+${roleGuard}  const { id } = req.params;
+  const user = await User.findById(id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const { password: _, ...safe } = user;
+  res.json({ user: safe });
+};
+
+export const PUT = async (req: Request, res: Response) => {
+${roleGuard}  const { id } = req.params;
+  const { name, email, role, isActive } = req.body;
+  const updated = await User.update(id, { name, email, role, isActive });
+  if (!updated) return res.status(404).json({ error: 'User not found' });
+  const { password: _, ...safe } = updated;
+  res.json({ message: 'User updated', user: safe });
+};
+
+export const DELETE = async (req: Request, res: Response) => {
+${roleGuard}  const { id } = req.params;
+  const user = await User.findById(id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  await User.delete(id);
+  res.json({ message: \`User \${id} deleted\` });
+};
+`
+      : `import { requireAuth } from 'express-file-cluster/auth';
+${usersRequireRoleImport}${adminUserByIdDbImport}${userByIdMeta}${middlewares}
+export const GET = async (req, res) => {
+${roleGuard}  const { id } = req.params;
+  const user = await User.findById(id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const { password: _, ...safe } = user;
+  res.json({ user: safe });
+};
+
+export const PUT = async (req, res) => {
+${roleGuard}  const { id } = req.params;
+  const { name, email, role, isActive } = req.body;
+  const updated = await User.update(id, { name, email, role, isActive });
+  if (!updated) return res.status(404).json({ error: 'User not found' });
+  const { password: _, ...safe } = updated;
+  res.json({ message: 'User updated', user: safe });
+};
+
+export const DELETE = async (req, res) => {
+${roleGuard}  const { id } = req.params;
+  const user = await User.findById(id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  await User.delete(id);
+  res.json({ message: \`User \${id} deleted\` });
+};
+`
+    : ts
+      ? `import { requireAuth } from 'express-file-cluster/auth';
 ${usersRequireRoleImport}import type { Request, Response } from 'express';
 ${userByIdMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
@@ -611,7 +894,7 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`User \${id} deleted\` });
 };
 `
-    : `import { requireAuth } from 'express-file-cluster/auth';
+      : `import { requireAuth } from 'express-file-cluster/auth';
 ${usersRequireRoleImport}${userByIdMeta}${middlewares}
 export const GET = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
@@ -652,8 +935,53 @@ async function writeUserRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
       : `export const meta = {\n  description: "View or update the authenticated user's profile.",\n  response: { status: 200, body: { user: { id: '1', role: 'user', email: 'user@example.com' } } },\n};\n\n`
     : '';
 
-  const profileContent = ts
-    ? `import { requireAuth } from 'express-file-cluster/auth';
+  const profileDbImport = opts.database === 'mongodb'
+    ? `import { User } from '../../model/User.js';\n`
+    : '';
+
+  const profileContent = opts.database === 'mongodb'
+    ? ts
+      ? `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}import type { Request, Response } from 'express';
+${profileDbImport}${profileMeta}${middlewares}
+export const GET = async (req: Request, res: Response) => {
+  const { id } = (req as any).user;
+  const user = await User.findById(id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const { password: _, ...safe } = user;
+  res.json({ user: safe });
+};
+
+export const PUT = async (req: Request, res: Response) => {
+  const { id } = (req as any).user;
+  const { name, email } = req.body;
+  const updated = await User.update(id, { name, email });
+  if (!updated) return res.status(404).json({ error: 'User not found' });
+  const { password: _, ...safe } = updated;
+  res.json({ message: 'Profile updated', user: safe });
+};
+`
+      : `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}${profileDbImport}${profileMeta}${middlewares}
+export const GET = async (req, res) => {
+  const { id } = req.user;
+  const user = await User.findById(id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const { password: _, ...safe } = user;
+  res.json({ user: safe });
+};
+
+export const PUT = async (req, res) => {
+  const { id } = req.user;
+  const { name, email } = req.body;
+  const updated = await User.update(id, { name, email });
+  if (!updated) return res.status(404).json({ error: 'User not found' });
+  const { password: _, ...safe } = updated;
+  res.json({ message: 'Profile updated', user: safe });
+};
+`
+    : ts
+      ? `import { requireAuth } from 'express-file-cluster/auth';
 ${requireRoleImport}import type { Request, Response } from 'express';
 ${profileMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
@@ -666,7 +994,7 @@ export const PUT = async (req: Request, res: Response) => {
   res.json({ message: 'Profile updated', user: { ...(req as any).user, name, email } });
 };
 `
-    : `import { requireAuth } from 'express-file-cluster/auth';
+      : `import { requireAuth } from 'express-file-cluster/auth';
 ${requireRoleImport}${profileMeta}${middlewares}
 export const GET = async (req, res) => {
   res.json({ user: req.user });
