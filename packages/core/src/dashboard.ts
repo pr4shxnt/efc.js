@@ -1,10 +1,19 @@
 import type { MountedRoute } from './types.js';
 
 const HTTP_STATUS: Record<number, string> = {
-  200: 'OK', 201: 'Created', 202: 'Accepted', 204: 'No Content',
-  400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found',
-  405: 'Method Not Allowed', 409: 'Conflict', 422: 'Unprocessable Entity',
-  500: 'Internal Server Error', 503: 'Service Unavailable',
+  200: 'OK',
+  201: 'Created',
+  202: 'Accepted',
+  204: 'No Content',
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  403: 'Forbidden',
+  404: 'Not Found',
+  405: 'Method Not Allowed',
+  409: 'Conflict',
+  422: 'Unprocessable Entity',
+  500: 'Internal Server Error',
+  503: 'Service Unavailable',
 };
 
 export function generateDashboard(
@@ -15,7 +24,12 @@ export function generateDashboard(
   projectVersion: string,
 ): string {
   const safeRoutes = JSON.stringify(
-    routes.map((r) => ({ urlPath: r.urlPath, methods: r.methods, params: r.params, meta: r.meta ?? null })),
+    routes.map((r) => ({
+      urlPath: r.urlPath,
+      methods: r.methods,
+      params: r.params,
+      meta: r.meta ?? null,
+    })),
   ).replace(/<\/script>/gi, '<\\/script>');
   const safeHttpStatus = JSON.stringify(HTTP_STATUS);
 
@@ -145,13 +159,22 @@ export function generateDashboard(
 
     /* ── DOCS LAYOUT ── */
     .docs-layout {
-      display: grid; grid-template-columns: 220px 1fr;
+      display: grid; grid-template-columns: 260px 1fr;
       gap: 48px; padding: 52px 0 80px; max-width: 1140px;
       margin: 0 auto; padding-left: 24px; padding-right: 24px;
+      align-items: start;
     }
 
     /* ── SIDEBAR ── */
-    .docs-sidebar { position: sticky; top: 24px; height: fit-content; }
+    .docs-sidebar {
+      position: sticky; top: 24px;
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: none;
+      padding-right: 4px;
+    }
+    .docs-sidebar::-webkit-scrollbar { display: none; }
     .sidebar-section { margin-bottom: 28px; }
     .sidebar-label {
       font-family: var(--font-mono); font-size: .68rem; font-weight: 600;
@@ -164,14 +187,14 @@ export function generateDashboard(
       border-left: 2px solid transparent;
       font-size: .82rem; color: var(--text-dim); cursor: pointer;
       transition: background .15s, color .15s, border-color .15s;
-      text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
+      overflow: hidden; white-space: nowrap;
     }
     .sidebar-link:hover { background: var(--bg-raised); color: var(--text); }
     .sidebar-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-dim); }
     .sidebar-method-dot {
       width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
     }
-    .sidebar-path { font-family: var(--font-mono); font-size: .75rem; }
+    .sidebar-path { font-family: var(--font-mono); font-size: .72rem; }
 
     /* ── ENDPOINT CARDS ── */
     .endpoint-card {
@@ -246,7 +269,7 @@ export function generateDashboard(
     /* ── RESPONSIVE ── */
     @media (max-width: 900px) {
       .docs-layout { grid-template-columns: 1fr; }
-      .docs-sidebar { position: static; }
+      .docs-sidebar { position: static; max-height: none; overflow-y: visible; padding-right: 0; }
       .example-grid { grid-template-columns: 1fr; }
       .search-wrap { margin-left: 0; width: 100%; }
       .search-input { width: 100%; }
@@ -461,7 +484,7 @@ export function generateDashboard(
         link.className = 'sidebar-link';
         link.dataset.target = 'ep-' + ROUTES.indexOf(route);
         link.innerHTML = sidebarDot(route.methods[0] || 'GET') +
-          '<span class="sidebar-path">' + esc(joinPath(BASE_PATH, route.urlPath)) + '</span>';
+          '<span class="sidebar-path">' + esc(route.urlPath || '/') + '</span>';
         link.addEventListener('click', () => {
           const target = document.getElementById(link.dataset.target);
           if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -538,6 +561,12 @@ export function generateDashboard(
           if (entry.isIntersecting) {
             const id = entry.target.id;
             sidebarLinks.forEach(l => l.classList.toggle('active', l.dataset.target === id));
+            const sidebar = document.getElementById('sidebar');
+            const activeLink = sidebar && sidebar.querySelector('.sidebar-link.active');
+            if (sidebar && activeLink) {
+              const linkTop = activeLink.getBoundingClientRect().top - sidebar.getBoundingClientRect().top + sidebar.scrollTop;
+              sidebar.scrollTo({ top: linkTop, behavior: 'smooth' });
+            }
           }
         });
       }, { rootMargin: '-80px 0px -60% 0px' });
