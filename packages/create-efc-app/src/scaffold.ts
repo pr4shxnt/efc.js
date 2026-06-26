@@ -11,6 +11,9 @@ export interface ScaffoldOptions {
   tasks: boolean;
   taskBackend?: 'bullmq' | 'pg-boss';
   routeDocs: boolean;
+  userPortal: boolean;
+  adminPortal: boolean;
+  rbac: boolean;
 }
 
 export async function scaffold(opts: ScaffoldOptions): Promise<void> {
@@ -24,9 +27,10 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   await writeGitignore(dest);
   await writeEnvFiles(dest, opts);
   await writeExampleRoute(dest, opts);
+  if (opts.rbac) await writeRequireRoleMiddleware(dest, opts);
   await writeAuthRoutes(dest, opts);
-  await writeAdminRoutes(dest, opts);
-  await writeUserRoutes(dest, opts);
+  if (opts.adminPortal) await writeAdminRoutes(dest, opts);
+  if (opts.userPortal) await writeUserRoutes(dest, opts);
   if (opts.tasks) await writeExampleTask(dest, opts);
 }
 
@@ -190,34 +194,35 @@ export default defineTask(async (payload) => {
 
 async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const loginMetaTs = opts.routeDocs
-    ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'Authenticate a user and issue a JWT via http-only cookie.',\n  request: { body: { email: 'user@example.com', password: 'user' } },\n  response: { status: 200, body: { message: 'Logged in as user' } },\n};\n\n`
+  const ts = opts.language === 'typescript';
+
+  const loginMeta = opts.routeDocs
+    ? ts
+      ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'Authenticate a user and issue a JWT.',\n  request: { body: { email: 'user@example.com', password: 'user' } },\n  response: { status: 200, body: { message: 'Logged in as user' } },\n};\n\n`
+      : `export const meta = {\n  description: 'Authenticate a user and issue a JWT.',\n  request: { body: { email: 'user@example.com', password: 'user' } },\n  response: { status: 200, body: { message: 'Logged in as user' } },\n};\n\n`
     : '';
-  const loginMetaJs = opts.routeDocs
-    ? `export const meta = {\n  description: 'Authenticate a user and issue a JWT via http-only cookie.',\n  request: { body: { email: 'user@example.com', password: 'user' } },\n  response: { status: 200, body: { message: 'Logged in as user' } },\n};\n\n`
-    : '';
-  const loginContent =
-    opts.language === 'typescript'
-      ? `import { issueToken } from 'express-file-cluster/auth';
+
+  const loginContent = ts
+    ? `import { issueToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
-${loginMetaTs}export const POST = async (req: Request, res: Response) => {
+${loginMeta}export const POST = async (req: Request, res: Response) => {
   const { email, password } = req.body;
-  
+
   if (email === 'admin@example.com' && password === 'admin') {
     await issueToken(res, { id: '1', role: 'admin', email });
     return res.json({ message: 'Logged in as admin' });
   }
-  
+
   if (email === 'user@example.com' && password === 'user') {
     await issueToken(res, { id: '2', role: 'user', email });
     return res.json({ message: 'Logged in as user' });
   }
-  
+
   res.status(401).json({ error: 'Invalid credentials' });
 };
 `
-      : `import { issueToken } from 'express-file-cluster/auth';
-${loginMetaJs}export const POST = async (req, res) => {
+    : `import { issueToken } from 'express-file-cluster/auth';
+${loginMeta}export const POST = async (req, res) => {
   const { email, password } = req.body;
 
   if (email === 'admin@example.com' && password === 'admin') {
@@ -234,23 +239,22 @@ ${loginMetaJs}export const POST = async (req, res) => {
 };
 `;
 
-  const logoutMetaTs = opts.routeDocs
-    ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'Clear the auth cookie and log the user out.',\n  response: { status: 200, body: { message: 'Logged out successfully' } },\n};\n\n`
+  const logoutMeta = opts.routeDocs
+    ? ts
+      ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'Clear the auth cookie and log the user out.',\n  response: { status: 200, body: { message: 'Logged out successfully' } },\n};\n\n`
+      : `export const meta = {\n  description: 'Clear the auth cookie and log the user out.',\n  response: { status: 200, body: { message: 'Logged out successfully' } },\n};\n\n`
     : '';
-  const logoutMetaJs = opts.routeDocs
-    ? `export const meta = {\n  description: 'Clear the auth cookie and log the user out.',\n  response: { status: 200, body: { message: 'Logged out successfully' } },\n};\n\n`
-    : '';
-  const logoutContent =
-    opts.language === 'typescript'
-      ? `import { revokeToken } from 'express-file-cluster/auth';
+
+  const logoutContent = ts
+    ? `import { revokeToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
-${logoutMetaTs}export const POST = async (_req: Request, res: Response) => {
+${logoutMeta}export const POST = async (_req: Request, res: Response) => {
   revokeToken(res);
   res.json({ message: 'Logged out successfully' });
 };
 `
-      : `import { revokeToken } from 'express-file-cluster/auth';
-${logoutMetaJs}export const POST = async (_req, res) => {
+    : `import { revokeToken } from 'express-file-cluster/auth';
+${logoutMeta}export const POST = async (_req, res) => {
   revokeToken(res);
   res.json({ message: 'Logged out successfully' });
 };
@@ -258,88 +262,270 @@ ${logoutMetaJs}export const POST = async (_req, res) => {
 
   await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `login.${ext}`), loginContent);
   await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `logout.${ext}`), logoutContent);
+
+  if (!opts.userPortal) return;
+
+  const registerMeta = opts.routeDocs
+    ? ts
+      ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'Register a new user account.',\n  request: { body: { name: 'Jane Doe', email: 'jane@example.com', password: 'secret' } },\n  response: { status: 201, body: { message: 'Account created successfully' } },\n};\n\n`
+      : `export const meta = {\n  description: 'Register a new user account.',\n  request: { body: { name: 'Jane Doe', email: 'jane@example.com', password: 'secret' } },\n  response: { status: 201, body: { message: 'Account created successfully' } },\n};\n\n`
+    : '';
+
+  const registerContent = ts
+    ? `import type { Request, Response } from 'express';
+${registerMeta}export const POST = async (req: Request, res: Response) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'name, email and password are required' });
+  }
+  // TODO: hash password and persist to DB
+  // const user = await UserModel.create({ name, email, password: await hash(password) });
+  res.status(201).json({ message: 'Account created successfully' });
+};
+`
+    : `${registerMeta}export const POST = async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'name, email and password are required' });
+  }
+  // TODO: hash password and persist to DB
+  res.status(201).json({ message: 'Account created successfully' });
+};
+`;
+
+  const meMeta = opts.routeDocs
+    ? ts
+      ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'Return the currently authenticated user.',\n  response: { status: 200, body: { user: { id: '1', role: 'user', email: 'user@example.com' } } },\n};\n\n`
+      : `export const meta = {\n  description: 'Return the currently authenticated user.',\n  response: { status: 200, body: { user: { id: '1', role: 'user', email: 'user@example.com' } } },\n};\n\n`
+    : '';
+
+  const requireRoleImport = opts.rbac
+    ? ts
+      ? `import { requireRole } from '../../middleware/requireRole.js';\n`
+      : `import { requireRole } from '../../middleware/requireRole.js';\n`
+    : '';
+  const meMiddlewares = opts.rbac
+    ? `export const middlewares = [requireAuth, requireRole('user', 'admin')];\n\n`
+    : `export const middlewares = [requireAuth];\n\n`;
+
+  const meContent = ts
+    ? `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}import type { Request, Response } from 'express';
+${meMeta}${meMiddlewares}export const GET = async (req: Request, res: Response) => {
+  res.json({ user: (req as any).user });
+};
+`
+    : `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}${meMeta}${meMiddlewares}export const GET = async (req, res) => {
+  res.json({ user: req.user });
+};
+`;
+
+  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `register.${ext}`), registerContent);
+  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `me.${ext}`), meContent);
+}
+
+async function writeRequireRoleMiddleware(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const ext = opts.language === 'typescript' ? 'ts' : 'js';
+  const content =
+    opts.language === 'typescript'
+      ? `import type { Request, Response, NextFunction } from 'express';
+
+export function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    if (!roles.includes(user.role)) return res.status(403).json({ error: 'Forbidden' });
+    next();
+  };
+}
+`
+      : `export function requireRole(...roles) {
+  return (req, res, next) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    if (!roles.includes(user.role)) return res.status(403).json({ error: 'Forbidden' });
+    next();
+  };
+}
+`;
+  await fs.outputFile(path.join(dest, 'src', 'middleware', `requireRole.${ext}`), content);
 }
 
 async function writeAdminRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const adminMetaTs = opts.routeDocs
-    ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'Admin dashboard stats. Requires authentication with admin role.',\n  response: { status: 200, body: { message: 'Welcome to the Admin Panel', stats: { users: 120, revenue: 5000 } } },\n};\n\n`
-    : '';
-  const adminMetaJs = opts.routeDocs
-    ? `export const meta = {\n  description: 'Admin dashboard stats. Requires authentication with admin role.',\n  response: { status: 200, body: { message: 'Welcome to the Admin Panel', stats: { users: 120, revenue: 5000 } } },\n};\n\n`
-    : '';
-  const content =
-    opts.language === 'typescript'
-      ? `import { requireAuth } from 'express-file-cluster/auth';
-import type { Request, Response } from 'express';
-${adminMetaTs}export const middlewares = [requireAuth];
+  const ts = opts.language === 'typescript';
 
+  const requireRoleImport = opts.rbac
+    ? `import { requireRole } from '../../middleware/requireRole.js';\n`
+    : '';
+  const middlewares = opts.rbac
+    ? `export const middlewares = [requireAuth, requireRole('admin')];\n`
+    : `export const middlewares = [requireAuth];\n`;
+  const roleGuard = opts.rbac
+    ? ''
+    : ts
+      ? `  const user = (req as any).user;\n  if (user?.role !== 'admin') {\n    return res.status(403).json({ error: 'Forbidden: Admin access required' });\n  }\n\n`
+      : `  const user = req.user;\n  if (user?.role !== 'admin') {\n    return res.status(403).json({ error: 'Forbidden: Admin access required' });\n  }\n\n`;
+
+  const dashboardMeta = opts.routeDocs
+    ? ts
+      ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'Admin dashboard stats. Requires admin role.',\n  response: { status: 200, body: { stats: { users: 120, revenue: 5000 } } },\n};\n\n`
+      : `export const meta = {\n  description: 'Admin dashboard stats. Requires admin role.',\n  response: { status: 200, body: { stats: { users: 120, revenue: 5000 } } },\n};\n\n`
+    : '';
+
+  const dashboardContent = ts
+    ? `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}import type { Request, Response } from 'express';
+${dashboardMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  if (user?.role !== 'admin') {
-    return res.status(403).json({ error: 'Forbidden: Admin access required' });
-  }
-  
-  res.json({
-    message: 'Welcome to the Admin Panel',
-    stats: { users: 120, revenue: 5000 }
-  });
+${roleGuard}  res.json({ stats: { users: 120, revenue: 5000 } });
 };
 `
-      : `import { requireAuth } from 'express-file-cluster/auth';
-${adminMetaJs}export const middlewares = [requireAuth];
-
+    : `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}${dashboardMeta}${middlewares}
 export const GET = async (req, res) => {
-  const user = req.user;
-  if (user?.role !== 'admin') {
-    return res.status(403).json({ error: 'Forbidden: Admin access required' });
-  }
-
-  res.json({
-    message: 'Welcome to the Admin Panel',
-    stats: { users: 120, revenue: 5000 }
-  });
+${roleGuard}  res.json({ stats: { users: 120, revenue: 5000 } });
 };
 `;
 
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', `dashboard.${ext}`), content);
+  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', `dashboard.${ext}`), dashboardContent);
+
+  // Admin user management routes
+  const usersListMeta = opts.routeDocs
+    ? ts
+      ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'List all users (admin only).',\n  response: { status: 200, body: { users: [], total: 0 } },\n};\n\n`
+      : `export const meta = {\n  description: 'List all users (admin only).',\n  response: { status: 200, body: { users: [], total: 0 } },\n};\n\n`
+    : '';
+
+  const usersListContent = ts
+    ? `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}import type { Request, Response } from 'express';
+${usersListMeta}${middlewares}
+export const GET = async (_req: Request, res: Response) => {
+${roleGuard}  // TODO: fetch users from DB with pagination
+  res.json({ users: [], total: 0 });
+};
+
+export const POST = async (req: Request, res: Response) => {
+${roleGuard}  const { name, email, role } = req.body;
+  if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
+  // TODO: create user in DB
+  res.status(201).json({ message: 'User created', user: { id: 'new-id', name, email, role: role ?? 'user' } });
+};
+`
+    : `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}${usersListMeta}${middlewares}
+export const GET = async (_req, res) => {
+${roleGuard}  // TODO: fetch users from DB with pagination
+  res.json({ users: [], total: 0 });
+};
+
+export const POST = async (req, res) => {
+${roleGuard}  const { name, email, role } = req.body;
+  if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
+  // TODO: create user in DB
+  res.status(201).json({ message: 'User created', user: { id: 'new-id', name, email, role: role ?? 'user' } });
+};
+`;
+
+  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', `index.${ext}`), usersListContent);
+
+  const userByIdMeta = opts.routeDocs
+    ? ts
+      ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: 'Get, update, or delete a single user by ID (admin only).',\n};\n\n`
+      : `export const meta = {\n  description: 'Get, update, or delete a single user by ID (admin only).',\n};\n\n`
+    : '';
+
+  const userByIdContent = ts
+    ? `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}import type { Request, Response } from 'express';
+${userByIdMeta}${middlewares}
+export const GET = async (req: Request, res: Response) => {
+${roleGuard}  const { id } = req.params;
+  // TODO: fetch user from DB
+  res.json({ user: { id } });
+};
+
+export const PUT = async (req: Request, res: Response) => {
+${roleGuard}  const { id } = req.params;
+  // TODO: update user in DB
+  res.json({ message: 'User updated', user: { id, ...req.body } });
+};
+
+export const DELETE = async (req: Request, res: Response) => {
+${roleGuard}  const { id } = req.params;
+  // TODO: delete user from DB
+  res.json({ message: \`User \${id} deleted\` });
+};
+`
+    : `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}${userByIdMeta}${middlewares}
+export const GET = async (req, res) => {
+${roleGuard}  const { id } = req.params;
+  // TODO: fetch user from DB
+  res.json({ user: { id } });
+};
+
+export const PUT = async (req, res) => {
+${roleGuard}  const { id } = req.params;
+  // TODO: update user in DB
+  res.json({ message: 'User updated', user: { id, ...req.body } });
+};
+
+export const DELETE = async (req, res) => {
+${roleGuard}  const { id } = req.params;
+  // TODO: delete user from DB
+  res.json({ message: \`User \${id} deleted\` });
+};
+`;
+
+  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', `[id].${ext}`), userByIdContent);
 }
 
 async function writeUserRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const userMetaTs = opts.routeDocs
-    ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: "Fetch the authenticated user's profile. Requires a valid JWT.",\n  response: { status: 200, body: { message: 'User Profile Panel', user: { id: '1', role: 'user', email: 'user@example.com' } } },\n};\n\n`
-    : '';
-  const userMetaJs = opts.routeDocs
-    ? `export const meta = {\n  description: "Fetch the authenticated user's profile. Requires a valid JWT.",\n  response: { status: 200, body: { message: 'User Profile Panel', user: { id: '1', role: 'user', email: 'user@example.com' } } },\n};\n\n`
-    : '';
-  const content =
-    opts.language === 'typescript'
-      ? `import { requireAuth } from 'express-file-cluster/auth';
-import type { Request, Response } from 'express';
-${userMetaTs}export const middlewares = [requireAuth];
+  const ts = opts.language === 'typescript';
 
+  const requireRoleImport = opts.rbac
+    ? `import { requireRole } from '../../middleware/requireRole.js';\n`
+    : '';
+  const middlewares = opts.rbac
+    ? `export const middlewares = [requireAuth, requireRole('user', 'admin')];\n`
+    : `export const middlewares = [requireAuth];\n`;
+
+  const profileMeta = opts.routeDocs
+    ? ts
+      ? `import type { RouteMeta } from 'express-file-cluster';\n\nexport const meta: RouteMeta = {\n  description: "View or update the authenticated user's profile.",\n  response: { status: 200, body: { user: { id: '1', role: 'user', email: 'user@example.com' } } },\n};\n\n`
+      : `export const meta = {\n  description: "View or update the authenticated user's profile.",\n  response: { status: 200, body: { user: { id: '1', role: 'user', email: 'user@example.com' } } },\n};\n\n`
+    : '';
+
+  const profileContent = ts
+    ? `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}import type { Request, Response } from 'express';
+${profileMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  
-  res.json({
-    message: 'User Profile Panel',
-    user
-  });
+  res.json({ user: (req as any).user });
+};
+
+export const PUT = async (req: Request, res: Response) => {
+  const { name, email } = req.body;
+  // TODO: update user in DB
+  res.json({ message: 'Profile updated', user: { ...(req as any).user, name, email } });
 };
 `
-      : `import { requireAuth } from 'express-file-cluster/auth';
-${userMetaJs}export const middlewares = [requireAuth];
-
+    : `import { requireAuth } from 'express-file-cluster/auth';
+${requireRoleImport}${profileMeta}${middlewares}
 export const GET = async (req, res) => {
-  const user = req.user;
+  res.json({ user: req.user });
+};
 
-  res.json({
-    message: 'User Profile Panel',
-    user
-  });
+export const PUT = async (req, res) => {
+  const { name, email } = req.body;
+  // TODO: update user in DB
+  res.json({ message: 'Profile updated', user: { ...req.user, name, email } });
 };
 `;
 
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', `profile.${ext}`), content);
+  await fs.outputFile(path.join(dest, 'src', 'api', 'user', `profile.${ext}`), profileContent);
 }
