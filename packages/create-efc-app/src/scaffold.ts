@@ -2904,7 +2904,7 @@ export const GET = async (_req: Request, res: Response) => {
 ${roleGuard}  // TODO: generate CSV of all users and stream response
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="users.csv"');
-  res.send('id,name,email,role,createdAt\n');
+  res.send('id,name,email,role,createdAt\\n');
 };
 `
     : `${RA}${rr3}${exportMeta}${mwAdmin3}
@@ -2912,7 +2912,7 @@ export const GET = async (_req, res) => {
 ${roleGuard}  // TODO: generate CSV of all users and stream response
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="users.csv"');
-  res.send('id,name,email,role,createdAt\n');
+  res.send('id,name,email,role,createdAt\\n');
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', `export.${ext}`), exportContent);

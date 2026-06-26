@@ -3,6 +3,11 @@ import pc from 'picocolors';
 import { spawn } from 'node:child_process';
 import { scaffold, type ScaffoldOptions } from './scaffold.js';
 
+function cancel(msg = 'Cancelled'): never {
+  p.cancel(msg);
+  process.exit(0);
+}
+
 async function main(): Promise<void> {
   console.log();
   p.intro(pc.bgCyan(pc.black(' create-efc-app ')));
@@ -13,10 +18,7 @@ async function main(): Promise<void> {
     defaultValue: 'my-api',
     validate: (v) => (!v.trim() ? 'Project name is required' : undefined),
   });
-  if (p.isCancel(projectName)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
+  if (p.isCancel(projectName)) cancel();
 
   const language = await p.select({
     message: 'Language:',
@@ -25,10 +27,7 @@ async function main(): Promise<void> {
       { value: 'javascript', label: 'JavaScript' },
     ],
   });
-  if (p.isCancel(language)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
+  if (p.isCancel(language)) cancel();
 
   const database = await p.select({
     message: 'Database:',
@@ -37,10 +36,7 @@ async function main(): Promise<void> {
       { value: 'postgresql', label: 'PostgreSQL', hint: 'Drizzle ORM' },
     ],
   });
-  if (p.isCancel(database)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
+  if (p.isCancel(database)) cancel();
 
   const authStrategy = await p.select({
     message: 'Authentication strategy:',
@@ -49,31 +45,28 @@ async function main(): Promise<void> {
       { value: 'localStorage', label: 'localStorage', hint: 'bearer token — for SPAs' },
     ],
   });
-  if (p.isCancel(authStrategy)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
+  if (p.isCancel(authStrategy)) cancel();
 
-  const cluster = await p.confirm({
-    message: 'Enable multi-core clustering?',
-    initialValue: true,
+  const features = await p.multiselect({
+    message: 'Features: (space to toggle, enter to confirm)',
+    options: [
+      { value: 'cluster',    label: 'Multi-core clustering',          hint: 'Node cluster module' },
+      { value: 'tasks',      label: 'Background tasks',               hint: 'BullMQ / pg-boss' },
+      { value: 'routeDocs',  label: 'API route documentation',        hint: 'meta exports + dashboard' },
+      { value: 'userPortal', label: 'User portal',                    hint: 'auth, profile, billing routes' },
+      { value: 'adminPortal',label: 'Admin portal',                   hint: 'dashboard, user mgmt, analytics' },
+      { value: 'rbac',       label: 'Role-based access control',      hint: 'requireRole middleware' },
+      { value: 'mailer',     label: 'Mailer',                         hint: 'nodemailer + SMTP' },
+    ],
+    initialValues: ['cluster', 'tasks', 'routeDocs', 'userPortal', 'adminPortal', 'rbac'],
+    required: false,
   });
-  if (p.isCancel(cluster)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
+  if (p.isCancel(features)) cancel();
 
-  const tasks = await p.confirm({
-    message: 'Enable background tasks?',
-    initialValue: true,
-  });
-  if (p.isCancel(tasks)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
+  const selected = new Set(features as string[]);
 
   let taskBackend: ScaffoldOptions['taskBackend'];
-  if (tasks) {
+  if (selected.has('tasks')) {
     const backend = await p.select({
       message: 'Task queue backend:',
       options: [
@@ -81,75 +74,19 @@ async function main(): Promise<void> {
         { value: 'pg-boss', label: 'pg-boss', hint: 'PostgreSQL' },
       ],
     });
-    if (p.isCancel(backend)) {
-      p.cancel('Cancelled');
-      process.exit(0);
-    }
+    if (p.isCancel(backend)) cancel();
     taskBackend = backend as ScaffoldOptions['taskBackend'];
   }
 
-  const routeDocs = await p.confirm({
-    message: 'Include route documentation (meta exports for the API dashboard)?',
-    initialValue: true,
-  });
-  if (p.isCancel(routeDocs)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
-
-  const userPortal = await p.confirm({
-    message: 'Build user portal?',
-    initialValue: true,
-  });
-  if (p.isCancel(userPortal)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
-
-  const adminPortal = await p.confirm({
-    message: 'Build admin portal?',
-    initialValue: true,
-  });
-  if (p.isCancel(adminPortal)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
-
-  let rbac = false;
-  if (userPortal || adminPortal) {
-    const rbacAnswer = await p.confirm({
-      message: 'Enable role-based access control (RBAC)?',
-      initialValue: true,
-    });
-    if (p.isCancel(rbacAnswer)) {
-      p.cancel('Cancelled');
-      process.exit(0);
-    }
-    rbac = rbacAnswer as boolean;
-  }
-
-  const mailerAnswer = await p.confirm({
-    message: 'Enable mailer (nodemailer)?',
-    initialValue: false,
-  });
-  if (p.isCancel(mailerAnswer)) {
-    p.cancel('Cancelled');
-    process.exit(0);
-  }
-  const mailer = mailerAnswer as boolean;
-
   let smtpHost: string | undefined;
   let smtpPort: string | undefined;
-  if (mailer) {
+  if (selected.has('mailer')) {
     const host = await p.text({
       message: 'SMTP host:',
       placeholder: 'smtp.gmail.com',
       defaultValue: 'smtp.gmail.com',
     });
-    if (p.isCancel(host)) {
-      p.cancel('Cancelled');
-      process.exit(0);
-    }
+    if (p.isCancel(host)) cancel();
     smtpHost = host as string;
 
     const port = await p.text({
@@ -157,10 +94,7 @@ async function main(): Promise<void> {
       placeholder: '587',
       defaultValue: '587',
     });
-    if (p.isCancel(port)) {
-      p.cancel('Cancelled');
-      process.exit(0);
-    }
+    if (p.isCancel(port)) cancel();
     smtpPort = port as string;
   }
 
@@ -169,16 +103,16 @@ async function main(): Promise<void> {
     language: language as ScaffoldOptions['language'],
     database: database as ScaffoldOptions['database'],
     authStrategy: authStrategy as ScaffoldOptions['authStrategy'],
-    cluster: cluster as boolean,
-    tasks: tasks as boolean,
-    routeDocs: routeDocs as boolean,
-    userPortal: userPortal as boolean,
-    adminPortal: adminPortal as boolean,
-    rbac,
-    mailer,
+    cluster:     selected.has('cluster'),
+    tasks:       selected.has('tasks'),
+    routeDocs:   selected.has('routeDocs'),
+    userPortal:  selected.has('userPortal'),
+    adminPortal: selected.has('adminPortal'),
+    rbac:        selected.has('rbac'),
+    mailer:      selected.has('mailer'),
     ...(taskBackend !== undefined && { taskBackend }),
-    ...(smtpHost !== undefined && { smtpHost }),
-    ...(smtpPort !== undefined && { smtpPort }),
+    ...(smtpHost   !== undefined && { smtpHost }),
+    ...(smtpPort   !== undefined && { smtpPort }),
   };
 
   const spinner = p.spinner();
@@ -198,9 +132,7 @@ async function main(): Promise<void> {
   spinner.stop('Dependencies installed');
 
   spinner.start('Installing efc CLI globally…');
-  await npmInstallGlobal().catch(() => {
-    /* non-fatal */
-  });
+  await npmInstallGlobal().catch(() => { /* non-fatal */ });
   spinner.stop('efc CLI ready');
 
   p.outro(
@@ -213,22 +145,15 @@ async function main(): Promise<void> {
 
 function npmInstall(projectDir: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('npm', ['install'], {
-      cwd: projectDir,
-      stdio: 'ignore',
-    });
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`npm install failed`))));
+    const child = spawn('npm', ['install'], { cwd: projectDir, stdio: 'ignore' });
+    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error('npm install failed'))));
   });
 }
 
 function npmInstallGlobal(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('npm', ['install', '-g', 'express-file-cluster'], {
-      stdio: 'ignore',
-    });
-    child.on('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error('global install failed')),
-    );
+    const child = spawn('npm', ['install', '-g', 'express-file-cluster'], { stdio: 'ignore' });
+    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error('global install failed'))));
   });
 }
 
