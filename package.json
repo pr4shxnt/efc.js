@@ -2,8 +2,7 @@
   "name": "efc-monorepo",
   "private": true,
   "workspaces": [
-    "packages/*",
-    "usage"
+    "packages/*"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
