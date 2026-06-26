@@ -43,6 +43,23 @@ import type { RouteMeta } from 'express-file-cluster';
 
 export const meta: RouteMeta = {
   description: 'TODO: describe this endpoint.',
+  request: {
+    headers: {
+      // 'Content-Type': 'application/json'
+    },
+    query: {
+      // search: 'query'
+    },
+    body: {
+      // name: 'string'
+    }
+  },
+  response: {
+    status: 200,
+    body: {
+      message: 'OK'
+    }
+  }
 };
 
 export const GET = async (req: Request, res: Response) => {
