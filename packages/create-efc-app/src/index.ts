@@ -128,6 +128,42 @@ async function main(): Promise<void> {
     rbac = rbacAnswer as boolean;
   }
 
+  const mailerAnswer = await p.confirm({
+    message: 'Enable mailer (nodemailer)?',
+    initialValue: false,
+  });
+  if (p.isCancel(mailerAnswer)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
+  const mailer = mailerAnswer as boolean;
+
+  let smtpHost: string | undefined;
+  let smtpPort: string | undefined;
+  if (mailer) {
+    const host = await p.text({
+      message: 'SMTP host:',
+      placeholder: 'smtp.gmail.com',
+      defaultValue: 'smtp.gmail.com',
+    });
+    if (p.isCancel(host)) {
+      p.cancel('Cancelled');
+      process.exit(0);
+    }
+    smtpHost = host as string;
+
+    const port = await p.text({
+      message: 'SMTP port:',
+      placeholder: '587',
+      defaultValue: '587',
+    });
+    if (p.isCancel(port)) {
+      p.cancel('Cancelled');
+      process.exit(0);
+    }
+    smtpPort = port as string;
+  }
+
   const opts: ScaffoldOptions = {
     projectName: projectName as string,
     language: language as ScaffoldOptions['language'],
@@ -139,7 +175,10 @@ async function main(): Promise<void> {
     userPortal: userPortal as boolean,
     adminPortal: adminPortal as boolean,
     rbac,
+    mailer,
     ...(taskBackend !== undefined && { taskBackend }),
+    ...(smtpHost !== undefined && { smtpHost }),
+    ...(smtpPort !== undefined && { smtpPort }),
   };
 
   const spinner = p.spinner();
