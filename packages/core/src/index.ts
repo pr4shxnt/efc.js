@@ -146,7 +146,7 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   const mounted: MountedRoute[] = await mountRoutes(apiRouter, routes);
   app.use(basePath, apiRouter);
 
-  if (config.dashboard && process.env['NODE_ENV'] === 'development') {
+  if (config.dashboard !== false && process.env['NODE_ENV'] === 'development') {
     app.get('/', (_req, res) => {
       const { name, version } = readProjectMeta();
       res.setHeader('Content-Type', 'text/html; charset=utf-8');

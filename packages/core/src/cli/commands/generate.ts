@@ -38,8 +38,12 @@ function writeFile(filePath: string, content: string): void {
 function generateRoute(routePath: string): void {
   const cwd = process.cwd();
   const filePath = path.join(cwd, 'src', 'api', `${routePath}.ts`);
-
   const content = `import type { Request, Response } from 'express';
+import type { RouteMeta } from 'express-file-cluster';
+
+export const meta: RouteMeta = {
+  description: 'TODO: describe this endpoint.',
+};
 
 export const GET = async (req: Request, res: Response) => {
   res.json({ message: 'OK' });
