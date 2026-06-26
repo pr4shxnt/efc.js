@@ -88,6 +88,15 @@ async function main(): Promise<void> {
     taskBackend = backend as ScaffoldOptions['taskBackend'];
   }
 
+  const routeDocs = await p.confirm({
+    message: 'Include route documentation (meta exports for the API dashboard)?',
+    initialValue: true,
+  });
+  if (p.isCancel(routeDocs)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
+
   const opts: ScaffoldOptions = {
     projectName: projectName as string,
     language: language as ScaffoldOptions['language'],
@@ -95,6 +104,7 @@ async function main(): Promise<void> {
     authStrategy: authStrategy as ScaffoldOptions['authStrategy'],
     cluster: cluster as boolean,
     tasks: tasks as boolean,
+    routeDocs: routeDocs as boolean,
     ...(taskBackend !== undefined && { taskBackend }),
   };
 
