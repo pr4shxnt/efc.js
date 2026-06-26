@@ -97,6 +97,37 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  const userPortal = await p.confirm({
+    message: 'Build user portal?',
+    initialValue: true,
+  });
+  if (p.isCancel(userPortal)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
+
+  const adminPortal = await p.confirm({
+    message: 'Build admin portal?',
+    initialValue: true,
+  });
+  if (p.isCancel(adminPortal)) {
+    p.cancel('Cancelled');
+    process.exit(0);
+  }
+
+  let rbac = false;
+  if (userPortal || adminPortal) {
+    const rbacAnswer = await p.confirm({
+      message: 'Enable role-based access control (RBAC)?',
+      initialValue: true,
+    });
+    if (p.isCancel(rbacAnswer)) {
+      p.cancel('Cancelled');
+      process.exit(0);
+    }
+    rbac = rbacAnswer as boolean;
+  }
+
   const opts: ScaffoldOptions = {
     projectName: projectName as string,
     language: language as ScaffoldOptions['language'],
@@ -105,6 +136,9 @@ async function main(): Promise<void> {
     cluster: cluster as boolean,
     tasks: tasks as boolean,
     routeDocs: routeDocs as boolean,
+    userPortal: userPortal as boolean,
+    adminPortal: adminPortal as boolean,
+    rbac,
     ...(taskBackend !== undefined && { taskBackend }),
   };
 
