@@ -10,8 +10,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
-import { docs } from './docs.js';
+import { docs, type DocEntry } from './docs.js';
 import { tools } from './tools.js';
 import { prompts } from './prompts.js';
 
@@ -24,7 +23,7 @@ const server = new McpServer({
 
 // ── Register resources (static docs sections) ────────────────────────────────
 
-for (const [uri, { name, description, content }] of Object.entries(docs)) {
+for (const [uri, { name, description, content }] of Object.entries(docs) as [string, DocEntry][]) {
   server.resource(name, uri, { description }, async () => ({
     contents: [{ uri, mimeType: 'text/plain', text: content }],
   }));
