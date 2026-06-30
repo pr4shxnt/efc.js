@@ -1,6 +1,6 @@
 {
   "name": "express-file-cluster",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Enterprise-grade, zero-boilerplate backend framework with file-based routing and multi-core clustering",
   "license": "MIT",
   "type": "module",
