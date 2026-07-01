@@ -12,7 +12,7 @@ The **Model Context Protocol** (MCP) is an open standard that lets AI assistants
 
 ## Features
 
-### 📚 Resources (10 docs sections)
+### Resources (10 docs sections)
 
 | URI | Content |
 |---|---|
@@ -27,7 +27,7 @@ The **Model Context Protocol** (MCP) is an open standard that lets AI assistants
 | `efc://docs/errors` | Error handling & `HttpError` |
 | `efc://docs/env` | Environment variables |
 
-### 🔧 Tools (8 tools)
+### Tools (12 tools)
 
 | Tool | Description |
 |---|---|
@@ -37,10 +37,14 @@ The **Model Context Protocol** (MCP) is an open standard that lets AI assistants
 | `scaffold-route` | Generate a route handler file |
 | `scaffold-task` | Generate a background task file |
 | `ignite-option` | Look up any `ignite()` option |
+| `list-ignite-options` | List all `ignite()` options with types and defaults |
 | `search-docs` | Full-text search across all docs |
 | `generate-ignite-config` | Generate a configured `ignite()` snippet |
+| `scaffold-middleware` | Generate a standalone middleware function |
+| `check-common-mistakes` | Return known EFC gotchas and anti-patterns |
+| `list-not-implemented` | List Phase 2+ features not yet implemented |
 
-### 💬 Prompts (5 prompts)
+### Prompts (6 prompts)
 
 | Prompt | Description |
 |---|---|
@@ -49,6 +53,7 @@ The **Model Context Protocol** (MCP) is an open standard that lets AI assistants
 | `efc-auth-guide` | Authentication integration guide |
 | `efc-task-guide` | Background task guide |
 | `efc-debug-guide` | Troubleshooting common issues |
+| `efc-migration-guide` | Migrate an existing Express app to EFC |
 
 ---
 
@@ -82,6 +87,16 @@ Add to `~/.config/claude/claude_desktop_config.json`:
   }
 }
 ```
+
+## Claude Code (CLI) Config
+
+Run once to register permanently:
+
+```bash
+claude mcp add efc-docs node /absolute/path/to/temp-nodejs/mcp/dist/index.js
+```
+
+Or add manually to `~/.claude/claude_desktop_config.json` using the same format as above.
 
 ## Cursor / Antigravity Config
 

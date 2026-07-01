@@ -116,7 +116,16 @@ export function prompts(server: McpServer): void {
     'Troubleshooting guide for common EFC issues.',
     {
       issue: z
-        .enum(['routes-not-found', 'auth-failing', 'cluster-crash', 'task-not-running', 'env-vars'])
+        .enum([
+          'routes-not-found',
+          'auth-failing',
+          'cluster-crash',
+          'task-not-running',
+          'env-vars',
+          'db-connection',
+          'middleware-order',
+          'apiDir-wrong-path',
+        ])
         .describe('Type of issue to debug.'),
     },
     ({ issue }) => ({
@@ -126,6 +135,32 @@ export function prompts(server: McpServer): void {
           content: {
             type: 'text',
             text: `I'm having a "${issue}" issue in my EFC project. Walk me through diagnosing and fixing it. Suggest relevant efc doctor checks and configuration to verify.`,
+          },
+        },
+      ],
+    }),
+  );
+
+  // ─── 6. Express → EFC migration guide ────────────────────────────────────
+  server.prompt(
+    'efc-migration-guide',
+    'Guide for migrating an existing Express app to EFC.',
+    {
+      hasAuth: z.enum(['yes', 'no']).default('no').describe('Does the existing app have JWT auth?'),
+      hasDb: z.enum(['yes', 'no']).default('no').describe('Does the existing app use a database?'),
+    },
+    ({ hasAuth, hasDb }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Help me migrate my existing Express app to EFC. My app ${hasAuth === 'yes' ? 'DOES' : 'does NOT'} have JWT auth and ${hasDb === 'yes' ? 'DOES' : 'does NOT'} use a database. Cover:
+- How to restructure route files into src/api/ following EFC naming conventions
+- Replacing app.get() / app.post() with uppercase exports
+- Converting existing middleware to EFC's three-tier system (global / route-level / handler-level)
+- Replacing app.listen() with ignite()
+${hasAuth === 'yes' ? '- Swapping existing JWT logic for issueToken / revokeToken / requireAuth\n' : ''}${hasDb === 'yes' ? '- Connecting the database via ignite() databaseUrl option\n' : ''}- Common migration pitfalls to avoid`,
           },
         },
       ],
