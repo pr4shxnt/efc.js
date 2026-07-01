@@ -18,7 +18,7 @@ import { prompts } from './prompts.js';
 
 const server = new McpServer({
   name: 'efc-docs',
-  version: '0.1.0',
+  version: '0.2.0',
 });
 
 // ── Register resources (static docs sections) ────────────────────────────────
