@@ -15,8 +15,11 @@ export interface ScaffoldOptions {
   adminPortal: boolean;
   rbac: boolean;
   mailer: boolean;
+  smtpProvider?: 'gmail' | 'custom';
   smtpHost?: string;
   smtpPort?: string;
+  smtpUser?: string;
+  smtpPass?: string;
 }
 
 export async function scaffold(opts: ScaffoldOptions): Promise<void> {
@@ -175,11 +178,18 @@ async function writeEnvFiles(dest: string, opts: ScaffoldOptions): Promise<void>
       ? `mongodb://localhost:27017/${projectName}`
       : `postgresql://user:password@localhost:5432/${projectName}`;
 
+  const isGmail = opts.mailer && opts.smtpProvider !== 'custom';
+  const resolvedHost = isGmail ? 'smtp.gmail.com' : opts.smtpHost ?? 'smtp.gmail.com';
+  const resolvedPort = isGmail ? '465' : opts.smtpPort ?? '587';
+  const passComment = isGmail
+    ? ' # Gmail App Password (16 chars) — NOT your regular Gmail password. Generate at: Google Account > Security > 2-Step Verification > App passwords'
+    : '';
+
   const smtpVars = opts.mailer
-    ? `\nSMTP_HOST=${opts.smtpHost ?? 'smtp.gmail.com'}\nSMTP_PORT=${opts.smtpPort ?? '587'}\nSMTP_USER=\nSMTP_PASS=\nSMTP_FROM=noreply@example.com\n`
+    ? `\nSMTP_HOST=${resolvedHost}\nSMTP_PORT=${resolvedPort}\nSMTP_USER=${opts.smtpUser ?? ''}\nSMTP_PASS=${opts.smtpPass ?? ''}${passComment}\nSMTP_FROM=${opts.smtpUser ?? 'noreply@example.com'}\n`
     : '';
   const smtpExample = opts.mailer
-    ? `\nSMTP_HOST=${opts.smtpHost ?? 'smtp.gmail.com'}\nSMTP_PORT=${opts.smtpPort ?? '587'}\nSMTP_USER=your@email.com\nSMTP_PASS=your_app_password\nSMTP_FROM=noreply@yourapp.com\n`
+    ? `\nSMTP_HOST=${resolvedHost}\nSMTP_PORT=${resolvedPort}\nSMTP_USER=your@email.com\nSMTP_PASS=${isGmail ? 'your_16_char_app_password' : 'your_smtp_password'}${passComment}\nSMTP_FROM=noreply@yourapp.com\n`
     : '';
   const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbUrl}\nJWT_SECRET=${secret}\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000${smtpVars}`;
   const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>\nREDIS_URL=redis://localhost:6379\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com${smtpExample}`;
