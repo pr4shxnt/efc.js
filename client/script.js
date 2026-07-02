@@ -115,16 +115,23 @@ const DOCS = {
 <span class="c-purple">export const</span> <span class="c-blue">PATCH</span>  = <span class="c-purple">async</span> (req, res) => { <span class="c-dim">/* ... */</span> };
 <span class="c-purple">export const</span> <span class="c-blue">DELETE</span> = <span class="c-purple">async</span> (req, res) => { <span class="c-dim">/* ... */</span> };</pre>
 <h3>Route metadata (<code>meta</code> export)</h3>
-<p>Export a <code>meta</code> object to document the route in the development dashboard. All fields are optional.</p>
+<p>Export a <code>meta</code> object to document the route in the development dashboard. <code>meta</code> is keyed by HTTP method, so each method implemented in the file gets its own description and request/response example. All fields are optional.</p>
 <pre><span class="c-purple">export const</span> meta = {
-  description: <span class="c-green">'Fetch a user by ID.'</span>,
-  request: {
-    params: { id: <span class="c-green">'usr_01HXZ'</span> },
-    query:  { include: <span class="c-green">'profile'</span> },
+  <span class="c-blue">GET</span>: {
+    description: <span class="c-green">'Fetch a user by ID.'</span>,
+    request: {
+      params: { id: <span class="c-green">'usr_01HXZ'</span> },
+      query:  { include: <span class="c-green">'profile'</span> },
+    },
+    response: {
+      status: <span class="c-orange">200</span>,
+      body: { id: <span class="c-green">'usr_01HXZ'</span>, name: <span class="c-green">'Ada Lovelace'</span>, createdAt: <span class="c-green">'2026-01-01T00:00:00.000Z'</span> },
+    },
   },
-  response: {
-    status: <span class="c-orange">200</span>,
-    body: { id: <span class="c-green">'usr_01HXZ'</span>, name: <span class="c-green">'Ada Lovelace'</span>, createdAt: <span class="c-green">'2026-01-01T00:00:00.000Z'</span> },
+  <span class="c-blue">DELETE</span>: {
+    description: <span class="c-green">'Delete a user by ID.'</span>,
+    request: { params: { id: <span class="c-green">'usr_01HXZ'</span> } },
+    response: { status: <span class="c-orange">204</span> },
   },
 };</pre>
 <p>The dashboard renders <code>response.body</code> values as their type names — <code>String</code>, <code>Number</code>, <code>Boolean</code>, <code>Date</code>. ISO date strings are detected automatically and shown as <code>Date</code>.</p>
@@ -388,28 +395,36 @@ const DOCS = {
     breadcrumb: 'Features / API Dashboard',
     html: `
 <h2>API Dashboard</h2>
-<p>EFC automatically mounts a live API documentation page at <code>GET /</code> when <code>NODE_ENV === 'development'</code>. It lists every registered route with its method, path, description, and request/response examples — no external tooling required.</p>
+<p>EFC automatically mounts a live API documentation page at <code>GET /</code> when <code>NODE_ENV === 'development'</code>. It lists every registered route, and every HTTP method on that route gets its own card — method, path, description, and request/response examples — no external tooling required.</p>
 <h3>Enabling it</h3>
 <p>The dashboard is <strong>on by default in development</strong> — no config needed. In production (<code>NODE_ENV=production</code>) the route does not exist.</p>
 <h3>Documenting routes with <code>meta</code></h3>
-<p>Export a <code>meta</code> object from any route file to populate the dashboard card for that route.</p>
+<p>Export a <code>meta</code> object from any route file to populate the dashboard cards for that route. <code>meta</code> is keyed by HTTP method — each method implemented in the file gets its own description and request/response block, rendered separately in the dashboard.</p>
 <pre><span class="c-dim">// src/api/users/[id].ts</span>
 <span class="c-purple">export const</span> meta = {
-  description: <span class="c-green">'Fetch a user by ID.'</span>,
-  request: {
-    headers: { Authorization: <span class="c-green">'Bearer &lt;token&gt;'</span> },
-    params:  { id: <span class="c-green">'usr_01HXZ'</span> },
-    query:   { include: <span class="c-green">'profile'</span> },
-  },
-  response: {
-    status: <span class="c-orange">200</span>,
-    body: {
-      id:        <span class="c-green">'usr_01HXZ'</span>,
-      name:      <span class="c-green">'Ada Lovelace'</span>,
-      createdAt: <span class="c-green">'2026-01-01T00:00:00.000Z'</span>,
+  <span class="c-blue">GET</span>: {
+    description: <span class="c-green">'Fetch a user by ID.'</span>,
+    request: {
+      headers: { Authorization: <span class="c-green">'Bearer &lt;token&gt;'</span> },
+      params:  { id: <span class="c-green">'usr_01HXZ'</span> },
+      query:   { include: <span class="c-green">'profile'</span> },
+    },
+    response: {
+      status: <span class="c-orange">200</span>,
+      body: {
+        id:        <span class="c-green">'usr_01HXZ'</span>,
+        name:      <span class="c-green">'Ada Lovelace'</span>,
+        createdAt: <span class="c-green">'2026-01-01T00:00:00.000Z'</span>,
+      },
     },
   },
+  <span class="c-blue">DELETE</span>: {
+    description: <span class="c-green">'Delete a user by ID.'</span>,
+    request: { headers: { Authorization: <span class="c-green">'Bearer &lt;token&gt;'</span> }, params: { id: <span class="c-green">'usr_01HXZ'</span> } },
+    response: { status: <span class="c-orange">204</span> },
+  },
 };</pre>
+<p>Only add a key for the methods you want documented — a method with no entry in <code>meta</code> still gets a card, marked as undocumented.</p>
 <h3>Type rendering</h3>
 <p>The dashboard renders <code>response.body</code> values as their <strong>type names</strong>, not the literal values you provide. This keeps examples readable without leaking real data.</p>
 <table class="docs-table">
@@ -422,8 +437,10 @@ const DOCS = {
   </tbody>
 </table>
 <p>ISO 8601 date strings are detected automatically — no annotation needed.</p>
-<h3>RouteMeta interface</h3>
-<pre><span class="c-purple">interface</span> <span class="c-blue">RouteMeta</span> {
+<h3>RouteMeta / RouteMethodMeta interfaces</h3>
+<pre><span class="c-purple">type</span> <span class="c-blue">RouteMeta</span> = Partial&lt;Record&lt;string, RouteMethodMeta&gt;&gt;;
+
+<span class="c-purple">interface</span> <span class="c-blue">RouteMethodMeta</span> {
   description?: string;
   request?: {
     headers?: Record&lt;string, string&gt;;

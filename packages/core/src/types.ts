@@ -42,7 +42,7 @@ export interface RouteEntry {
   params: string[];
 }
 
-export interface RouteMeta {
+export interface RouteMethodMeta {
   description?: string;
   request?: {
     headers?: Record<string, string>;
@@ -55,6 +55,12 @@ export interface RouteMeta {
     body?: unknown;
   };
 }
+
+/**
+ * Keyed by HTTP method (`GET`, `POST`, ...) so each method implemented in a
+ * route file gets its own documentation block in the dashboard.
+ */
+export type RouteMeta = Partial<Record<string, RouteMethodMeta>>;
 
 export interface MountedRoute extends RouteEntry {
   methods: string[];
