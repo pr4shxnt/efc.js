@@ -31,7 +31,7 @@ The interactive wizard walks through:
     ◯ Mailer
 ```
 
-> **PostgreSQL and the pg-boss task backend are scaffolded as choices but not yet implemented in the framework runtime** (Phase 2+). Picking MongoDB gives you a fully working `defineModel` + routes; picking PostgreSQL only generates commented-out Drizzle schema stubs and `// TODO` route bodies. See [Database](../guides/database.md).
+> **PostgreSQL and the pg-boss task backend are scaffolded as choices but not yet implemented in the framework runtime** (landing in Phase 2). Picking MongoDB gives you a fully working `defineModel` + routes; picking PostgreSQL only generates commented-out Drizzle schema stubs and `// TODO` route bodies. See [Database](../guides/database.md).
 
 Depending on what you toggle on, you'll see follow-up questions:
 

@@ -323,7 +323,7 @@ const DOCS = {
     breadcrumb: 'Features / Database',
     html: `
 <h2>Database</h2>
-<p>One unified model surface designed to compile to Mongoose or Drizzle depending on your config. <strong>Only the MongoDB adapter is implemented today</strong> — PostgreSQL is a selectable choice in the scaffolder but only produces commented-out schema stubs until the Drizzle adapter lands in Phase 2.</p>
+<p>One unified model surface designed to compile to Mongoose or Drizzle depending on your config. <strong>Only the MongoDB adapter is implemented today</strong> — PostgreSQL is a selectable choice in the scaffolder but only produces commented-out schema stubs until the Drizzle adapter lands in Phase 2 (now active).</p>
 <h3>defineModel — engine-agnostic CRUD</h3>
 <pre><span class="c-purple">import</span> { defineModel } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster'</span>;
 
