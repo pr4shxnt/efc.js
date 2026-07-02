@@ -99,9 +99,9 @@ Do not suggest or generate code for these features.
 ## Common mistakes to avoid
 
 - `ignite()` does NOT auto-load `efc.config.ts` — you must import and pass it yourself
-- `apiDir` must be an absolute path in production (use `path.join(__dirname, 'api')`)
+- `apiDir` is not an `ignite()` option — the api directory is always resolved by convention (`src/api`, `api`, then `dist/api`)
 - `db` throws if accessed before Pre-Flight (not safe at module load time)
-- `requireAuth` takes no arguments — there is no built-in role parameter
+- `requireAuth` is dual-purpose: bare (`requireAuth`) it just verifies the JWT; called with role names (`requireAuth('admin')`) it returns a middleware that also enforces `payload.role`
 - `revokeToken` only clears the cookie — the JWT remains valid until expiry
 - `efc.config.ts` is informational; `src/index.ts` is the actual runtime entrypoint
 

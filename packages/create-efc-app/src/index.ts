@@ -55,7 +55,7 @@ async function main(): Promise<void> {
       { value: 'routeDocs',  label: 'API route documentation',        hint: 'meta exports + dashboard' },
       { value: 'userPortal', label: 'User portal',                    hint: 'auth, profile, billing routes' },
       { value: 'adminPortal',label: 'Admin portal',                   hint: 'dashboard, user mgmt, analytics' },
-      { value: 'rbac',       label: 'Role-based access control',      hint: 'requireRole middleware' },
+      { value: 'rbac',       label: 'Role-based access control',      hint: "requireAuth('role') middleware" },
       { value: 'mailer',     label: 'Mailer',                         hint: 'nodemailer + SMTP' },
     ],
     initialValues: ['cluster', 'tasks', 'routeDocs', 'userPortal', 'adminPortal', 'rbac'],
@@ -182,6 +182,16 @@ async function main(): Promise<void> {
   spinner.start('Installing efc CLI globally…');
   await npmInstallGlobal().catch(() => { /* non-fatal */ });
   spinner.stop('efc CLI ready');
+
+  if (opts.mailer) {
+    p.note(
+      `SMTP_USER and SMTP_PASS were written to ${projectName as string}/.env — that file is gitignored, never commit it.\n` +
+        (opts.smtpProvider === 'gmail'
+          ? 'If this Gmail app password ever leaks, revoke it and generate a new one.'
+          : 'Rotate SMTP_PASS immediately if it is ever exposed.'),
+      'Mailer credentials',
+    );
+  }
 
   p.outro(
     pc.green(`\nYour project is ready!\n\n`) +

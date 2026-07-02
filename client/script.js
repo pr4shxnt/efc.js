@@ -11,15 +11,13 @@ const DOCS = {
 <p>The interactive scaffolder will ask you to choose:</p>
 <ul>
   <li><strong>Language</strong> — TypeScript or JavaScript</li>
-  <li><strong>Database</strong> — MongoDB or PostgreSQL</li>
+  <li><strong>Database</strong> — MongoDB (works today) or PostgreSQL (scaffolds stubs only — adapter not yet implemented)</li>
   <li><strong>Auth strategy</strong> — <code>http-only</code> or <code>localStorage</code></li>
-  <li><strong>Clustering</strong> — enable (recommended for production)</li>
-  <li><strong>Background tasks</strong> — BullMQ (Redis) or pg-boss</li>
-  <li><strong>Route docs</strong> — add <code>meta</code> exports for the API dashboard</li>
-  <li><strong>User portal</strong> — scaffold user auth + profile routes</li>
-  <li><strong>Admin portal</strong> — scaffold admin dashboard + user management routes</li>
-  <li><strong>RBAC</strong> — generate a <code>requireRole</code> middleware (shown if portal selected)</li>
+  <li><strong>Features</strong> (toggle any combination) — Multi-core clustering, Background tasks, API route documentation, User portal, Admin portal, RBAC, Mailer</li>
+  <li><strong>Background tasks</strong> → queue backend — BullMQ (Redis, works today) or pg-boss (not yet implemented)</li>
+  <li><strong>Mailer</strong> → email provider — Gmail (preconfigured, app-password prompt) or a custom SMTP host/port</li>
 </ul>
+<p>See <a href="#" onclick="document.querySelector('[data-doc=portals]').click()">Generated Portals</a>, <a href="#" onclick="document.querySelector('[data-doc=rbac]').click()">RBAC</a>, and <a href="#" onclick="document.querySelector('[data-doc=mailer]').click()">Mailer</a> for what each option actually generates.</p>
 <h3>2. Start the dev server</h3>
 <pre><span class="c-dim">$</span> cd my-api
 <span class="c-dim">$</span> efc start dev
@@ -47,15 +45,15 @@ const DOCS = {
 │   │   └── users/
 │   │       ├── index.ts     <span class="c-dim"># GET /users · POST /users</span>
 │   │       └── [id].ts      <span class="c-dim"># GET /users/:id · DELETE /users/:id</span>
-│   ├── tasks/               <span class="c-dim"># background jobs</span>
+│   ├── tasks/               <span class="c-dim"># background jobs (scanned non-recursively)</span>
 │   │   └── SendEmail.ts
 │   ├── model/               <span class="c-dim"># engine-agnostic models</span>
 │   │   └── User.ts
-│   ├── middleware/          <span class="c-dim"># shared middleware (e.g. requireRole)</span>
+│   ├── middleware/          <span class="c-dim"># scaffolded by the RBAC option</span>
 │   │   └── requireRole.ts
 │   └── index.ts             <span class="c-dim"># ignite() entry point</span>
 ├── efc.config.ts
-├── .env                     <span class="c-dim"># gitignored — JWT_SECRET auto-filled</span>
+├── .env                     <span class="c-dim"># gitignored — JWT_SECRET (+ SMTP_* if Mailer enabled) auto-filled</span>
 ├── .env.example
 └── package.json</pre>
 <h3>Key Conventions</h3>
@@ -64,7 +62,9 @@ const DOCS = {
   <li><code>[brackets]</code> in filenames become dynamic params (<code>:id</code>)</li>
   <li><code>index.ts</code> maps to the directory path</li>
   <li>Every file in <code>src/tasks/</code> registers a named background task</li>
+  <li><code>src/api/</code> and <code>src/tasks/</code> are fixed conventions — there's no <code>apiDir</code>/<code>tasksDir</code> config option</li>
 </ul>
+<p>Enabling <strong>User portal</strong> / <strong>Admin portal</strong> fills <code>src/model/</code> and <code>src/api/</code> out considerably — see <a href="#" onclick="document.querySelector('[data-doc=portals]').click()">Generated Portals</a>.</p>
 `,
   },
   config: {
@@ -257,7 +257,7 @@ const DOCS = {
     <tr><td>retries</td><td>3</td><td>Retry attempts before dead-letter</td></tr>
     <tr><td>backoff</td><td>'exponential'</td><td>Delay strategy between retries</td></tr>
     <tr><td>concurrency</td><td>tasks.concurrency</td><td>Parallel jobs for this task</td></tr>
-    <tr><td>schedule</td><td>—</td><td>Cron expression for recurring tasks</td></tr>
+    <tr><td>schedule</td><td>—</td><td>Cron expression for recurring tasks (planned, not yet executed)</td></tr>
   </tbody>
 </table>
 `,
@@ -291,12 +291,34 @@ const DOCS = {
 };</pre>
 `,
   },
+  rbac: {
+    label: 'RBAC',
+    breadcrumb: 'Features / RBAC',
+    html: `
+<h2>Role-Based Access Control</h2>
+<p>The framework itself has no role parameter — <code>requireAuth</code> only verifies the token. Toggle <strong>Role-based access control</strong> in the scaffolder to generate a reusable role-check middleware instead of hand-rolling one per project.</p>
+<h3>Generated middleware</h3>
+<pre><span class="c-dim">// src/middleware/requireRole.ts</span>
+<span class="c-purple">export function</span> <span class="c-blue">requireRole</span>(...roles: string[]) {
+  <span class="c-purple">return</span> (req, res, next) => {
+    <span class="c-purple">const</span> user = (req <span class="c-purple">as any</span>).user;
+    <span class="c-purple">if</span> (!user) <span class="c-purple">return</span> res.<span class="c-blue">status</span>(<span class="c-orange">401</span>).<span class="c-blue">json</span>({ error: <span class="c-green">'Unauthorized'</span> });
+    <span class="c-purple">if</span> (!roles.<span class="c-blue">includes</span>(user.role)) <span class="c-purple">return</span> res.<span class="c-blue">status</span>(<span class="c-orange">403</span>).<span class="c-blue">json</span>({ error: <span class="c-green">'Forbidden'</span> });
+    next();
+  };
+}</pre>
+<h3>Applied automatically</h3>
+<p>Every protected route the scaffolder generates switches from <code>[requireAuth]</code> to:</p>
+<pre><span class="c-purple">export const</span> middlewares = [requireAuth, <span class="c-blue">requireRole</span>(<span class="c-green">'admin'</span>)];</pre>
+<p>Also generates a <code>Role</code> model, and — if <strong>Admin portal</strong> is also enabled — a full <code>/admin/roles</code> CRUD API.</p>
+`,
+  },
   database: {
     label: 'Database',
     breadcrumb: 'Features / Database',
     html: `
 <h2>Database</h2>
-<p>One unified model surface that compiles to Mongoose or Drizzle depending on your config.</p>
+<p>One unified model surface designed to compile to Mongoose or Drizzle depending on your config. <strong>Only the MongoDB adapter is implemented today</strong> — PostgreSQL is a selectable choice in the scaffolder but only produces commented-out schema stubs until the Drizzle adapter lands in Phase 2.</p>
 <h3>defineModel — engine-agnostic CRUD</h3>
 <pre><span class="c-purple">import</span> { defineModel } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster'</span>;
 
@@ -323,6 +345,42 @@ const DOCS = {
 <span class="c-dim">// MongoDB: db is a mongoose.Connection</span>
 <span class="c-dim">// PostgreSQL: db is a pg.Pool</span>
 <span class="c-purple">const</span> { rows } = <span class="c-purple">await</span> db.<span class="c-blue">query</span>(<span class="c-green">'SELECT * FROM users WHERE id = $1'</span>, [id]);</pre>
+`,
+  },
+  mailer: {
+    label: 'Mailer',
+    breadcrumb: 'Features / Mailer',
+    html: `
+<h2>Mailer</h2>
+<p>Toggle <strong>Mailer</strong> during scaffolding to get a working <code>nodemailer</code> transport wired to environment variables, plus a real <code>SendEmail</code> task — no hand-written SMTP boilerplate.</p>
+<h3>Choose a provider</h3>
+<pre><span class="c-dim">? Email provider:
+  ❯ Gmail                 smtp.gmail.com, preconfigured
+    Other (custom SMTP)   you'll provide host + port</span></pre>
+<p>Pick <strong>Gmail</strong> and no host/port question is asked at all — <code>SMTP_HOST</code>/<code>SMTP_PORT</code> are set to <code>smtp.gmail.com</code> / <code>465</code> automatically. Pick <strong>Other</strong> and you're prompted for both.</p>
+<h3>Gmail requires an App Password</h3>
+<p>Google rejects your normal account password for SMTP. The wizard shows a note and then validates the password is exactly <strong>16 characters</strong> (Gmail App Password length) before accepting it:</p>
+<blockquote>Generate a 16-character App Password: Google Account → Security → 2-Step Verification → App passwords. Enter it below without spaces.</blockquote>
+<h3>Generated task</h3>
+<pre><span class="c-purple">import</span> { defineTask } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster/tasks'</span>;
+<span class="c-purple">import</span> nodemailer <span class="c-purple">from</span> <span class="c-green">'nodemailer'</span>;
+
+<span class="c-purple">const</span> transporter = nodemailer.<span class="c-blue">createTransport</span>({
+  host: process.env.SMTP_HOST,
+  port: <span class="c-blue">Number</span>(process.env.SMTP_PORT ?? <span class="c-orange">587</span>),
+  secure: <span class="c-blue">Number</span>(process.env.SMTP_PORT) === <span class="c-orange">465</span>,
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+});
+
+<span class="c-purple">export default</span> <span class="c-blue">defineTask</span>(<span class="c-purple">async</span> (payload) => {
+  <span class="c-purple">await</span> transporter.<span class="c-blue">sendMail</span>({
+    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.body,
+  });
+});</pre>
+<p>Trigger it with <code>enqueue('SendEmail', payload)</code> from any route — see <a href="#" onclick="document.querySelector('[data-doc=tasks]').click()">Background Tasks</a>.</p>
 `,
   },
   dashboard: {
@@ -380,6 +438,23 @@ const DOCS = {
 }</pre>
 `,
   },
+  portals: {
+    label: 'Generated Portals',
+    breadcrumb: 'Scaffolding / Generated Portals',
+    html: `
+<h2>Generated Portals</h2>
+<p>The <strong>User portal</strong> and <strong>Admin portal</strong> feature options scaffold a large, ready-to-run set of models and routes — not stubs. On MongoDB every model is a real <code>defineModel</code> collection with working CRUD; on PostgreSQL they're commented-out Drizzle stubs until that adapter ships.</p>
+<h3>User portal — models</h3>
+<p><code>User</code>, <code>Session</code>, <code>Notification</code>, <code>File</code>, <code>SupportTicket</code>, <code>Subscription</code>, <code>Invoice</code>, <code>ApiKey</code></p>
+<h3>User portal — routes (40+)</h3>
+<p>Auth extras (<code>register</code>, <code>me</code>, <code>refresh</code>, email verification, password reset/change, 2FA setup/verify/disable, session listing), profile + avatar + settings + account deletion, notifications CRUD, file uploads, favorites/bookmarks, search, API keys, billing (plans, subscription, payment methods, invoices), and support tickets.</p>
+<h3>Admin portal — models</h3>
+<p><code>Admin</code>, <code>SupportTicket</code>, <code>AuditLog</code>, <code>Plan</code>, <code>FAQ</code>, <code>Blog</code>, <code>Category</code>, <code>Coupon</code></p>
+<h3>Admin portal — routes (35+)</h3>
+<p>Dashboard stats, user management (suspend/activate/verify/export CSV), analytics, admin management, notification broadcast, audit/activity/security logs, system health, support ticket triage, content management (FAQs, blog, categories), billing (plans, coupons, subscriptions) — plus a full <code>/admin/roles</code> CRUD API if <a href="#" onclick="document.querySelector('[data-doc=rbac]').click()">RBAC</a> is also enabled.</p>
+<p>Every protected route exports <code>middlewares = [requireAuth]</code>, or <code>[requireAuth, requireRole(...)]</code> if RBAC is on.</p>
+`,
+  },
   cli: {
     label: 'CLI Reference',
     breadcrumb: 'Reference / CLI',
@@ -432,6 +507,11 @@ const DOCS = {
     <tr><td>COOKIE_DOMAIN</td><td>No</td><td>Cookie domain for http-only auth</td></tr>
     <tr><td>REDIS_URL</td><td>If BullMQ</td><td>Redis connection for task queue</td></tr>
     <tr><td>CORS_ORIGINS</td><td>No</td><td>Comma-separated allowed origins (e.g. <code>http://localhost:3000,https://yourapp.com</code>)</td></tr>
+    <tr><td>SMTP_HOST</td><td>If Mailer</td><td>smtp.gmail.com, or your custom SMTP host</td></tr>
+    <tr><td>SMTP_PORT</td><td>If Mailer</td><td>465 (Gmail) or 587 (custom, typical)</td></tr>
+    <tr><td>SMTP_USER</td><td>If Mailer</td><td>Sending email address</td></tr>
+    <tr><td>SMTP_PASS</td><td>If Mailer</td><td>For Gmail: a 16-character App Password — <strong>not</strong> your Gmail login password</td></tr>
+    <tr><td>SMTP_FROM</td><td>If Mailer</td><td>From: address on outgoing mail — defaults to SMTP_USER</td></tr>
   </tbody>
 </table>
 `,
