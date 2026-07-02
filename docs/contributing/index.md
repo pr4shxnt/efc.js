@@ -108,8 +108,8 @@ Interactive scaffolder published as `create-efc-app`. Invoked with `npx create-e
 
 | Phase | Target | Focus |
 |---|---|---|
-| **1** | Q3 2026 | Core MVP — router, clustering, auth, DB, tasks, CLI |
-| **2** | Q4 2026 | Beta — PostgreSQL, pg-boss, Zod validation, structured logging, cron tasks |
+| **1** | Done | Core MVP — router, clustering, auth, DB, tasks, CLI |
+| **2** | Now | Beta — PostgreSQL, pg-boss, Zod validation, structured logging, cron tasks |
 | **3** | Q1 2027 | Stable v1.0 — plugins, WebSockets, OpenAPI, OpenTelemetry, testing utilities |
 | **4** | 2027+ | Edge/serverless, gRPC, GraphQL |
 
