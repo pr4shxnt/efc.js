@@ -1,6 +1,6 @@
 # Database Guide
 
-EFC supports two database engines: **MongoDB** (via `mongoose`) and **PostgreSQL** (via Drizzle, planned in Phase 2). Both share the same `defineModel` surface so application code doesn't branch on engine type.
+EFC's `defineModel` surface is designed to be engine-agnostic across two database engines: **MongoDB** (via `mongoose`) and **PostgreSQL** (via Drizzle). **Only the MongoDB adapter is implemented today** — PostgreSQL is planned for Phase 2. `create-efc-app` still lets you pick PostgreSQL, but it only scaffolds commented-out schema stubs and `// TODO` route bodies until the adapter lands.
 
 ---
 
@@ -48,7 +48,7 @@ During Pre-Flight, each worker calls `connectMongo(databaseUrl)` which delegates
 `defineModel` compiles your schema into the engine-specific representation at first use:
 
 ```ts
-// src/models/User.ts
+// src/model/User.ts
 import { defineModel } from 'express-file-cluster';
 
 interface User {
@@ -66,6 +66,8 @@ export const User = defineModel<User>('User', {
 ```
 
 For MongoDB, this produces a Mongoose schema with `timestamps: true` (adds `createdAt` and `updatedAt` automatically).
+
+> `create-efc-app`'s User/Admin portal options scaffold many more models this way (`Session`, `Notification`, `File`, `Subscription`, `Invoice`, and more) — see [Generated Portals](./generated-portals.md) for the full list.
 
 ### Supported field types
 
@@ -86,7 +88,7 @@ For MongoDB, this produces a Mongoose schema with `timestamps: true` (adds `crea
 // src/api/users/index.ts
 import type { Request, Response } from 'express';
 import { HttpError } from 'express-file-cluster';
-import { User } from '../../models/User';
+import { User } from '../../model/User.js';
 
 export const GET = async (req: Request, res: Response) => {
   const users = await User.find();            // all users
@@ -103,7 +105,7 @@ export const POST = async (req: Request, res: Response) => {
 // src/api/users/[id].ts
 import type { Request, Response } from 'express';
 import { HttpError } from 'express-file-cluster';
-import { User } from '../../models/User';
+import { User } from '../../model/User.js';
 
 export const GET = async (req: Request, res: Response) => {
   const user = await User.findById(req.params.id);
@@ -155,7 +157,7 @@ Models work identically inside task handlers:
 ```ts
 // src/tasks/DeleteExpiredSessions.ts
 import { defineTask } from 'express-file-cluster/tasks';
-import { Session } from '../models/Session';
+import { Session } from '../model/Session.js';
 
 export default defineTask<{ olderThanDays: number }>(async ({ olderThanDays }) => {
   const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);

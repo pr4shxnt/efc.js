@@ -2,7 +2,7 @@
 
 **express-file-cluster (EFC)** is an opinionated backend framework built on Express. It removes routing ceremony, saturates every CPU core automatically, and ships a production-grade background-task subsystem — all from a single `ignite()` call.
 
-> **Status: v0.2.1 — Beta.** The router, clustering, auth, and MongoDB adapter are implemented. PostgreSQL and additional task backends are in active development.
+> **Status: v0.2.11 — Beta.** The router, clustering, auth, MongoDB adapter, and BullMQ task queue are implemented. PostgreSQL and the pg-boss task backend are scaffolded as choices but not yet implemented in the runtime.
 
 ---
 
@@ -24,9 +24,26 @@
 | [Getting Started](./getting-started/index.md) | Scaffold a project, understand the structure |
 | [Core Concepts](./core-concepts/index.md) | The four pillars: routing, clustering, tasks, middleware |
 | [API Reference](./api-reference/ignite.md) | Every exported function and type, fully documented |
-| [Guides](./guides/authentication.md) | Deep-dives: auth, database, error handling, deployment |
+| [Guides](./guides/authentication.md) | Deep-dives: auth, database, RBAC, mailer, error handling, deployment |
 | [CLI](./cli/index.md) | All `efc` commands with flags and examples |
 | [Contributing](./contributing/index.md) | Roadmap, branch conventions, PR requirements |
+
+### Guides
+
+| Guide | Covers |
+|---|---|
+| [Authentication](./guides/authentication.md) | JWT strategies, login/logout, `requireAuth` |
+| [RBAC](./guides/rbac.md) | Role-based route protection via the `requireAuth('role')` shorthand |
+| [Database](./guides/database.md) | `defineModel`, CRUD, MongoDB vs PostgreSQL status |
+| [Generated Portals](./guides/generated-portals.md) | Every model and route `create-efc-app` scaffolds for the User/Admin portals |
+| [Mailer](./guides/mailer.md) | Gmail (app password) and custom SMTP setup, sending email from a task |
+| [Environment Variables](./guides/environment-variables.md) | Full `.env` reference |
+| [Error Handling](./guides/error-handling.md) | `HttpError`, custom handlers, task failures |
+| [Deployment](./guides/deployment.md) | Build, start, and ship to production |
+
+### Tooling
+
+An [MCP server](https://github.com/pr4shxnt/efc.js/tree/main/mcp) ships in this repo (`mcp/`) that exposes this documentation as tools, resources, and prompts to MCP-compatible AI assistants (Claude, Cursor, etc.) — useful if you want an assistant to scaffold routes/tasks or answer "does EFC support X?" without hallucinating. See `mcp/README.md` for setup.
 
 ---
 
@@ -56,15 +73,11 @@ export const GET = async (req: Request, res: Response) => {
 ```ts
 // src/index.ts
 import { ignite, gracefulShutdown } from 'express-file-cluster';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
+// PORT, DATABASE_URL, JWT_SECRET, CORS_ORIGINS are read from .env automatically
 ignite({
-  apiDir: path.join(__dirname, 'api'),
   cluster: true,
-}).then(gracefulShutdown);
+}).then(gracefulShutdown).catch(console.error);
 ```
 
-The framework scans `apiDir` on boot, derives route paths from file names, forks `os.cpus().length` worker processes, and handles `SIGTERM`/`SIGINT` gracefully — zero extra code required.
+The framework always scans `src/api/` on boot (this path is a fixed convention, not configurable), derives route paths from file names, forks `os.cpus().length` worker processes, and handles `SIGTERM`/`SIGINT` gracefully — zero extra code required.

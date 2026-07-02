@@ -7,6 +7,9 @@ import type { Server } from 'node:http';
 import { ignite } from './index.js';
 
 // helpers ----------------------------------------------------------------
+// ignite() resolves `src/api` relative to process.cwd() by convention (see
+// resolveConventionDir in index.ts) — it takes no apiDir option — so tests
+// must chdir into a project root that has a real src/api directory.
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'efc-ignite-'));
@@ -14,6 +17,7 @@ function tmpDir() {
 
 function writeRoute(dir: string, name: string, code: string) {
   const file = path.join(dir, name);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, code);
   return file;
 }
@@ -28,11 +32,16 @@ function closeServer(server: Server): Promise<void> {
 // -----------------------------------------------------------------------
 
 describe('ignite() — server integration', () => {
+  let projectRoot: string;
   let apiDir: string;
   let server: Server | undefined;
+  const originalCwd = process.cwd();
 
   beforeEach(() => {
-    apiDir = tmpDir();
+    projectRoot = tmpDir();
+    apiDir = path.join(projectRoot, 'src', 'api');
+    fs.mkdirSync(apiDir, { recursive: true });
+    process.chdir(projectRoot);
     // ensure no DATABASE_URL so connectMongo is never called
     delete process.env['DATABASE_URL'];
     delete process.env['CORS_ORIGINS'];
@@ -43,7 +52,8 @@ describe('ignite() — server integration', () => {
       await closeServer(server);
       server = undefined;
     }
-    fs.rmSync(apiDir, { recursive: true, force: true });
+    process.chdir(originalCwd);
+    fs.rmSync(projectRoot, { recursive: true, force: true });
   });
 
   // --- route serving ----------------------------------------------------

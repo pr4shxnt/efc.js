@@ -110,8 +110,14 @@ Authorization: Bearer <token>
 
 Express middleware that verifies the JWT and attaches the decoded payload to `req.user`. Returns `401 Unauthorized` if the token is missing, expired, or invalid.
 
+Used bare, it only checks that the token is valid. Called with one or more role names, it returns a middleware that *also* enforces `payload.role` is one of them — returning `403 Forbidden` otherwise.
+
 ```ts
-const requireAuth: RequestHandler
+interface RequireAuth {
+  (req: Request, res: Response, next: NextFunction): void; // bare — auth only
+  (...roles: string[]): RequestHandler;                    // requireAuth('admin') — auth + role check
+}
+const requireAuth: RequireAuth
 ```
 
 Behaviour depends on the configured `authStrategy`:
@@ -121,7 +127,7 @@ Behaviour depends on the configured `authStrategy`:
 | `'http-only'` | `req.cookies.efc_token` |
 | `'localStorage'` | `Authorization: Bearer <token>` header |
 
-**Route-level (protects all handlers in the file):**
+**Route-level, auth only (protects all handlers in the file):**
 
 ```ts
 // src/api/users/index.ts
@@ -135,14 +141,30 @@ export const GET = async (req, res) => {
 };
 ```
 
+**Route-level, auth + role:**
+
+```ts
+// src/api/admin/users.ts
+import { requireAuth } from 'express-file-cluster/auth';
+
+export const middlewares = [requireAuth('admin')];
+
+export const GET = async (req, res) => {
+  // only reachable when payload.role === 'admin'
+  res.json({ users: [] });
+};
+```
+
+Pass multiple roles to allow any of them: `requireAuth('user', 'admin')`.
+
 **Handler-level (protects one method):**
 
 ```ts
 import { compose } from 'express-file-cluster';
 import { requireAuth } from 'express-file-cluster/auth';
 
-export const DELETE = compose(requireAuth, async (req, res) => {
-  // only DELETE requires auth
+export const DELETE = compose(requireAuth('admin'), async (req, res) => {
+  // only DELETE requires auth + the admin role
   res.status(204).send();
 });
 ```
