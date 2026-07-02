@@ -42,22 +42,35 @@ function generateRoute(routePath: string): void {
 import type { RouteMeta } from 'express-file-cluster';
 
 export const meta: RouteMeta = {
-  description: 'TODO: describe this endpoint.',
-  request: {
-    headers: {
-      // 'Content-Type': 'application/json'
+  GET: {
+    description: 'TODO: describe this endpoint.',
+    request: {
+      headers: {
+        // 'Content-Type': 'application/json'
+      },
+      query: {
+        // search: 'query'
+      },
     },
-    query: {
-      // search: 'query'
-    },
-    body: {
-      // name: 'string'
+    response: {
+      status: 200,
+      body: {
+        message: 'OK'
+      }
     }
   },
-  response: {
-    status: 200,
-    body: {
-      message: 'OK'
+  POST: {
+    description: 'TODO: describe this endpoint.',
+    request: {
+      body: {
+        // name: 'string'
+      }
+    },
+    response: {
+      status: 201,
+      body: {
+        message: 'Created'
+      }
     }
   }
 };

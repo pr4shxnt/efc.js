@@ -216,6 +216,7 @@ export type {
   CorsConfig,
   RouteEntry,
   RouteMeta,
+  RouteMethodMeta,
   TaskOptions,
   TaskDefinition,
   DatabaseEngine,
