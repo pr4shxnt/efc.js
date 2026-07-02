@@ -75,7 +75,7 @@
     <section class="hero" id="hero">
       <div class="hero-glow"></div>
       <div class="container">
-        <div class="badge">v0.2.11</div>
+        <div class="badge">v0.3.1</div>
         <h1 class="hero-title">
           Express, but your folder<br />
           <span class="accent">is your router.</span>
@@ -626,6 +626,32 @@
         <div class="changelog-list">
           <div class="changelog-item">
             <div class="changelog-meta">
+              <div class="cl-version">express-file-cluster v0.3.1 / create-efc-app v0.4.1</div>
+              <div class="cl-date">Jul 2, 2026</div>
+              <div class="cl-tag">DASHBOARD</div>
+            </div>
+            <div class="changelog-content">
+              <h3>Per-Method Route Documentation</h3>
+              <p>
+                <code>RouteMeta</code> is now keyed by HTTP method —
+                <code>{ GET: { description, request?, response? }, PUT: { ... } }</code> — so each
+                verb on a multi-method route gets its own doc block in the dashboard instead of
+                sharing one flat description. The new <code>RouteMethodMeta</code> interface is
+                exported from <code>express-file-cluster</code>.
+              </p>
+              <p>
+                The dashboard renderer was updated to show one collapsible block per implemented
+                method. All 76 routes in the example app and every template in
+                <code>create-efc-app</code> were converted — including the full CRUD generators for
+                <code>admin/content/*</code> and <code>admin/billing/*</code>. Routes that previously
+                had no <code>meta</code> at all (sessions, notifications, files, favorites,
+                bookmarks, api-keys, roles, billing, admins) now have real per-method examples.
+              </p>
+            </div>
+          </div>
+
+          <div class="changelog-item">
+            <div class="changelog-meta">
               <div class="cl-version">express-file-cluster v0.2.11 / create-efc-app v0.3.7</div>
               <div class="cl-date">Jul 2, 2026</div>
               <div class="cl-tag">AUTH</div>
@@ -786,12 +812,12 @@
     <section class="roadmap" id="roadmap">
       <div class="container">
         <div class="section-label">Roadmap</div>
-        <h2 class="section-title">Architecture done.<br /><em>Code next.</em></h2>
+        <h2 class="section-title">Phase 1 shipped.<br /><em>Beta next.</em></h2>
         <div class="roadmap-grid">
           <div class="roadmap-phase done">
             <div class="phase-header">
               <div class="phase-badge">Phase 0</div>
-              <div class="phase-tag">Now</div>
+              <div class="phase-tag">Done</div>
             </div>
             <h3>Design &amp; Planning</h3>
             <ul>
@@ -800,10 +826,10 @@
               <li>Monorepo scaffold</li>
             </ul>
           </div>
-          <div class="roadmap-phase active">
+          <div class="roadmap-phase done">
             <div class="phase-header">
               <div class="phase-badge">Phase 1</div>
-              <div class="phase-tag">Q3 2026</div>
+              <div class="phase-tag">Done ✓</div>
             </div>
             <h3>Core MVP</h3>
             <ul>
@@ -812,12 +838,14 @@
               <li>Auth + MongoDB adapter</li>
               <li>Background tasks (BullMQ)</li>
               <li><code>npx create-efc-app</code></li>
+              <li>Per-method API dashboard</li>
+              <li>MCP docs server</li>
             </ul>
           </div>
-          <div class="roadmap-phase">
+          <div class="roadmap-phase active">
             <div class="phase-header">
               <div class="phase-badge">Phase 2</div>
-              <div class="phase-tag">Q4 2026</div>
+              <div class="phase-tag">Now</div>
             </div>
             <h3>Beta</h3>
             <ul>
@@ -849,12 +877,12 @@
       <div class="container">
         <div class="cta-inner">
           <div class="cta-glow"></div>
-          <div class="section-label">Open source · Pre-alpha</div>
-          <h2>The spec is written.<br /><em>The code needs you.</em></h2>
+          <div class="section-label">Open source · Alpha</div>
+          <h2>Phase 1 is live.<br /><em>Phase 2 starts now.</em></h2>
           <p>
-            Every routing rule, clustering decision, and task API is documented and designed. Phase
-            1 implementation starts now — if you've wanted to build a framework from scratch, this
-            is the repo.
+            File-based routing, multi-core clustering, auth, background tasks, the scaffolder, and
+            a live per-method API dashboard are all shipped. Phase 2 — PostgreSQL adapter, Zod
+            validation, and cron scheduling — is next. Come build it.
           </p>
           <div class="cta-actions">
             <a href="https://github.com/pr4shxnt/efc.js" target="_blank" class="btn-primary"

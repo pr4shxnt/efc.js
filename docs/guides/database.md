@@ -172,4 +172,4 @@ export default defineTask<{ olderThanDays: number }>(async ({ olderThanDays }) =
 
 ## PostgreSQL (planned)
 
-PostgreSQL support via Drizzle ORM is scheduled for Phase 2 (Q4 2026). The `defineModel` surface will remain identical — switching engines will require only changing `DATABASE_URL` and reinstalling the adapter peer dependency.
+PostgreSQL support via Drizzle ORM is scheduled for Phase 2 (now active). The `defineModel` surface will remain identical — switching engines will require only changing `DATABASE_URL` and reinstalling the adapter peer dependency.
