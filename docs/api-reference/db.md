@@ -10,7 +10,7 @@ import { defineModel, db } from 'express-file-cluster';
 
 ## `defineModel(name, schema)`
 
-Creates an engine-agnostic model with a unified CRUD surface. The same model code works against MongoDB (via `mongoose`) and PostgreSQL (via Drizzle).
+Creates an engine-agnostic model with a unified CRUD surface. Designed to work against MongoDB (via `mongoose`, implemented today) or PostgreSQL (via Drizzle, planned — see below).
 
 ```ts
 function defineModel<T extends Record<string, any>>(
@@ -40,7 +40,7 @@ interface FieldDefinition {
 ### Example
 
 ```ts
-// src/models/User.ts
+// src/model/User.ts
 import { defineModel } from 'express-file-cluster';
 
 interface User {

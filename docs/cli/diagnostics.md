@@ -30,7 +30,7 @@ Static routes appear before dynamic routes (routes with `:param` segments), matc
 
 **When to use:** after adding, renaming, or moving route files to verify the URL mapping is what you expect.
 
-**Lookup order for `apiDir`:** `src/api/` → `api/` (first that exists).
+**Lookup order for the routes directory:** `src/api/` → `api/` → `dist/api/` (first that exists). This is a fixed convention — there is no `apiDir` config option.
 
 ---
 
@@ -54,7 +54,7 @@ efc tasks
 
 Each name corresponds to a file basename without extension. That is the string to pass to `enqueue()`.
 
-**Lookup order for `tasksDir`:** `src/tasks/` → `tasks/` (first that exists).
+**Lookup order for the tasks directory:** `src/tasks/` → `tasks/` → `dist/tasks/` (first that exists). This is a fixed convention — there is no `tasksDir` config option.
 
 ---
 

@@ -6,7 +6,7 @@ EFC is built around four interlocking ideas. Understanding each one independentl
 
 ## 1. File-Based Routing
 
-The directory tree under `apiDir` **is** the route tree. No `router.get(...)` registration, no explicit path strings — the file path is the URL path.
+The directory tree under `src/api/` **is** the route tree. No `router.get(...)` registration, no explicit path strings — the file path is the URL path.
 
 ```
 src/api/users/[id].ts   →   GET /users/:id
@@ -30,7 +30,7 @@ The OS round-robins incoming connections across workers. If a worker crashes, th
 
 ## 3. Background Tasks
 
-The `/tasks` directory holds background jobs — work that should happen *off* the request/response cycle. Define a task with `defineTask()`, trigger it from any route handler with `enqueue()`, and the queue backend (BullMQ on Redis, or pg-boss on PostgreSQL) handles retries, backoff, and concurrency.
+The `src/tasks/` directory holds background jobs — work that should happen *off* the request/response cycle. Define a task with `defineTask()`, trigger it from any route handler with `enqueue()`, and the queue backend handles retries, backoff, and concurrency. **BullMQ (Redis) is the only backend implemented today** — `pg-boss` is a selectable choice in the scaffolder but not yet wired up in the runtime.
 
 CPU-bound tasks can opt into `worker_threads` execution with `{ thread: true }`, keeping the event loop free.
 

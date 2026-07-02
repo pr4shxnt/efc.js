@@ -1,6 +1,6 @@
 # Background Tasks
 
-The `tasks/` directory holds background jobs — work that should run *after* the HTTP response is sent, with retries, backoff, and concurrency control. The file name (without extension) is the task name used with `enqueue()`.
+The `src/tasks/` directory holds background jobs — work that should run *after* the HTTP response is sent, with retries, backoff, and concurrency control. The file name (without extension) is the task name used with `enqueue()`.
 
 ---
 
@@ -13,7 +13,7 @@ Two workloads hide behind "do this work":
 | **I/O-bound** | Send email, call a webhook, write to S3 | Queue → async handler on the event loop |
 | **CPU-bound** | Resize an image, transcode video, parse a large file | Queue → `worker_threads` thread |
 
-EFC does not hand-roll the queue. Persistence, retries, backoff, dead-lettering, and concurrency are delegated to a proven backend — **BullMQ** (Redis) or **pg-boss** (PostgreSQL).
+EFC does not hand-roll the queue. Persistence, retries, backoff, dead-lettering, and concurrency are delegated to a proven backend. **BullMQ** (Redis) is implemented today; **pg-boss** (PostgreSQL) is selectable in the scaffolder but not yet wired up in the runtime.
 
 ---
 
@@ -35,6 +35,8 @@ export default defineTask<SendEmailPayload>(async ({ to, subject, body }) => {
   await mailer.send({ to, subject, body });
 });
 ```
+
+> The `create-efc-app` scaffolder generates a real, working version of this file (using `nodemailer` + your configured SMTP credentials) when you enable the **Mailer** option — see [Mailer](../guides/mailer.md).
 
 ### CPU-bound task
 
@@ -80,7 +82,7 @@ export default defineTask<ResizePayload>(
 // src/api/users/index.ts
 import type { Request, Response } from 'express';
 import { enqueue } from 'express-file-cluster/tasks';
-import { User } from '../../models/User';
+import { User } from '../../model/User.js';
 
 export const POST = async (req: Request, res: Response) => {
   const user = await User.create(req.body);
@@ -98,13 +100,13 @@ export const POST = async (req: Request, res: Response) => {
 
 `enqueue(name, payload)` throws if:
 - The task backend has not been initialised (missing `tasks` config in `ignite()`).
-- The task name was not found in the registry (file not in `tasksDir`, or bad default export).
+- The task name was not found in the registry (file not in `src/tasks/`, or bad default export).
 
 ---
 
 ## Task registration
 
-On startup, `scanTasks(tasksDir)` walks the directory and:
+On startup, the task scanner walks `src/tasks/` (non-recursively) and:
 
 1. Reads each `.ts` / `.js` file.
 2. Imports the module and reads the `default` export.

@@ -1,6 +1,6 @@
 # File-Based Routing
 
-EFC turns your directory tree into your route tree. The scanner walks `apiDir` recursively, converts each file path to a URL, and mounts the handlers on Express — no explicit registration required.
+EFC turns your directory tree into your route tree. The scanner walks `src/api/` recursively (a fixed convention, not a configurable option), converts each file path to a URL, and mounts the handlers on Express — no explicit registration required.
 
 ---
 
@@ -76,7 +76,7 @@ Content-Type: application/json
 // src/api/users/[id].ts
 import type { Request, Response } from 'express';
 import { HttpError } from 'express-file-cluster';
-import { User } from '../../models/User';
+import { User } from '../../model/User.js';
 
 export const GET = async (req: Request, res: Response) => {
   const user = await User.findById(req.params.id);
@@ -159,10 +159,10 @@ export const GET = async (req, res) => {
 
 ## How the scanner works internally
 
-`scanDir(apiDir)` in `packages/core/src/router/scan.ts`:
+`scanDir(dir)` in `packages/core/src/router/scan.ts`, called with the resolved `src/api/` path:
 
-1. Walks `apiDir` recursively with `fs.readdirSync`.
-2. For each file, converts the path relative to `apiDir` to a URL:
+1. Walks the directory recursively with `fs.readdirSync`.
+2. For each file, converts the path relative to `src/api/` to a URL:
    - Strips the extension.
    - Replaces `/index` with `''` (parent path).
    - Replaces `[param]` with `:param`.

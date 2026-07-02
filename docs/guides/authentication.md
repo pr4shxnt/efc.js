@@ -31,7 +31,7 @@ ignite({ authStrategy: 'localStorage' });
 // src/api/auth/login.ts
 import type { Request, Response } from 'express';
 import { issueToken } from 'express-file-cluster/auth';
-import { User } from '../../models/User';
+import { User } from '../../model/User.js';
 
 export const POST = async (req: Request, res: Response) => {
   const user = await User.findOne({ email: req.body.email });
@@ -89,7 +89,7 @@ export const GET = async (req, res) => {
 // src/api/auth/login.ts
 import type { Request, Response } from 'express';
 import { signToken } from 'express-file-cluster/auth';
-import { User } from '../../models/User';
+import { User } from '../../model/User.js';
 
 export const POST = async (req: Request, res: Response) => {
   const user = await User.findOne({ email: req.body.email });
@@ -141,7 +141,9 @@ await issueToken(res, {
 });
 ```
 
-Access them in protected handlers via `(req as any).user`:
+If you want route protection based on the `role` claim, pass role names to `requireAuth`: `requireAuth('admin')` verifies the token *and* checks `payload.role` is one of the given roles, returning `403 Forbidden` otherwise. See [RBAC](./rbac.md).
+
+Access custom claims in protected handlers via `(req as any).user`:
 
 ```ts
 export const GET = async (req, res) => {
@@ -163,7 +165,7 @@ JWT_EXPIRES_IN=7d    # default
 JWT_EXPIRES_IN=30d
 ```
 
-There is currently no refresh-token mechanism built into EFC. For long-lived sessions with short-lived tokens, implement a `/auth/refresh` route that issues a new token using the existing one as a credential.
+There is currently no refresh-token mechanism built into the framework itself. For long-lived sessions with short-lived tokens, implement a `/auth/refresh` route that issues a new token using the existing one as a credential — if you enabled **User portal** during scaffolding (with MongoDB), a working `POST /auth/refresh` route is already generated for you: it stores a rotating long-lived refresh token in the database and reads it from an `efc_refresh_token` cookie or the `refreshToken` body field (see [Generated Portals](./generated-portals.md)).
 
 ---
 

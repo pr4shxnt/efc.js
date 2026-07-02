@@ -96,7 +96,7 @@ await enqueue('SendEmail', {
 `enqueue` throws if:
 
 - **Task backend not initialised** — `tasks` was not configured in `ignite()`.
-- **Unknown task name** — no file with that basename exists in `tasksDir`.
+- **Unknown task name** — no file with that basename exists in `src/tasks/`.
 
 ---
 

@@ -130,6 +130,8 @@ onWorkerCrash: (id, code) => alerting.send(`Worker ${id} crashed with code ${cod
 
 Database engine to connect. When omitted, EFC attempts to detect the engine from the `DATABASE_URL` format (`mongodb://...` → `'mongodb'`, `postgres://...` → `'postgresql'`).
 
+> **`'postgresql'` is accepted by the type but not yet implemented in the runtime** (Phase 2+). Only `'mongodb'` (via Mongoose) works today.
+
 ---
 
 ### `databaseUrl`
@@ -168,6 +170,8 @@ interface TaskConfig {
   concurrency?: number; // Jobs processed in parallel per worker — default 5
 }
 ```
+
+> **`'pg-boss'` is accepted by the type but not yet implemented in the runtime** (Phase 2+). Only `'bullmq'` works today.
 
 ---
 

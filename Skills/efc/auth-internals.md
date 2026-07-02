@@ -70,6 +70,18 @@ No `res` argument. Token must be sent in the response body by the route handler.
 
 ## `requireAuth` — middleware internals
 
+`requireAuth` is dual-purpose, dispatched at runtime on the first argument:
+
+```ts
+// Bare — Express calls it as (req, res, next). First arg is an object → auth-only path.
+export const middlewares = [requireAuth];
+
+// Role-checked — called by user code with string args first, returns a new
+// RequestHandler that Express later invokes as (req, res, next).
+export const middlewares = [requireAuth('admin')];          // any of these roles
+export const middlewares = [requireAuth('user', 'admin')];  // multiple allowed
+```
+
 ```ts
 // Strategy 'http-only': reads req.cookies.efc_token
 // Strategy 'localStorage': reads Authorization header → strips 'Bearer '
@@ -77,11 +89,16 @@ No `res` argument. Token must be sent in the response body by the route handler.
 if (!token) → res.status(401).json({ error: 'Unauthorized' }); return
 
 const { payload } = await jwtVerify(token, new TextEncoder().encode(secret))
+
+// only when called with role names:
+if (roles.length > 0 && !roles.includes(payload.role)) →
+  res.status(403).json({ error: 'Forbidden' }); return
+
 (req as any).user = payload   // ← attaches to req.user
 next()
 ```
 
-On any error (expired, invalid signature, malformed): catches and returns `{ error: 'Unauthorized' }` with status 401. **Does NOT call next(err)** — it handles the 401 response itself and returns.
+On any auth error (expired, invalid signature, malformed, missing token): catches and returns `{ error: 'Unauthorized' }` with status 401. A role mismatch returns `{ error: 'Forbidden' }` with status 403 instead. **Does NOT call next(err)** in either case — it handles the response itself and returns.
 
 `req.user` is typed as `unknown` in the source. Cast to your payload type or use `(req as any).user`.
 
@@ -103,8 +120,7 @@ Format accepted by `jose`: `'15m'`, `'1h'`, `'7d'`, `'30d'`, integer seconds, et
 
 ## What auth does NOT do
 
-- No refresh tokens.
+- No refresh tokens in the framework itself (the scaffolder can generate an app-level `/auth/refresh` route backed by a DB-stored token — that's app code, not a core export).
 - No token blocklist / revocation list (revoking just clears the cookie — a stolen token remains valid until it expires).
-- No role check built-in to `requireAuth` — it only verifies the JWT. Role checks are in your own middleware.
 - No CSRF token — relies on `SameSite: Strict` for http-only strategy.
 - No multi-strategy per-route override — `authStrategy` is global, set once in `ignite()`.

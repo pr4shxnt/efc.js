@@ -75,7 +75,7 @@
     <section class="hero" id="hero">
       <div class="hero-glow"></div>
       <div class="container">
-        <div class="badge">v0.2.6</div>
+        <div class="badge">v0.2.11</div>
         <h1 class="hero-title">
           Express, but your folder<br />
           <span class="accent">is your router.</span>
@@ -249,8 +249,8 @@
             <h3>Same model, any database</h3>
             <p>
               <code>defineModel</code> gives you identical <code>.find()</code>,
-              <code>.create()</code>, <code>.delete()</code> calls whether you're on MongoDB or
-              PostgreSQL. The engine is an implementation detail.
+              <code>.create()</code>, <code>.delete()</code> calls on MongoDB today —
+              PostgreSQL is scaffoldable but the adapter itself lands in Phase 2.
             </p>
           </div>
           <div class="feature-card">
@@ -276,6 +276,79 @@
               something looks wrong.
             </p>
           </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M4 4h16v16H4z" />
+                <path d="m22 6-10 7L2 6" />
+              </svg>
+            </div>
+            <h3>Mailer, without the SMTP guesswork</h3>
+            <p>
+              Pick <strong>Gmail</strong> and the scaffolder preconfigures
+              <code>smtp.gmail.com</code> — no host or port to type. It walks you straight to
+              generating a 16-character <strong>App Password</strong> instead of your real one,
+              and wires a working <code>nodemailer</code> task on the other end.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </div>
+            <h3>Roles, generated not hand-rolled</h3>
+            <p>
+              Toggle <strong>RBAC</strong> at scaffold time and every protected route swaps in
+              <code>requireRole(...roles)</code> automatically, backed by a real <code>Role</code>
+              model — instead of an inline <code>if (user.role !== 'admin')</code> check.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                <polyline points="2 17 12 22 22 17" />
+                <polyline points="2 12 12 17 22 12" />
+              </svg>
+            </div>
+            <h3>A whole app, not a hello-world</h3>
+            <p>
+              Enable <strong>User</strong> and <strong>Admin portal</strong> and get 15+ models —
+              sessions, notifications, files, subscriptions, invoices, coupons, FAQs — and 80+
+              working routes to match. Not stubs: real auth, billing, and content endpoints.
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -290,6 +363,7 @@
             <button class="tab active" data-tab="routing">Routing</button>
             <button class="tab" data-tab="tasks">Tasks</button>
             <button class="tab" data-tab="auth">Auth</button>
+            <button class="tab" data-tab="mailer">Mailer</button>
             <button class="tab" data-tab="ignite">Bootstrap</button>
           </div>
           <div class="tab-content">
@@ -315,7 +389,7 @@
                     ><span class="code-bar-label">src/api/users/[id].ts</span>
                   </div>
                   <pre><span class="c-purple">import</span> <span class="c-dim">type</span> { Request, Response } <span class="c-purple">from</span> <span class="c-green">'express'</span>;
-<span class="c-purple">import</span> { User } <span class="c-purple">from</span> <span class="c-green">'../../models/User'</span>;
+<span class="c-purple">import</span> { User } <span class="c-purple">from</span> <span class="c-green">'../../model/User.js'</span>;
 <span class="c-purple">import</span> { HttpError } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster'</span>;
 
 <span class="c-purple">export const</span> <span class="c-blue">GET</span> = <span class="c-purple">async</span> (req: Request, res: Response) => {
@@ -343,9 +417,9 @@
                     <code>worker_threads</code> for CPU.
                   </p>
                   <ul class="check-list">
-                    <li>BullMQ (Redis) or pg-boss — you pick</li>
+                    <li>BullMQ (Redis) today — pg-boss is scaffoldable but not yet implemented</li>
                     <li>Automatic retries + exponential backoff</li>
-                    <li>Cron scheduling: set <code>schedule</code> in <code>defineTask</code></li>
+                    <li>Cron scheduling via <code>schedule</code> in <code>defineTask</code> (planned, not yet executed)</li>
                   </ul>
                 </div>
                 <div class="code-block-wrap">
@@ -412,6 +486,52 @@
               </div>
             </div>
 
+            <div class="tab-pane" id="tab-mailer">
+              <div class="tab-pane-inner">
+                <div class="tab-pane-text">
+                  <h3>Gmail, without the password mistake</h3>
+                  <p>
+                    Choose <strong>Gmail</strong> and the scaffolder skips host/port entirely —
+                    <code>smtp.gmail.com</code> is preconfigured. It then walks you to generating
+                    a 16-character <strong>App Password</strong> and rejects anything that isn't
+                    one, so you don't discover the hard way that Google blocks real passwords over
+                    SMTP.
+                  </p>
+                  <ul class="check-list">
+                    <li>Gmail or any custom SMTP provider — your choice</li>
+                    <li>App-password length validated at scaffold time</li>
+                    <li>Real <code>nodemailer</code> transport, not a stub</li>
+                  </ul>
+                </div>
+                <div class="code-block-wrap">
+                  <div class="code-bar">
+                    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span
+                    ><span class="code-bar-label">src/tasks/SendEmail.ts</span>
+                  </div>
+                  <pre><span class="c-purple">import</span> { defineTask } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster/tasks'</span>;
+<span class="c-purple">import</span> nodemailer <span class="c-purple">from</span> <span class="c-green">'nodemailer'</span>;
+
+<span class="c-dim">// .env — SMTP_PASS must be a 16-char Gmail App Password,
+// not your normal Gmail login password</span>
+<span class="c-purple">const</span> transporter = nodemailer.<span class="c-blue">createTransport</span>({
+  host: process.env.SMTP_HOST,
+  port: <span class="c-blue">Number</span>(process.env.SMTP_PORT ?? <span class="c-orange">587</span>),
+  secure: <span class="c-blue">Number</span>(process.env.SMTP_PORT) === <span class="c-orange">465</span>,
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+});
+
+<span class="c-purple">export default</span> <span class="c-blue">defineTask</span>(<span class="c-purple">async</span> (payload) => {
+  <span class="c-purple">await</span> transporter.<span class="c-blue">sendMail</span>({
+    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.body,
+  });
+});</pre>
+                </div>
+              </div>
+            </div>
+
             <div class="tab-pane" id="tab-ignite">
               <div class="tab-pane-inner">
                 <div class="tab-pane-text">
@@ -474,8 +594,14 @@
               <a href="#" class="docs-nav-link" data-doc="clustering">Clustering</a>
               <a href="#" class="docs-nav-link" data-doc="tasks">Background Tasks</a>
               <a href="#" class="docs-nav-link" data-doc="auth">Authentication</a>
+              <a href="#" class="docs-nav-link" data-doc="rbac">RBAC</a>
               <a href="#" class="docs-nav-link" data-doc="database">Database</a>
+              <a href="#" class="docs-nav-link" data-doc="mailer">Mailer</a>
               <a href="#" class="docs-nav-link" data-doc="dashboard">API Dashboard</a>
+            </div>
+            <div class="docs-nav-group">
+              <div class="docs-nav-label">Scaffolding</div>
+              <a href="#" class="docs-nav-link" data-doc="portals">Generated Portals</a>
             </div>
             <div class="docs-nav-group">
               <div class="docs-nav-label">Reference</div>
@@ -498,6 +624,68 @@
           <em>Change</em><span style="font-weight: 600">log</span>
         </h2>
         <div class="changelog-list">
+          <div class="changelog-item">
+            <div class="changelog-meta">
+              <div class="cl-version">express-file-cluster v0.2.11 / create-efc-app v0.3.7</div>
+              <div class="cl-date">Jul 2, 2026</div>
+              <div class="cl-tag">AUTH</div>
+            </div>
+            <div class="changelog-content">
+              <h3>Real Password Reset, Email Verification &amp; Refresh Tokens</h3>
+              <p>
+                <code>forgot-password</code>, <code>reset-password</code>, <code>verify-email</code>,
+                and <code>refresh</code> now ship with real MongoDB-backed logic instead of
+                <code>// TODO</code> stubs — token generation, expiry checks, and a rotating,
+                DB-stored refresh token — in both the example app and everything
+                <code>create-efc-app</code> scaffolds. <code>register</code> and <code>login</code>
+                were updated to issue the verification and refresh tokens these routes consume.
+              </p>
+              <p>
+                <code>requireAuth</code> also gained a role-check shorthand:
+                <code>requireAuth('admin')</code> now verifies the JWT <em>and</em> checks the role in
+                one call, replacing the old separate <code>requireRole</code> middleware pattern
+                everywhere — see <a href="#" onclick="document.querySelector('[data-doc=rbac]').click()">RBAC</a>.
+                When Mailer is also enabled, the reset/verification routes call
+                <code>enqueue('SendEmail', ...)</code> automatically.
+              </p>
+            </div>
+          </div>
+
+          <div class="changelog-item">
+            <div class="changelog-meta">
+              <div class="cl-version">create-efc-app v0.3.5</div>
+              <div class="cl-date">Jul 2, 2026</div>
+              <div class="cl-tag">MAILER</div>
+            </div>
+            <div class="changelog-content">
+              <h3>Gmail App-Password Wizard</h3>
+              <p>
+                The mailer setup no longer asks for a raw SMTP host/port. Pick <strong>Gmail</strong>
+                and <code>smtp.gmail.com</code> is preconfigured automatically — you're walked
+                straight to generating a 16-character App Password, and the wizard rejects
+                anything that isn't one. Picking <strong>Other</strong> still lets you enter a
+                custom SMTP host and port.
+              </p>
+            </div>
+          </div>
+
+          <div class="changelog-item">
+            <div class="changelog-meta">
+              <div class="cl-version">mcp v0.2.0</div>
+              <div class="cl-date">Jun 30, 2026</div>
+              <div class="cl-tag">TOOLING</div>
+            </div>
+            <div class="changelog-content">
+              <h3>efc-docs-mcp Server</h3>
+              <p>
+                Added a companion <a href="https://modelcontextprotocol.io" target="_blank">MCP</a>
+                server (<code>mcp/</code>) exposing this documentation as 10 resources, 12 tools,
+                and 6 prompts to MCP-compatible AI assistants — scaffold routes/tasks, resolve
+                file-to-URL mappings, and check known EFC gotchas without leaving your editor.
+              </p>
+            </div>
+          </div>
+
           <div class="changelog-item">
             <div class="changelog-meta">
               <div class="cl-version">v0.2.3</div>
