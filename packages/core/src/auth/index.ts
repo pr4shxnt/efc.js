@@ -1,4 +1,4 @@
-import type { RequestHandler, Response } from 'express';
+import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { SignJWT, jwtVerify } from 'jose';
 import type { AuthStrategy } from '../types.js';
 
@@ -49,7 +49,12 @@ export async function signToken(payload: Record<string, unknown>): Promise<strin
     .sign(encodedSecret);
 }
 
-export const requireAuth: RequestHandler = async (req, res, next) => {
+async function authenticate(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  roles: string[],
+): Promise<void> {
   const { secret, strategy } = getConfig();
 
   try {
@@ -72,9 +77,39 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
 
     const encodedSecret = new TextEncoder().encode(secret);
     const { payload } = await jwtVerify(token, encodedSecret);
+
+    if (roles.length > 0) {
+      const role = (payload as Record<string, unknown>)['role'];
+      if (typeof role !== 'string' || !roles.includes(role)) {
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+    }
+
     (req as typeof req & { user: unknown }).user = payload;
     next();
   } catch {
     res.status(401).json({ error: 'Unauthorized' });
   }
-};
+}
+
+/**
+ * Used bare (`middlewares = [requireAuth]`) it just verifies the JWT.
+ * Called with role names (`middlewares = [requireAuth('admin')]`) it
+ * returns a middleware that also enforces `payload.role` is one of them.
+ */
+export interface RequireAuth {
+  (req: Request, res: Response, next: NextFunction): void;
+  (...roles: string[]): RequestHandler;
+}
+
+export const requireAuth: RequireAuth = ((...args: unknown[]) => {
+  if (args.length > 0 && typeof args[0] === 'string') {
+    const roles = args as string[];
+    return (req: Request, res: Response, next: NextFunction) => {
+      void authenticate(req, res, next, roles);
+    };
+  }
+  const [req, res, next] = args as [Request, Response, NextFunction];
+  void authenticate(req, res, next, []);
+}) as RequireAuth;

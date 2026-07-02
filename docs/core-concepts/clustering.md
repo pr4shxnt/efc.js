@@ -37,11 +37,11 @@ Every worker runs these steps in order before accepting any connections:
 
 | Step | What happens |
 |---|---|
-| 1. Connect Database | Establishes this worker's own connection pool to MongoDB (or PostgreSQL). |
+| 1. Connect Database | Establishes this worker's own connection pool to MongoDB. (PostgreSQL is a selectable choice but not yet implemented in the runtime.) |
 | 2. Configure Auth | Wires the JWT secret, strategy, and cookie options into the auth module. |
-| 3. Scan tasks | Walks `tasksDir` and registers every `defineTask` export in the task registry. |
+| 3. Scan tasks | Walks `src/tasks/` and registers every `defineTask` export in the task registry. |
 | 4. Start task backend | Connects to Redis (BullMQ) and starts the queue worker with configured concurrency. |
-| 5. Scan routes | Walks `apiDir` and builds the `RouteEntry[]` array. |
+| 5. Scan routes | Walks `src/api/` and builds the `RouteEntry[]` array. |
 | 6. Mount routes | Dynamically imports each route module and registers handlers on Express. |
 | 7. Listen | Starts the HTTP server and logs `[EFC] Worker <id> listening on :<port>`. |
 
@@ -98,7 +98,7 @@ ignite({ cluster: false });  // single process — same as efc start dev
 ```ts
 import { ignite, gracefulShutdown } from 'express-file-cluster';
 
-ignite({ cluster: true, apiDir: '...' })
+ignite({ cluster: true })
   .then(gracefulShutdown);
 ```
 

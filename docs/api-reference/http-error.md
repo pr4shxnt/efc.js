@@ -37,7 +37,7 @@ new HttpError(statusCode: number, message: string)
 // src/api/users/[id].ts
 import type { Request, Response } from 'express';
 import { HttpError } from 'express-file-cluster';
-import { User } from '../../models/User';
+import { User } from '../../model/User.js';
 
 export const GET = async (req: Request, res: Response) => {
   const user = await User.findById(req.params.id);
