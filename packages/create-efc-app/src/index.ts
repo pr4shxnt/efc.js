@@ -78,24 +78,69 @@ async function main(): Promise<void> {
     taskBackend = backend as ScaffoldOptions['taskBackend'];
   }
 
+  let smtpProvider: ScaffoldOptions['smtpProvider'];
   let smtpHost: string | undefined;
   let smtpPort: string | undefined;
+  let smtpUser: string | undefined;
+  let smtpPass: string | undefined;
   if (selected.has('mailer')) {
-    const host = await p.text({
-      message: 'SMTP host:',
-      placeholder: 'smtp.gmail.com',
-      defaultValue: 'smtp.gmail.com',
+    const provider = await p.select({
+      message: 'Email provider:',
+      options: [
+        { value: 'gmail', label: 'Gmail', hint: 'smtp.gmail.com, preconfigured' },
+        { value: 'custom', label: 'Other (custom SMTP)', hint: "you'll provide host + port" },
+      ],
     });
-    if (p.isCancel(host)) cancel();
-    smtpHost = host as string;
+    if (p.isCancel(provider)) cancel();
+    smtpProvider = provider as ScaffoldOptions['smtpProvider'];
 
-    const port = await p.text({
-      message: 'SMTP port:',
-      placeholder: '587',
-      defaultValue: '587',
+    if (smtpProvider === 'custom') {
+      const host = await p.text({
+        message: 'SMTP host:',
+        placeholder: 'smtp.mailtrap.io',
+        validate: (v) => (!v.trim() ? 'SMTP host is required' : undefined),
+      });
+      if (p.isCancel(host)) cancel();
+      smtpHost = host as string;
+
+      const port = await p.text({
+        message: 'SMTP port:',
+        placeholder: '587',
+        defaultValue: '587',
+      });
+      if (p.isCancel(port)) cancel();
+      smtpPort = port as string;
+    }
+
+    const user = await p.text({
+      message: smtpProvider === 'gmail' ? 'Gmail address:' : 'SMTP username / email:',
+      placeholder: 'you@example.com',
+      validate: (v) => (!v.trim() ? 'Email is required' : undefined),
     });
-    if (p.isCancel(port)) cancel();
-    smtpPort = port as string;
+    if (p.isCancel(user)) cancel();
+    smtpUser = user as string;
+
+    if (smtpProvider === 'gmail') {
+      p.note(
+        'Google no longer accepts your regular account password for SMTP.\n' +
+          "Generate a 16-character App Password: Google Account -> Security -> 2-Step Verification -> App passwords.\n" +
+          "Enter it below without spaces (not your Gmail login password).",
+        'Gmail app password required',
+      );
+    }
+
+    const pass = await p.password({
+      message: smtpProvider === 'gmail' ? 'Gmail app password (16 characters):' : 'SMTP password:',
+      validate: (v) => {
+        if (!v.trim()) return 'Password is required';
+        if (smtpProvider === 'gmail' && v.replace(/\s/g, '').length !== 16) {
+          return 'Gmail app passwords are 16 characters — this looks like a regular password, not an app password';
+        }
+        return undefined;
+      },
+    });
+    if (p.isCancel(pass)) cancel();
+    smtpPass = (pass as string).replace(/\s/g, '');
   }
 
   const opts: ScaffoldOptions = {
@@ -110,9 +155,12 @@ async function main(): Promise<void> {
     adminPortal: selected.has('adminPortal'),
     rbac:        selected.has('rbac'),
     mailer:      selected.has('mailer'),
-    ...(taskBackend !== undefined && { taskBackend }),
-    ...(smtpHost   !== undefined && { smtpHost }),
-    ...(smtpPort   !== undefined && { smtpPort }),
+    ...(taskBackend   !== undefined && { taskBackend }),
+    ...(smtpProvider  !== undefined && { smtpProvider }),
+    ...(smtpHost      !== undefined && { smtpHost }),
+    ...(smtpPort      !== undefined && { smtpPort }),
+    ...(smtpUser      !== undefined && { smtpUser }),
+    ...(smtpPass      !== undefined && { smtpPass }),
   };
 
   const spinner = p.spinner();
