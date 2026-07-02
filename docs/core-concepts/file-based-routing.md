@@ -94,33 +94,44 @@ export const DELETE = async (req: Request, res: Response) => {
 
 ## Route metadata (`meta` export)
 
-A route file can export a `meta` object to provide documentation shown in the [dashboard](../api-reference/ignite.md#dashboard). All fields are optional.
+A route file can export a `meta` object to provide documentation shown in the [dashboard](../api-reference/ignite.md#dashboard). `meta` is keyed by HTTP method — each method implemented in the file gets its own description and request/response example, rendered as a separate documentation block. All fields are optional.
 
 ```ts
 // src/api/users/[id].ts
 export const meta = {
-  description: 'Fetch a user by ID.',
-  request: {
-    headers: { Authorization: 'Bearer <token>' },
-    params:  { id: 'usr_01HXZ' },
-    query:   { include: 'profile' },
-    body:    undefined,
-  },
-  response: {
-    status: 200,
-    body: {
-      id:        'usr_01HXZ',
-      name:      'Ada Lovelace',
-      createdAt: '2026-01-01T00:00:00.000Z',
+  GET: {
+    description: 'Fetch a user by ID.',
+    request: {
+      headers: { Authorization: 'Bearer <token>' },
+      params:  { id: 'usr_01HXZ' },
+      query:   { include: 'profile' },
     },
+    response: {
+      status: 200,
+      body: {
+        id:        'usr_01HXZ',
+        name:      'Ada Lovelace',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    },
+  },
+  DELETE: {
+    description: 'Delete a user by ID.',
+    request: {
+      headers: { Authorization: 'Bearer <token>' },
+      params:  { id: 'usr_01HXZ' },
+    },
+    response: { status: 204 },
   },
 };
 ```
 
-**`RouteMeta` interface:**
+**`RouteMeta` / `RouteMethodMeta` interfaces:**
 
 ```ts
-interface RouteMeta {
+type RouteMeta = Partial<Record<string, RouteMethodMeta>>;
+
+interface RouteMethodMeta {
   description?: string;
   request?: {
     headers?: Record<string, string>;
@@ -134,6 +145,8 @@ interface RouteMeta {
   };
 }
 ```
+
+Only add an entry for methods you want documented — a method with no key in `meta` simply shows an undocumented block in the dashboard.
 
 The dashboard renders `response.body` values as their **type names** (`String`, `Number`, `Boolean`, `Date`) rather than the literal values you provide. ISO 8601 date strings (e.g., `'2026-01-01T00:00:00.000Z'`) are automatically detected and shown as `Date`.
 

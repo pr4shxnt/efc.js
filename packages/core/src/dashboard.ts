@@ -227,8 +227,15 @@ export function generateDashboard(
       background: none; border: none; padding: 0;
       word-break: break-all;
     }
-    .endpoint-body { padding: 18px 24px 24px; }
+    .endpoint-body { padding: 6px 24px 24px; }
     .endpoint-desc { font-size: .9rem; color: var(--text-dim); line-height: 1.7; margin-bottom: 20px; }
+
+    /* ── PER-METHOD DOC BLOCKS ── */
+    .method-block { padding-top: 20px; }
+    .method-block + .method-block { margin-top: 4px; border-top: 1px solid var(--border); }
+    .method-block-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .method-block-header .method-badge { font-size: .68rem; }
+    .method-block-empty { font-size: .82rem; color: var(--text-muted); }
 
     /* ── CODE BLOCKS ── */
     .example-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -387,9 +394,8 @@ export function generateDashboard(
       '</div>';
     }
 
-    function buildRequestContent(route, example) {
+    function buildRequestContent(route, method, example) {
       const req = example || {};
-      const method = route.methods[0] || 'GET';
       let path = joinPath(BASE_PATH, route.urlPath);
       if (req.params) {
         for (const [k, v] of Object.entries(req.params)) {
@@ -428,33 +434,43 @@ export function generateDashboard(
       return lines;
     }
 
+    function renderMethodBlock(route, method) {
+      const methodMeta = route.meta ? route.meta[method] : null;
+      const header = '<div class="method-block-header">' + methodBadge(method) + '</div>';
+
+      if (!methodMeta) {
+        return '<div class="method-block" data-method="' + esc(method) + '">' + header +
+          '<p class="method-block-empty">No documentation provided for this method.</p></div>';
+      }
+
+      const desc = methodMeta.description
+        ? '<p class="endpoint-desc">' + esc(methodMeta.description) + '</p>'
+        : '';
+      const reqHtml = methodMeta.request !== undefined
+        ? codeBlock('request', buildRequestContent(route, method, methodMeta.request))
+        : '';
+      const respHtml = methodMeta.response !== undefined
+        ? codeBlock('response', buildResponseContent(methodMeta.response))
+        : '';
+      const examples = reqHtml || respHtml
+        ? '<div class="example-grid">' + reqHtml + respHtml + '</div>'
+        : '';
+
+      return '<div class="method-block" data-method="' + esc(method) + '">' + header + desc + examples + '</div>';
+    }
+
     function renderCard(route, index) {
       const id = 'ep-' + index;
       const fullPath = joinPath(BASE_PATH, route.urlPath);
       const badges = route.methods.map(methodBadge).join('');
-      const meta = route.meta;
-      const desc = meta && meta.description
-        ? '<p class="endpoint-desc">' + esc(meta.description) + '</p>'
-        : '';
-      let examples = '';
-      if (meta) {
-        const reqHtml = meta.request !== undefined
-          ? codeBlock('request', buildRequestContent(route, meta.request))
-          : '';
-        const respHtml = meta.response !== undefined
-          ? codeBlock('response', buildResponseContent(meta.response))
-          : '';
-        if (reqHtml || respHtml) {
-          examples = '<div class="example-grid">' + reqHtml + respHtml + '</div>';
-        }
-      }
+      const body = route.methods.map(function(m) { return renderMethodBlock(route, m); }).join('');
       const delay = (index * 0.06).toFixed(2) + 's';
       return '<div class="endpoint-card" id="' + id + '" data-methods="' + route.methods.join(',') + '" data-path="' + esc(fullPath) + '" style="animation-delay:' + delay + '">' +
         '<div class="endpoint-header">' +
           '<div class="method-badges">' + badges + '</div>' +
           '<code class="endpoint-path">' + esc(fullPath) + '</code>' +
         '</div>' +
-        '<div class="endpoint-body">' + desc + examples + '</div>' +
+        '<div class="endpoint-body">' + body + '</div>' +
       '</div>';
     }
 
