@@ -48,9 +48,8 @@ const DOCS = {
 │   ├── tasks/               <span class="c-dim"># background jobs (scanned non-recursively)</span>
 │   │   └── SendEmail.ts
 │   ├── model/               <span class="c-dim"># engine-agnostic models</span>
-│   │   └── User.ts
-│   ├── middleware/          <span class="c-dim"># scaffolded by the RBAC option</span>
-│   │   └── requireRole.ts
+│   │   ├── User.ts
+│   │   └── Role.ts          <span class="c-dim"># scaffolded by the RBAC option</span>
 │   └── index.ts             <span class="c-dim"># ignite() entry point</span>
 ├── efc.config.ts
 ├── .env                     <span class="c-dim"># gitignored — JWT_SECRET (+ SMTP_* if Mailer enabled) auto-filled</span>
@@ -296,20 +295,19 @@ const DOCS = {
     breadcrumb: 'Features / RBAC',
     html: `
 <h2>Role-Based Access Control</h2>
-<p>The framework itself has no role parameter — <code>requireAuth</code> only verifies the token. Toggle <strong>Role-based access control</strong> in the scaffolder to generate a reusable role-check middleware instead of hand-rolling one per project.</p>
-<h3>Generated middleware</h3>
-<pre><span class="c-dim">// src/middleware/requireRole.ts</span>
-<span class="c-purple">export function</span> <span class="c-blue">requireRole</span>(...roles: string[]) {
-  <span class="c-purple">return</span> (req, res, next) => {
-    <span class="c-purple">const</span> user = (req <span class="c-purple">as any</span>).user;
-    <span class="c-purple">if</span> (!user) <span class="c-purple">return</span> res.<span class="c-blue">status</span>(<span class="c-orange">401</span>).<span class="c-blue">json</span>({ error: <span class="c-green">'Unauthorized'</span> });
-    <span class="c-purple">if</span> (!roles.<span class="c-blue">includes</span>(user.role)) <span class="c-purple">return</span> res.<span class="c-blue">status</span>(<span class="c-orange">403</span>).<span class="c-blue">json</span>({ error: <span class="c-green">'Forbidden'</span> });
-    next();
-  };
-}</pre>
+<p>Role checks are built into <code>requireAuth</code> itself — call it with role names instead of reaching for a separate middleware. Toggle <strong>Role-based access control</strong> in the scaffolder to also generate a <code>Role</code> model and switch every protected route to this shorthand.</p>
+<h3><code>requireAuth(...roles)</code></h3>
+<pre><span class="c-purple">import</span> { requireAuth } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster/auth'</span>;
+
+<span class="c-dim">// bare — auth only</span>
+<span class="c-purple">export const</span> middlewares = [requireAuth];
+
+<span class="c-dim">// auth + role check — 403 if payload.role isn't one of these</span>
+<span class="c-purple">export const</span> middlewares = [<span class="c-blue">requireAuth</span>(<span class="c-green">'admin'</span>)];
+<span class="c-purple">export const</span> middlewares = [<span class="c-blue">requireAuth</span>(<span class="c-green">'user'</span>, <span class="c-green">'admin'</span>)];</pre>
 <h3>Applied automatically</h3>
-<p>Every protected route the scaffolder generates switches from <code>[requireAuth]</code> to:</p>
-<pre><span class="c-purple">export const</span> middlewares = [requireAuth, <span class="c-blue">requireRole</span>(<span class="c-green">'admin'</span>)];</pre>
+<p>Every protected route the scaffolder generates switches from an inline <code>user.role === 'admin'</code> guard to:</p>
+<pre><span class="c-purple">export const</span> middlewares = [<span class="c-blue">requireAuth</span>(<span class="c-green">'admin'</span>)];</pre>
 <p>Also generates a <code>Role</code> model, and — if <strong>Admin portal</strong> is also enabled — a full <code>/admin/roles</code> CRUD API.</p>
 `,
   },
@@ -381,6 +379,8 @@ const DOCS = {
   });
 });</pre>
 <p>Trigger it with <code>enqueue('SendEmail', payload)</code> from any route — see <a href="#" onclick="document.querySelector('[data-doc=tasks]').click()">Background Tasks</a>.</p>
+<h3>Wired into the auth flow automatically</h3>
+<p>With <strong>User portal</strong> + <strong>Mailer</strong> both on (MongoDB), <code>register</code>, <code>forgot-password</code>, and the <code>verify-email</code> resend endpoint call <code>enqueue('SendEmail', ...)</code> for you — no wiring required. Without Mailer, they still generate and store the token, just with a <code>// TODO</code> where the email send would go.</p>
 `,
   },
   dashboard: {
@@ -452,7 +452,7 @@ const DOCS = {
 <p><code>Admin</code>, <code>SupportTicket</code>, <code>AuditLog</code>, <code>Plan</code>, <code>FAQ</code>, <code>Blog</code>, <code>Category</code>, <code>Coupon</code></p>
 <h3>Admin portal — routes (35+)</h3>
 <p>Dashboard stats, user management (suspend/activate/verify/export CSV), analytics, admin management, notification broadcast, audit/activity/security logs, system health, support ticket triage, content management (FAQs, blog, categories), billing (plans, coupons, subscriptions) — plus a full <code>/admin/roles</code> CRUD API if <a href="#" onclick="document.querySelector('[data-doc=rbac]').click()">RBAC</a> is also enabled.</p>
-<p>Every protected route exports <code>middlewares = [requireAuth]</code>, or <code>[requireAuth, requireRole(...)]</code> if RBAC is on.</p>
+<p>Every protected route exports <code>middlewares = [requireAuth]</code>, or <code>[requireAuth('admin')]</code> if RBAC is on.</p>
 `,
   },
   cli: {
