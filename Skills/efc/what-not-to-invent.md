@@ -150,11 +150,14 @@ ignite({ database: 'postgresql', databaseUrl: process.env.DATABASE_URL })
 ## Auth features that do NOT exist
 
 ```ts
-// ❌ No built-in role-based access control
-requireAuth('admin')    // does NOT exist — requireAuth takes NO arguments
+// ✅ requireAuth('admin') DOES exist — it's an overload, not a separate function.
+// Bare `requireAuth` just verifies the JWT. Called with role names it returns a
+// middleware that also checks payload.role. Both forms use the same export.
 
-// ❌ No refresh token mechanism
-refreshToken()          // does NOT exist
+// ❌ No refresh token mechanism in the framework itself
+// (the create-efc-app scaffolder generates an app-level /auth/refresh route
+// that stores a rotating refresh token in the DB — that's app code, not core)
+refreshToken()          // does NOT exist as a core export
 
 // ❌ No token blocklist / invalidation list
 // revokeToken() only clears the cookie — the JWT remains cryptographically valid

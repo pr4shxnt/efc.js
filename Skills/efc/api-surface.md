@@ -152,8 +152,14 @@ function revokeToken(res: Response): void
 // Return token string (localStorage strategy)
 async function signToken(payload: Record<string, unknown>): Promise<string>
 
-// Express middleware — verifies JWT, attaches payload to req.user
-const requireAuth: RequestHandler
+// Express middleware — verifies JWT, attaches payload to req.user.
+// Dual-purpose: bare it's just auth; called with role names it returns a
+// middleware that also enforces payload.role (403 if it doesn't match).
+interface RequireAuth {
+  (req: Request, res: Response, next: NextFunction): void;
+  (...roles: string[]): RequestHandler;
+}
+const requireAuth: RequireAuth
 
 // Internal — called by ignite()
 function configureAuth(config: { secret: string; strategy: AuthStrategy; expiresIn: string; cookieDomain?: string }): void
