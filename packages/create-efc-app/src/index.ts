@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { spawn } from 'node:child_process';
-import { scaffold, type ScaffoldOptions } from './scaffold.js';
+import { scaffold, type ScaffoldOptions, type AdminFeatures, type UserFeatures, NO_ADMIN_FEATURES, NO_USER_FEATURES } from './scaffold.js';
 
 function cancel(msg = 'Cancelled'): never {
   p.cancel(msg);
@@ -64,6 +64,70 @@ async function main(): Promise<void> {
   if (p.isCancel(features)) cancel();
 
   const selected = new Set(features as string[]);
+
+  let userFeatures: UserFeatures = NO_USER_FEATURES;
+  if (selected.has('userPortal')) {
+    const chosen = await p.multiselect({
+      message: 'User portal features: (space to toggle, enter to confirm)',
+      options: [
+        { value: 'profileViewing',   label: 'Profile viewing & editing', hint: 'GET/PUT /user/profile' },
+        { value: 'forgotPassword',   label: 'Forgot / reset password',   hint: 'forgot-password, reset-password' },
+        { value: 'accountSecurity',  label: 'Change password, 2FA & sessions', hint: 'change-password, 2fa/*, sessions/*, token refresh' },
+        { value: 'emailVerification',label: 'Email verification',        hint: 'verify-email route + registration flow' },
+        { value: 'accountSettings',  label: 'Account settings',          hint: 'avatar, settings, account, dashboard, activity' },
+        { value: 'notifications',    label: 'Notifications',             hint: 'user/notifications' },
+        { value: 'filesAndMedia',    label: 'Files, favorites & bookmarks', hint: 'files, favorites, bookmarks, search' },
+        { value: 'apiAndBilling',    label: 'API keys & billing',        hint: 'api-keys, plans, subscription, invoices' },
+        { value: 'support',         label: 'Support tickets',           hint: 'create & view own tickets' },
+      ],
+      initialValues: ['profileViewing', 'forgotPassword', 'accountSecurity', 'emailVerification', 'accountSettings', 'notifications', 'filesAndMedia', 'apiAndBilling', 'support'],
+      required: false,
+    });
+    if (p.isCancel(chosen)) cancel();
+    const uSet = new Set(chosen as string[]);
+    userFeatures = {
+      profileViewing: uSet.has('profileViewing'),
+      forgotPassword: uSet.has('forgotPassword'),
+      accountSecurity: uSet.has('accountSecurity'),
+      emailVerification: uSet.has('emailVerification'),
+      accountSettings: uSet.has('accountSettings'),
+      notifications: uSet.has('notifications'),
+      filesAndMedia: uSet.has('filesAndMedia'),
+      apiAndBilling: uSet.has('apiAndBilling'),
+      support: uSet.has('support'),
+    };
+  }
+
+  let adminFeatures: AdminFeatures = NO_ADMIN_FEATURES;
+  if (selected.has('adminPortal')) {
+    const chosen = await p.multiselect({
+      message: 'Admin panel features: (space to toggle, enter to confirm)',
+      options: [
+        { value: 'userManagement',       label: 'User management', hint: 'list/create/suspend/verify/export users + dashboard stats' },
+        { value: 'adminManagement',      label: 'Admin & role management', hint: 'manage other admins' + (selected.has('rbac') ? ' + roles' : '') },
+        { value: 'analytics',            label: 'Analytics',       hint: 'users, revenue, traffic dashboards' },
+        { value: 'contentManagement',    label: 'Content management', hint: 'FAQs, blog posts, categories' },
+        { value: 'billingManagement',    label: 'Billing management', hint: 'plans, coupons, subscriptions' },
+        { value: 'supportManagement',    label: 'Support tickets', hint: 'view & respond to tickets' },
+        { value: 'notificationsAndLogs', label: 'Notifications & audit logs', hint: 'broadcast + audit/activity/security logs' },
+        { value: 'systemSettings',       label: 'System settings & health', hint: 'app settings, health check, cache' },
+      ],
+      initialValues: ['userManagement', 'adminManagement', 'analytics', 'contentManagement', 'billingManagement', 'supportManagement', 'notificationsAndLogs', 'systemSettings'],
+      required: false,
+    });
+    if (p.isCancel(chosen)) cancel();
+    const aSet = new Set(chosen as string[]);
+    adminFeatures = {
+      userManagement: aSet.has('userManagement'),
+      adminManagement: aSet.has('adminManagement'),
+      analytics: aSet.has('analytics'),
+      contentManagement: aSet.has('contentManagement'),
+      billingManagement: aSet.has('billingManagement'),
+      supportManagement: aSet.has('supportManagement'),
+      notificationsAndLogs: aSet.has('notificationsAndLogs'),
+      systemSettings: aSet.has('systemSettings'),
+    };
+  }
 
   let taskBackend: ScaffoldOptions['taskBackend'];
   if (selected.has('tasks')) {
@@ -153,6 +217,8 @@ async function main(): Promise<void> {
     routeDocs:   selected.has('routeDocs'),
     userPortal:  selected.has('userPortal'),
     adminPortal: selected.has('adminPortal'),
+    userFeatures,
+    adminFeatures,
     rbac:        selected.has('rbac'),
     mailer:      selected.has('mailer'),
     ...(taskBackend   !== undefined && { taskBackend }),
