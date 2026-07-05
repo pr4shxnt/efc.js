@@ -2,6 +2,52 @@ import fs from 'fs-extra';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+export interface AdminFeatures {
+  userManagement: boolean;
+  adminManagement: boolean;
+  analytics: boolean;
+  contentManagement: boolean;
+  billingManagement: boolean;
+  supportManagement: boolean;
+  notificationsAndLogs: boolean;
+  systemSettings: boolean;
+}
+
+export interface UserFeatures {
+  profileViewing: boolean;
+  forgotPassword: boolean;
+  accountSecurity: boolean;
+  emailVerification: boolean;
+  accountSettings: boolean;
+  notifications: boolean;
+  filesAndMedia: boolean;
+  apiAndBilling: boolean;
+  support: boolean;
+}
+
+export const NO_ADMIN_FEATURES: AdminFeatures = {
+  userManagement: false,
+  adminManagement: false,
+  analytics: false,
+  contentManagement: false,
+  billingManagement: false,
+  supportManagement: false,
+  notificationsAndLogs: false,
+  systemSettings: false,
+};
+
+export const NO_USER_FEATURES: UserFeatures = {
+  profileViewing: false,
+  forgotPassword: false,
+  accountSecurity: false,
+  emailVerification: false,
+  accountSettings: false,
+  notifications: false,
+  filesAndMedia: false,
+  apiAndBilling: false,
+  support: false,
+};
+
 export interface ScaffoldOptions {
   projectName: string;
   language: 'typescript' | 'javascript';
@@ -13,6 +59,8 @@ export interface ScaffoldOptions {
   routeDocs: boolean;
   userPortal: boolean;
   adminPortal: boolean;
+  adminFeatures: AdminFeatures;
+  userFeatures: UserFeatures;
   rbac: boolean;
   mailer: boolean;
   smtpProvider?: 'gmail' | 'custom';
@@ -26,6 +74,12 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   const dest = path.resolve(process.cwd(), opts.projectName);
   await fs.ensureDir(dest);
 
+  const uf = opts.userFeatures;
+  const af = opts.adminFeatures;
+  // Admin "user management" operates on the User collection even when there's
+  // no separate self-service user portal, so the model must exist for it too.
+  const needsUserModel = opts.userPortal || (opts.adminPortal && af.userManagement);
+
   await writePackageJson(dest, opts);
   await writeTsConfig(dest, opts);
   await writeEfcConfig(dest, opts);
@@ -33,32 +87,32 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   await writeGitignore(dest);
   await writeEnvFiles(dest, opts);
   await writeExampleRoute(dest, opts);
-  if (opts.userPortal) await writeUserModel(dest, opts);
+  if (needsUserModel) await writeUserModel(dest, opts);
   if (opts.adminPortal) await writeAdminModel(dest, opts);
   await writeAuthRoutes(dest, opts);
   if (opts.adminPortal) await writeAdminRoutes(dest, opts);
-  if (opts.userPortal) await writeUserRoutes(dest, opts);
+  if (opts.userPortal && uf.profileViewing) await writeUserRoutes(dest, opts);
   if (opts.tasks) await writeExampleTask(dest, opts);
-  // Extended models
-  if (opts.userPortal) await writeSessionModel(dest, opts);
-  if (opts.userPortal) await writeNotificationModel(dest, opts);
-  if (opts.userPortal) await writeFileModel(dest, opts);
-  if (opts.userPortal || opts.adminPortal) await writeSupportTicketModel(dest, opts);
-  if (opts.adminPortal) await writeAuditLogModel(dest, opts);
-  if (opts.userPortal) await writeSubscriptionModel(dest, opts);
-  if (opts.adminPortal) await writePlanModel(dest, opts);
-  if (opts.userPortal) await writeInvoiceModel(dest, opts);
-  if (opts.userPortal) await writeApiKeyModel(dest, opts);
-  if (opts.rbac) await writeRoleModel(dest, opts);
-  if (opts.adminPortal) await writeFAQModel(dest, opts);
-  if (opts.adminPortal) await writeBlogModel(dest, opts);
-  if (opts.adminPortal) await writeCategoryModel(dest, opts);
-  if (opts.adminPortal) await writeCouponModel(dest, opts);
-  // Extended routes
+  // Extended models — only generated when a feature that uses them is selected
+  if (opts.userPortal && uf.accountSecurity) await writeSessionModel(dest, opts);
+  if ((opts.userPortal && uf.notifications) || (opts.adminPortal && af.notificationsAndLogs)) await writeNotificationModel(dest, opts);
+  if (opts.userPortal && uf.filesAndMedia) await writeFileModel(dest, opts);
+  if ((opts.userPortal && uf.support) || (opts.adminPortal && af.supportManagement)) await writeSupportTicketModel(dest, opts);
+  if (opts.adminPortal && af.notificationsAndLogs) await writeAuditLogModel(dest, opts);
+  if (opts.userPortal && uf.apiAndBilling) await writeSubscriptionModel(dest, opts);
+  if (opts.adminPortal && af.billingManagement) await writePlanModel(dest, opts);
+  if (opts.userPortal && uf.apiAndBilling) await writeInvoiceModel(dest, opts);
+  if (opts.userPortal && uf.apiAndBilling) await writeApiKeyModel(dest, opts);
+  if (opts.rbac && opts.adminPortal && af.adminManagement) await writeRoleModel(dest, opts);
+  if (opts.adminPortal && af.contentManagement) await writeFAQModel(dest, opts);
+  if (opts.adminPortal && af.contentManagement) await writeBlogModel(dest, opts);
+  if (opts.adminPortal && af.contentManagement) await writeCategoryModel(dest, opts);
+  if (opts.adminPortal && af.billingManagement) await writeCouponModel(dest, opts);
+  // Extended routes — gated by the same per-feature flags as their models
   if (opts.userPortal) await writeAuthExtendedRoutes(dest, opts);
   if (opts.userPortal) await writeUserExtendedRoutes(dest, opts);
-  if (opts.userPortal) await writeUserBillingRoutes(dest, opts);
-  if (opts.userPortal) await writeSupportRoutes(dest, opts);
+  if (opts.userPortal && uf.apiAndBilling) await writeUserBillingRoutes(dest, opts);
+  if (opts.userPortal && uf.support) await writeSupportRoutes(dest, opts);
   if (opts.adminPortal) await writeAdminExtendedRoutes(dest, opts);
 }
 
@@ -458,13 +512,54 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
       : `export const meta = {\n  POST: {\n    description: 'Authenticate a user or admin and issue a JWT.',\n    request: { body: { email: 'user@example.com', password: 'user' } },\n    response: { status: 200, body: { message: 'Logged in as user' } },\n  },\n};\n\n`
     : '';
 
-  const loginDbImports = opts.database === 'mongodb'
-    ? ts
-      ? `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\nimport { User } from '../../model/User.js';\nimport { Admin } from '../../model/Admin.js';\n`
-      : `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\nimport { User } from '../../model/User.js';\nimport { Admin } from '../../model/Admin.js';\n`
+  // Only reference the models for the portals actually being generated —
+  // referencing both unconditionally broke builds when only one portal was selected.
+  const hasUser = opts.userPortal;
+  const hasAdmin = opts.adminPortal;
+  const mongo = opts.database === 'mongodb' && (hasUser || hasAdmin);
+
+  const loginDbImports = mongo
+    ? `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\n${hasUser ? `import { User } from '../../model/User.js';\n` : ''}${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`
     : '';
 
-  const loginContent = opts.database === 'mongodb'
+  const loginBody = hasAdmin && hasUser
+    ? `  const admin = await Admin.findOne({ email });
+  if (admin) {
+    const match = await bcrypt.compare(password, admin.password);
+    if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
+    await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
+    await issueRefreshToken(res, Admin, admin.id);
+    return res.json({ message: 'Logged in as admin' });
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
+  await issueToken(res, { id: user.id, role: user.role, email: user.email });
+  await issueRefreshToken(res, User, user.id);
+  res.json({ message: 'Logged in' });`
+    : hasAdmin
+      ? `  const admin = await Admin.findOne({ email });
+  if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
+  const match = await bcrypt.compare(password, admin.password);
+  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
+  await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
+  await issueRefreshToken(res, Admin, admin.id);
+  res.json({ message: 'Logged in as admin' });`
+      : `  const user = await User.findOne({ email });
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
+  await issueToken(res, { id: user.id, role: user.role, email: user.email });
+  await issueRefreshToken(res, User, user.id);
+  res.json({ message: 'Logged in' });`;
+
+  const loginContent = mongo
     ? ts
       ? `import { issueToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
@@ -489,24 +584,7 @@ export const POST = async (req: Request, res: Response) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
-  const admin = await Admin.findOne({ email });
-  if (admin) {
-    const match = await bcrypt.compare(password, admin.password);
-    if (!match) return res.status(401).json({ error: 'Invalid credentials' });
-    if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
-    await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
-    await issueRefreshToken(res, Admin, admin.id);
-    return res.json({ message: 'Logged in as admin' });
-  }
-
-  const user = await User.findOne({ email });
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
-  if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
-  await issueToken(res, { id: user.id, role: user.role, email: user.email });
-  await issueRefreshToken(res, User, user.id);
-  res.json({ message: 'Logged in' });
+${loginBody}
 };
 `
       : `import { issueToken } from 'express-file-cluster/auth';
@@ -527,24 +605,7 @@ export const POST = async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
-  const admin = await Admin.findOne({ email });
-  if (admin) {
-    const match = await bcrypt.compare(password, admin.password);
-    if (!match) return res.status(401).json({ error: 'Invalid credentials' });
-    if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
-    await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
-    await issueRefreshToken(res, Admin, admin.id);
-    return res.json({ message: 'Logged in as admin' });
-  }
-
-  const user = await User.findOne({ email });
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
-  if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
-  await issueToken(res, { id: user.id, role: user.role, email: user.email });
-  await issueRefreshToken(res, User, user.id);
-  res.json({ message: 'Logged in' });
+${loginBody}
 };
 `
     : ts
@@ -713,11 +774,14 @@ async function writeAdminRoutes(dest: string, opts: ScaffoldOptions): Promise<vo
       : `export const meta = {\n  GET: {\n    description: 'Admin dashboard stats. Requires admin role.',\n    response: { status: 200, body: { stats: { totalUsers: 120, activeUsers: 98, verifiedUsers: 84 } } },\n  },\n};\n\n`
     : '';
 
-  const dashboardDbImport = opts.database === 'mongodb'
+  // Real stats need the User model, which only exists when userManagement is on.
+  const dashboardHasUserModel = opts.database === 'mongodb' && opts.adminFeatures.userManagement;
+
+  const dashboardDbImport = dashboardHasUserModel
     ? `import { User } from '../../model/User.js';\n`
     : '';
 
-  const dashboardContent = opts.database === 'mongodb'
+  const dashboardContent = dashboardHasUserModel
     ? ts
       ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
@@ -760,6 +824,8 @@ ${roleGuard}  // TODO: aggregate stats from DB
 `;
 
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', `dashboard.${ext}`), dashboardContent);
+
+  if (!opts.adminFeatures.userManagement) return;
 
   // Admin user management routes
   const usersListMeta = opts.routeDocs
@@ -1902,10 +1968,11 @@ async function writeAuthExtendedRoutes(dest: string, opts: ScaffoldOptions): Pro
     ? `export const middlewares = [requireAuth('user', 'admin')];\n`
     : `export const middlewares = [requireAuth];\n`;
   const mwUser3 = mwUser2;
-  const reqT = ts ? `import type { Request, Response } from 'express';\n` : '';
   const RA = `import { requireAuth } from 'express-file-cluster/auth';\n`;
 
   const mongo = opts.database === 'mongodb';
+  const hasAdmin = opts.adminPortal;
+  const uf = opts.userFeatures;
   const sendResetEmail = opts.mailer
     ? `    var appUrl = process.env.APP_URL || 'http://localhost:3000';
     await enqueue('SendEmail', {
@@ -1929,25 +1996,33 @@ async function writeAuthExtendedRoutes(dest: string, opts: ScaffoldOptions): Pro
   const mailerTaskImport = opts.mailer ? `import { enqueue } from 'express-file-cluster/tasks';\n` : '';
 
   // refresh.ts
+  if (uf.accountSecurity) {
   const refreshMeta = mkMeta(opts, {
     POST: { description: 'Refresh the JWT using the refresh-token cookie and issue a new access token.', response: `{ message: 'Token refreshed' }` },
   });
+  const refreshModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
+  const refreshLookup = hasAdmin
+    ? `  const user = await User.findOne({ refreshToken: token });
+  const admin = user ? null : await Admin.findOne({ refreshToken: token });
+  const account = user || admin;`
+    : `  const user = await User.findOne({ refreshToken: token });
+  const account = user;`;
+  const refreshPersist = hasAdmin
+    ? `  if (user) await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });
+  else if (admin) await Admin.update(admin.id, { refreshToken: newRefreshToken, refreshTokenExpiry });`
+    : `  await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });`;
   const refreshContent = mongo
     ? ts
       ? `import { issueToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
-import { User } from '../../model/User.js';
-import { Admin } from '../../model/Admin.js';
-${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export const POST = async (req: Request, res: Response) => {
   const token = req.cookies?.['efc_refresh_token'] || req.body?.refreshToken;
   if (!token) return res.status(401).json({ error: 'Refresh token required' });
 
-  const user = await User.findOne({ refreshToken: token });
-  const admin = user ? null : await Admin.findOne({ refreshToken: token });
-  const account = user || admin;
+${refreshLookup}
 
   if (!account || !account.refreshTokenExpiry || new Date(account.refreshTokenExpiry) < new Date()) {
     return res.status(401).json({ error: 'Invalid or expired refresh token' });
@@ -1955,8 +2030,7 @@ export const POST = async (req: Request, res: Response) => {
 
   const newRefreshToken = crypto.randomBytes(40).toString('hex');
   const refreshTokenExpiry = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
-  if (user) await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });
-  else if (admin) await Admin.update(admin.id, { refreshToken: newRefreshToken, refreshTokenExpiry });
+${refreshPersist}
 
   res.cookie('efc_refresh_token', newRefreshToken, {
     httpOnly: true,
@@ -1971,17 +2045,13 @@ export const POST = async (req: Request, res: Response) => {
 `
       : `import { issueToken } from 'express-file-cluster/auth';
 import crypto from 'node:crypto';
-import { User } from '../../model/User.js';
-import { Admin } from '../../model/Admin.js';
-${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export const POST = async (req, res) => {
   const token = req.cookies?.efc_refresh_token || req.body?.refreshToken;
   if (!token) return res.status(401).json({ error: 'Refresh token required' });
 
-  const user = await User.findOne({ refreshToken: token });
-  const admin = user ? null : await Admin.findOne({ refreshToken: token });
-  const account = user || admin;
+${refreshLookup}
 
   if (!account || !account.refreshTokenExpiry || new Date(account.refreshTokenExpiry) < new Date()) {
     return res.status(401).json({ error: 'Invalid or expired refresh token' });
@@ -1989,8 +2059,7 @@ export const POST = async (req, res) => {
 
   const newRefreshToken = crypto.randomBytes(40).toString('hex');
   const refreshTokenExpiry = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
-  if (user) await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });
-  else if (admin) await Admin.update(admin.id, { refreshToken: newRefreshToken, refreshTokenExpiry });
+${refreshPersist}
 
   res.cookie('efc_refresh_token', newRefreshToken, {
     httpOnly: true,
@@ -2016,8 +2085,10 @@ ${refreshMeta}export const POST = async (_req: Request, res: Response) => {
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `refresh.${ext}`), refreshContent);
+  }
 
   // verify-email.ts
+  if (uf.emailVerification) {
   const veMeta = mkMeta(opts, {
     GET: { description: 'Verify an email address using the token from the verification link.', query: `{ token: 'a1b2c3d4' }`, response: `{ message: 'Email verified' }` },
     POST: { description: 'Resend the verification email to a given address.', request: `{ email: 'user@example.com' }`, response: `{ message: 'Verification email sent' }` },
@@ -2102,57 +2173,61 @@ export const POST = async (_req, res) => {
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `verify-email.${ext}`), veContent);
+  }
 
-  // forgot-password.ts
+  // forgot-password.ts / reset-password.ts
+  if (uf.forgotPassword) {
   const fpMeta = mkMeta(opts, {
     POST: { description: 'Send a password reset email to the given address.', request: `{ email: 'user@example.com' }`, response: `{ message: 'Reset email sent' }` },
   });
+  const fpModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
+  const fpLookup = hasAdmin
+    ? `  const user = await User.findOne({ email });
+  const admin = user ? null : await Admin.findOne({ email });`
+    : `  const user = await User.findOne({ email });`;
+  const fpGuard = hasAdmin ? 'user || admin' : 'user';
+  const fpPersist = hasAdmin
+    ? `    if (user) await User.update(user.id, { resetToken, resetTokenExpiry });
+    else if (admin) await Admin.update(admin.id, { resetToken, resetTokenExpiry });`
+    : `    await User.update(user.id, { resetToken, resetTokenExpiry });`;
   const fpContent = mongo
     ? ts
       ? `import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
-${mailerTaskImport}import { User } from '../../model/User.js';
-import { Admin } from '../../model/Admin.js';
-${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
+${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
 export const POST = async (req: Request, res: Response) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email is required' });
 
-  const user = await User.findOne({ email });
-  const admin = user ? null : await Admin.findOne({ email });
+${fpLookup}
 
   // Always respond the same way whether or not the account exists, so this
   // endpoint can't be used to enumerate registered emails.
-  if (user || admin) {
+  if (${fpGuard}) {
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenExpiry = new Date(Date.now() + RESET_TOKEN_TTL_MS);
-    if (user) await User.update(user.id, { resetToken, resetTokenExpiry });
-    else if (admin) await Admin.update(admin.id, { resetToken, resetTokenExpiry });
+${fpPersist}
 ${sendResetEmail}  }
 
   res.json({ message: 'Reset email sent' });
 };
 `
       : `import crypto from 'node:crypto';
-${mailerTaskImport}import { User } from '../../model/User.js';
-import { Admin } from '../../model/Admin.js';
-${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
+${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
 export const POST = async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email is required' });
 
-  const user = await User.findOne({ email });
-  const admin = user ? null : await Admin.findOne({ email });
+${fpLookup}
 
   // Always respond the same way whether or not the account exists, so this
   // endpoint can't be used to enumerate registered emails.
-  if (user || admin) {
+  if (${fpGuard}) {
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenExpiry = new Date(Date.now() + RESET_TOKEN_TTL_MS);
-    if (user) await User.update(user.id, { resetToken, resetTokenExpiry });
-    else if (admin) await Admin.update(admin.id, { resetToken, resetTokenExpiry });
+${fpPersist}
 ${sendResetEmail}  }
 
   res.json({ message: 'Reset email sent' });
@@ -2180,49 +2255,50 @@ ${fpMeta}export const POST = async (req: Request, res: Response) => {
   const rpMeta = mkMeta(opts, {
     POST: { description: 'Reset password using a valid reset token.', request: `{ token: 'reset-token', password: 'newpassword' }`, response: `{ message: 'Password reset successfully' }` },
   });
+  const rpModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
+  const rpLookup = hasAdmin
+    ? `  const user = await User.findOne({ resetToken: token });
+  const admin = user ? null : await Admin.findOne({ resetToken: token });
+  const account = user || admin;`
+    : `  const user = await User.findOne({ resetToken: token });
+  const account = user;`;
+  const rpPersist = hasAdmin
+    ? `  if (user) await User.update(user.id, { password: hashed, resetToken: '' });
+  else if (admin) await Admin.update(admin.id, { password: hashed, resetToken: '' });`
+    : `  await User.update(user.id, { password: hashed, resetToken: '' });`;
   const rpContent = mongo
     ? ts
       ? `import type { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
-import { User } from '../../model/User.js';
-import { Admin } from '../../model/Admin.js';
-${rpMeta}export const POST = async (req: Request, res: Response) => {
+${rpModelImports}${rpMeta}export const POST = async (req: Request, res: Response) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
 
-  const user = await User.findOne({ resetToken: token });
-  const admin = user ? null : await Admin.findOne({ resetToken: token });
-  const account = user || admin;
+${rpLookup}
 
   if (!account || !account.resetTokenExpiry || new Date(account.resetTokenExpiry) < new Date()) {
     return res.status(400).json({ error: 'Invalid or expired reset token' });
   }
 
   const hashed = await bcrypt.hash(password, 10);
-  if (user) await User.update(user.id, { password: hashed, resetToken: '' });
-  else if (admin) await Admin.update(admin.id, { password: hashed, resetToken: '' });
+${rpPersist}
 
   res.json({ message: 'Password reset successfully' });
 };
 `
       : `import bcrypt from 'bcrypt';
-import { User } from '../../model/User.js';
-import { Admin } from '../../model/Admin.js';
-${rpMeta}export const POST = async (req, res) => {
+${rpModelImports}${rpMeta}export const POST = async (req, res) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
 
-  const user = await User.findOne({ resetToken: token });
-  const admin = user ? null : await Admin.findOne({ resetToken: token });
-  const account = user || admin;
+${rpLookup}
 
   if (!account || !account.resetTokenExpiry || new Date(account.resetTokenExpiry) < new Date()) {
     return res.status(400).json({ error: 'Invalid or expired reset token' });
   }
 
   const hashed = await bcrypt.hash(password, 10);
-  if (user) await User.update(user.id, { password: hashed, resetToken: '' });
-  else if (admin) await Admin.update(admin.id, { password: hashed, resetToken: '' });
+${rpPersist}
 
   res.json({ message: 'Password reset successfully' });
 };
@@ -2244,8 +2320,10 @@ ${rpMeta}export const POST = async (req: Request, res: Response) => {
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `reset-password.${ext}`), rpContent);
+  }
 
   // change-password.ts (protected)
+  if (uf.accountSecurity) {
   const cpMeta = mkMeta(opts, {
     POST: { description: 'Change password for the authenticated user.', request: `{ oldPassword: 'current', newPassword: 'newpassword' }`, response: `{ message: 'Password changed successfully' }` },
   });
@@ -2391,6 +2469,7 @@ export const DELETE = async (req, res) => {
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'auth', 'sessions', `[id].${ext}`), sessRevokeContent);
+  }
 }
 
 async function writeUserExtendedRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
@@ -3156,8 +3235,10 @@ async function writeAdminExtendedRoutes(dest: string, opts: ScaffoldOptions): Pr
       ? `  const user = (req as any).user;\n  if (user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });\n`
       : `  const user = req.user;\n  if (user?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });\n`;
   const RA = `import { requireAuth } from 'express-file-cluster/auth';\n`;
+  const af = opts.adminFeatures;
 
   // ── Analytics ──────────────────────────────────────────────────────────
+  if (af.analytics) {
 
   // admin/analytics/index.ts
   const analyticsOverviewMeta = mkMeta(opts, {
@@ -3241,8 +3322,10 @@ ${roleGuard}  const { period = '30d' } = req.query;
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'analytics', `traffic.${ext}`), analyticsTrafficContent);
+  }
 
   // ── User Actions ──────────────────────────────────────────────────────
+  if (af.userManagement) {
 
   // admin/users/[id]/suspend.ts
   const suspendMeta = mkMeta(opts, {
@@ -3335,8 +3418,10 @@ ${roleGuard}  // TODO: generate CSV of all users and stream response
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', `export.${ext}`), exportContent);
+  }
 
   // ── Admins ────────────────────────────────────────────────────────────
+  if (af.adminManagement) {
 
   // admin/admins/index.ts
   const adminsListMeta = mkMeta(opts, {
@@ -3505,8 +3590,10 @@ export const DELETE = async (req, res) => {
 `;
     await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'roles', `[id].${ext}`), roleByIdContent);
   }
+  }
 
   // ── Notifications ─────────────────────────────────────────────────────
+  if (af.notificationsAndLogs) {
 
   // admin/notifications/index.ts
   const adminNotifMeta = mkMeta(opts, {
@@ -3594,8 +3681,10 @@ ${roleGuard}  const { page = 1, limit = 50 } = req.query;
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'logs', `audit.${ext}`), mkLogContent('audit'));
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'logs', `activity.${ext}`), mkLogContent('activity'));
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'logs', `security.${ext}`), mkLogContent('security'));
+  }
 
   // ── Settings & System ─────────────────────────────────────────────────
+  if (af.systemSettings) {
 
   // admin/settings/index.ts
   const settingsMeta = mkMeta(opts, {
@@ -3667,8 +3756,10 @@ ${roleGuard}  // TODO: flush Redis or in-memory cache
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'system', `cache.${ext}`), cacheContent);
+  }
 
   // ── Support Tickets (admin view) ──────────────────────────────────────
+  if (af.supportManagement) {
 
   // admin/tickets/index.ts
   const adminTicketsListMeta = mkMeta(opts, {
@@ -3728,9 +3819,9 @@ ${roleGuard}  const { id } = req.params;
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'tickets', `[id].${ext}`), adminTicketByIdContent);
+  }
 
-  // ── Content ───────────────────────────────────────────────────────────
-
+  // Shared by Content (FAQs/blogs/categories) and Billing (plans/coupons) below.
   const mkContentCrud = (
     name: string,
     namePlural: string,
@@ -3821,6 +3912,8 @@ ${roleGuard}  const { id } = req.params;
     return { listContent, byIdContent };
   };
 
+  // ── Content ───────────────────────────────────────────────────────────
+  if (af.contentManagement) {
   const { listContent: faqList, byIdContent: faqById } = mkContentCrud('FAQ', 'faqs', [], 'question, answer, category');
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'faqs', `index.${ext}`), faqList);
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'faqs', `[id].${ext}`), faqById);
@@ -3832,9 +3925,10 @@ ${roleGuard}  const { id } = req.params;
   const { listContent: catList, byIdContent: catById } = mkContentCrud('Category', 'categories', [], 'name, slug');
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'categories', `index.${ext}`), catList);
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'categories', `[id].${ext}`), catById);
+  }
 
   // ── Billing (admin) ───────────────────────────────────────────────────
-
+  if (af.billingManagement) {
   const { listContent: planList, byIdContent: planById } = mkContentCrud('Plan', 'plans', [], 'name, price, interval');
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'billing', 'plans', `index.${ext}`), planList);
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'billing', 'plans', `[id].${ext}`), planById);
@@ -3864,4 +3958,5 @@ ${roleGuard}  const { status, page = 1, limit = 20 } = req.query;
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'billing', 'subscriptions', `index.${ext}`), adminSubsContent);
+  }
 }

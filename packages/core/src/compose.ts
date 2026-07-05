@@ -2,7 +2,7 @@ import type { RequestHandler } from 'express';
 
 export function compose(...handlers: RequestHandler[]): RequestHandler {
   return (req, res, next) => {
-    let index = 0;
+    const index = 0;
 
     function dispatch(i: number): void {
       if (i >= handlers.length) {

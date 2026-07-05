@@ -1,4 +1,4 @@
-import http from 'node:http';
+import type http from 'node:http';
 import fs from 'node:fs';
 import express from 'express';
 import cors from 'cors';
@@ -11,7 +11,7 @@ import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
 import { runMaster, shutdownMaster } from './cluster/index.js';
 import { configureAuth } from './auth/index.js';
-import { HttpError } from './errors.js';
+import type { HttpError } from './errors.js';
 import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
 import { scanTasks } from './tasks/scanner.js';
