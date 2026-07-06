@@ -95,9 +95,11 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   if (opts.tasks) await writeExampleTask(dest, opts);
   // Extended models — only generated when a feature that uses them is selected
   if (opts.userPortal && uf.accountSecurity) await writeSessionModel(dest, opts);
-  if ((opts.userPortal && uf.notifications) || (opts.adminPortal && af.notificationsAndLogs)) await writeNotificationModel(dest, opts);
+  if ((opts.userPortal && uf.notifications) || (opts.adminPortal && af.notificationsAndLogs))
+    await writeNotificationModel(dest, opts);
   if (opts.userPortal && uf.filesAndMedia) await writeFileModel(dest, opts);
-  if ((opts.userPortal && uf.support) || (opts.adminPortal && af.supportManagement)) await writeSupportTicketModel(dest, opts);
+  if ((opts.userPortal && uf.support) || (opts.adminPortal && af.supportManagement))
+    await writeSupportTicketModel(dest, opts);
   if (opts.adminPortal && af.notificationsAndLogs) await writeAuditLogModel(dest, opts);
   if (opts.userPortal && uf.apiAndBilling) await writeSubscriptionModel(dest, opts);
   if (opts.adminPortal && af.billingManagement) await writePlanModel(dest, opts);
@@ -232,8 +234,8 @@ async function writeEnvFiles(dest: string, opts: ScaffoldOptions): Promise<void>
       : `postgresql://user:password@localhost:5432/${projectName}`;
 
   const isGmail = opts.mailer && opts.smtpProvider !== 'custom';
-  const resolvedHost = isGmail ? 'smtp.gmail.com' : opts.smtpHost ?? 'smtp.gmail.com';
-  const resolvedPort = isGmail ? '465' : opts.smtpPort ?? '587';
+  const resolvedHost = isGmail ? 'smtp.gmail.com' : (opts.smtpHost ?? 'smtp.gmail.com');
+  const resolvedPort = isGmail ? '465' : (opts.smtpPort ?? '587');
   const passComment = isGmail
     ? ' # Gmail App Password (16 chars) — NOT your regular Gmail password. Generate at: Google Account > Security > 2-Step Verification > App passwords'
     : '';
@@ -343,8 +345,12 @@ export default defineTask(async (payload) => {
 `;
 
   const content = opts.mailer
-    ? opts.language === 'typescript' ? tsMailer : jsMailer
-    : opts.language === 'typescript' ? tsStub : jsStub;
+    ? opts.language === 'typescript'
+      ? tsMailer
+      : jsMailer
+    : opts.language === 'typescript'
+      ? tsStub
+      : jsStub;
 
   await fs.outputFile(path.join(dest, 'src', 'tasks', `SendEmail.${ext}`), content);
 }
@@ -353,9 +359,10 @@ async function writeUserModel(dest: string, opts: ScaffoldOptions): Promise<void
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
 
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface UserDocument {
   name: string;
@@ -387,7 +394,7 @@ export const User = defineModel<UserDocument>('User', {
   refreshTokenExpiry: { type: 'date' },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const User = defineModel('User', {
   name:               { type: 'string',  required: true },
@@ -404,8 +411,8 @@ export const User = defineModel('User', {
   refreshTokenExpiry: { type: 'date' },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for User
+      : ts
+        ? `// TODO: define your Drizzle schema for User
 // import { pgTable, serial, text, boolean, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const users = pgTable('users', {
@@ -422,7 +429,7 @@ export const User = defineModel('User', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for User
+        : `// TODO: define your Drizzle schema for User
 export {};
 `;
 
@@ -433,9 +440,10 @@ async function writeAdminModel(dest: string, opts: ScaffoldOptions): Promise<voi
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
 
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface AdminDocument {
   name: string;
@@ -463,7 +471,7 @@ export const Admin = defineModel<AdminDocument>('Admin', {
   refreshTokenExpiry: { type: 'date' },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Admin = defineModel('Admin', {
   name:               { type: 'string',  required: true },
@@ -478,8 +486,8 @@ export const Admin = defineModel('Admin', {
   refreshTokenExpiry: { type: 'date' },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Admin
+      : ts
+        ? `// TODO: define your Drizzle schema for Admin
 // import { pgTable, serial, text, boolean, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const admins = pgTable('admins', {
@@ -495,7 +503,7 @@ export const Admin = defineModel('Admin', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Admin
+        : `// TODO: define your Drizzle schema for Admin
 export {};
 `;
 
@@ -522,8 +530,9 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     ? `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\n${hasUser ? `import { User } from '../../model/User.js';\n` : ''}${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`
     : '';
 
-  const loginBody = hasAdmin && hasUser
-    ? `  const admin = await Admin.findOne({ email });
+  const loginBody =
+    hasAdmin && hasUser
+      ? `  const admin = await Admin.findOne({ email });
   if (admin) {
     const match = await bcrypt.compare(password, admin.password);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
@@ -541,8 +550,8 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   await issueToken(res, { id: user.id, role: user.role, email: user.email });
   await issueRefreshToken(res, User, user.id);
   res.json({ message: 'Logged in' });`
-    : hasAdmin
-      ? `  const admin = await Admin.findOne({ email });
+      : hasAdmin
+        ? `  const admin = await Admin.findOne({ email });
   if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await bcrypt.compare(password, admin.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
@@ -550,7 +559,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
   await issueRefreshToken(res, Admin, admin.id);
   res.json({ message: 'Logged in as admin' });`
-      : `  const user = await User.findOne({ email });
+        : `  const user = await User.findOne({ email });
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await bcrypt.compare(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
@@ -659,9 +668,10 @@ ${logoutMeta}export const POST = async (_req, res) => {
       : `export const meta = {\n  POST: {\n    description: 'Register a new user account.',\n    request: { body: { name: 'Jane Doe', email: 'jane@example.com', password: 'secret' } },\n    response: { status: 201, body: { message: 'Account created successfully' } },\n  },\n};\n\n`
     : '';
 
-  const registerDbImports = opts.database === 'mongodb'
-    ? `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\n${opts.mailer ? "import { enqueue } from 'express-file-cluster/tasks';\n" : ''}import { User } from '../../model/User.js';\n`
-    : '';
+  const registerDbImports =
+    opts.database === 'mongodb'
+      ? `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\n${opts.mailer ? "import { enqueue } from 'express-file-cluster/tasks';\n" : ''}import { User } from '../../model/User.js';\n`
+      : '';
 
   const sendVerifyEmail = opts.mailer
     ? `
@@ -676,9 +686,10 @@ ${logoutMeta}export const POST = async (_req, res) => {
   // TODO: email this token to the user — enable the Mailer feature to auto-wire SendEmail
 `;
 
-  const registerContent = opts.database === 'mongodb'
-    ? ts
-      ? `import type { Request, Response } from 'express';
+  const registerContent =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import type { Request, Response } from 'express';
 ${registerDbImports}${registerMeta}export const POST = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
@@ -694,7 +705,7 @@ ${sendVerifyEmail}
   res.status(201).json({ message: 'Account created successfully', user: safe });
 };
 `
-      : `${registerDbImports}${registerMeta}export const POST = async (req, res) => {
+        : `${registerDbImports}${registerMeta}export const POST = async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
@@ -709,8 +720,8 @@ ${sendVerifyEmail}
   res.status(201).json({ message: 'Account created successfully', user: safe });
 };
 `
-    : ts
-      ? `import type { Request, Response } from 'express';
+      : ts
+        ? `import type { Request, Response } from 'express';
 ${registerMeta}export const POST = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
@@ -720,7 +731,7 @@ ${registerMeta}export const POST = async (req: Request, res: Response) => {
   res.status(201).json({ message: 'Account created successfully' });
 };
 `
-      : `${registerMeta}export const POST = async (req, res) => {
+        : `${registerMeta}export const POST = async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
@@ -834,15 +845,17 @@ ${roleGuard}  // TODO: aggregate stats from DB
       : `export const meta = {\n  GET: {\n    description: 'List all users, paginated (admin only).',\n    request: { query: { page: '1', limit: '20' } },\n    response: { status: 200, body: { users: [], total: 0, page: 1, limit: 20 } },\n  },\n  POST: {\n    description: 'Create a new user account (admin only).',\n    request: { body: { name: 'Jane Doe', email: 'jane@example.com', password: 'secret', role: 'user' } },\n    response: { status: 201, body: { message: 'User created', user: { id: 'new-id', name: 'Jane Doe', email: 'jane@example.com', role: 'user' } } },\n  },\n};\n\n`
     : '';
 
-  const adminUsersDbImport = opts.database === 'mongodb'
-    ? ts
-      ? `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`
-      : `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`
-    : '';
+  const adminUsersDbImport =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`
+        : `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`
+      : '';
 
-  const usersListContent = opts.database === 'mongodb'
-    ? ts
-      ? `import { requireAuth } from 'express-file-cluster/auth';
+  const usersListContent =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${adminUsersDbImport}${usersListMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
@@ -864,7 +877,7 @@ ${roleGuard}  const { name, email, password, role } = req.body;
   res.status(201).json({ message: 'User created', user: safe });
 };
 `
-      : `import { requireAuth } from 'express-file-cluster/auth';
+        : `import { requireAuth } from 'express-file-cluster/auth';
 ${adminUsersDbImport}${usersListMeta}${middlewares}
 export const GET = async (req, res) => {
 ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
@@ -885,8 +898,8 @@ ${roleGuard}  const { name, email, password, role } = req.body;
   res.status(201).json({ message: 'User created', user: safe });
 };
 `
-    : ts
-      ? `import { requireAuth } from 'express-file-cluster/auth';
+      : ts
+        ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${usersListMeta}${middlewares}
 export const GET = async (_req: Request, res: Response) => {
@@ -901,7 +914,7 @@ ${roleGuard}  const { name, email, role } = req.body;
   res.status(201).json({ message: 'User created', user: { id: 'new-id', name, email, role: role ?? 'user' } });
 };
 `
-      : `import { requireAuth } from 'express-file-cluster/auth';
+        : `import { requireAuth } from 'express-file-cluster/auth';
 ${usersListMeta}${middlewares}
 export const GET = async (_req, res) => {
 ${roleGuard}  // TODO: fetch users from DB with pagination
@@ -916,7 +929,10 @@ ${roleGuard}  const { name, email, role } = req.body;
 };
 `;
 
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', `index.${ext}`), usersListContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'admin', 'users', `index.${ext}`),
+    usersListContent,
+  );
 
   const userByIdMeta = opts.routeDocs
     ? ts
@@ -924,13 +940,13 @@ ${roleGuard}  const { name, email, role } = req.body;
       : `export const meta = {\n  GET: {\n    description: 'Fetch a single user by ID (admin only).',\n    request: { params: { id: 'usr_01HXZ' } },\n    response: { status: 200, body: { user: { id: 'usr_01HXZ', name: 'Jane Doe', email: 'jane@example.com', role: 'user' } } },\n  },\n  PUT: {\n    description: 'Update a user by ID (admin only).',\n    request: { params: { id: 'usr_01HXZ' }, body: { name: 'Jane Doe', email: 'jane@example.com', role: 'user', isActive: true } },\n    response: { status: 200, body: { message: 'User updated', user: { id: 'usr_01HXZ', name: 'Jane Doe', email: 'jane@example.com', role: 'user' } } },\n  },\n  DELETE: {\n    description: 'Delete a user by ID (admin only).',\n    request: { params: { id: 'usr_01HXZ' } },\n    response: { status: 200, body: { message: 'User usr_01HXZ deleted' } },\n  },\n};\n\n`
     : '';
 
-  const adminUserByIdDbImport = opts.database === 'mongodb'
-    ? `import { User } from '../../../model/User.js';\n`
-    : '';
+  const adminUserByIdDbImport =
+    opts.database === 'mongodb' ? `import { User } from '../../../model/User.js';\n` : '';
 
-  const userByIdContent = opts.database === 'mongodb'
-    ? ts
-      ? `import { requireAuth } from 'express-file-cluster/auth';
+  const userByIdContent =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${adminUserByIdDbImport}${userByIdMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
@@ -958,7 +974,7 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`User \${id} deleted\` });
 };
 `
-      : `import { requireAuth } from 'express-file-cluster/auth';
+        : `import { requireAuth } from 'express-file-cluster/auth';
 ${adminUserByIdDbImport}${userByIdMeta}${middlewares}
 export const GET = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
@@ -985,8 +1001,8 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`User \${id} deleted\` });
 };
 `
-    : ts
-      ? `import { requireAuth } from 'express-file-cluster/auth';
+      : ts
+        ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${userByIdMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
@@ -1007,7 +1023,7 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`User \${id} deleted\` });
 };
 `
-      : `import { requireAuth } from 'express-file-cluster/auth';
+        : `import { requireAuth } from 'express-file-cluster/auth';
 ${userByIdMeta}${middlewares}
 export const GET = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
@@ -1028,7 +1044,10 @@ ${roleGuard}  const { id } = req.params;
 };
 `;
 
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', `[id].${ext}`), userByIdContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'admin', 'users', `[id].${ext}`),
+    userByIdContent,
+  );
 }
 
 async function writeUserRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
@@ -1044,13 +1063,13 @@ async function writeUserRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
       : `export const meta = {\n  GET: {\n    description: "Fetch the authenticated user's profile.",\n    response: { status: 200, body: { user: { id: '1', role: 'user', email: 'user@example.com' } } },\n  },\n  PUT: {\n    description: "Update the authenticated user's profile.",\n    request: { body: { name: 'Jane Doe', email: 'jane@example.com' } },\n    response: { status: 200, body: { message: 'Profile updated', user: { id: '1', role: 'user', email: 'jane@example.com' } } },\n  },\n};\n\n`
     : '';
 
-  const profileDbImport = opts.database === 'mongodb'
-    ? `import { User } from '../../model/User.js';\n`
-    : '';
+  const profileDbImport =
+    opts.database === 'mongodb' ? `import { User } from '../../model/User.js';\n` : '';
 
-  const profileContent = opts.database === 'mongodb'
-    ? ts
-      ? `import { requireAuth } from 'express-file-cluster/auth';
+  const profileContent =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${profileDbImport}${profileMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
@@ -1070,7 +1089,7 @@ export const PUT = async (req: Request, res: Response) => {
   res.json({ message: 'Profile updated', user: safe });
 };
 `
-      : `import { requireAuth } from 'express-file-cluster/auth';
+        : `import { requireAuth } from 'express-file-cluster/auth';
 ${profileDbImport}${profileMeta}${middlewares}
 export const GET = async (req, res) => {
   const { id } = req.user;
@@ -1089,8 +1108,8 @@ export const PUT = async (req, res) => {
   res.json({ message: 'Profile updated', user: safe });
 };
 `
-    : ts
-      ? `import { requireAuth } from 'express-file-cluster/auth';
+      : ts
+        ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${profileMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
@@ -1103,7 +1122,7 @@ export const PUT = async (req: Request, res: Response) => {
   res.json({ message: 'Profile updated', user: { ...(req as any).user, name, email } });
 };
 `
-      : `import { requireAuth } from 'express-file-cluster/auth';
+        : `import { requireAuth } from 'express-file-cluster/auth';
 ${profileMeta}${middlewares}
 export const GET = async (req, res) => {
   res.json({ user: req.user });
@@ -1140,9 +1159,10 @@ function mkMeta(opts: ScaffoldOptions, methods: Record<string, MethodMetaSpec>):
       if (m.request) reqParts.push(`body: ${m.request}`);
       const reqLine = reqParts.length ? `      request: { ${reqParts.join(', ')} },\n` : '';
       const status = m.status ?? 200;
-      const respLine = m.response !== undefined
-        ? `      response: { status: ${status}, body: ${m.response} },\n`
-        : `      response: { status: ${status} },\n`;
+      const respLine =
+        m.response !== undefined
+          ? `      response: { status: ${status}, body: ${m.response} },\n`
+          : `      response: { status: ${status} },\n`;
       const description = m.description.replace(/'/g, "\\'");
       return `  ${method}: {\n    description: '${description}',\n${reqLine}${respLine}  },`;
     })
@@ -1157,9 +1177,10 @@ function mkMeta(opts: ScaffoldOptions, methods: Record<string, MethodMetaSpec>):
 async function writeSessionModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface SessionDocument {
   userId: string;
@@ -1179,7 +1200,7 @@ export const Session = defineModel<SessionDocument>('Session', {
   isActive:  { type: 'boolean', default: true },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Session = defineModel('Session', {
   userId:    { type: 'string',  required: true },
@@ -1190,8 +1211,8 @@ export const Session = defineModel('Session', {
   isActive:  { type: 'boolean', default: true },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Session
+      : ts
+        ? `// TODO: define your Drizzle schema for Session
 // import { pgTable, serial, text, boolean, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const sessions = pgTable('sessions', {
@@ -1205,7 +1226,7 @@ export const Session = defineModel('Session', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Session
+        : `// TODO: define your Drizzle schema for Session
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Session.${ext}`), content);
@@ -1214,9 +1235,10 @@ export {};
 async function writeNotificationModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface NotificationDocument {
   userId: string;
@@ -1236,7 +1258,7 @@ export const Notification = defineModel<NotificationDocument>('Notification', {
   link:    { type: 'string' },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Notification = defineModel('Notification', {
   userId:  { type: 'string',  required: true },
@@ -1247,8 +1269,8 @@ export const Notification = defineModel('Notification', {
   link:    { type: 'string' },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Notification
+      : ts
+        ? `// TODO: define your Drizzle schema for Notification
 // import { pgTable, serial, text, boolean, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const notifications = pgTable('notifications', {
@@ -1263,7 +1285,7 @@ export const Notification = defineModel('Notification', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Notification
+        : `// TODO: define your Drizzle schema for Notification
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Notification.${ext}`), content);
@@ -1272,9 +1294,10 @@ export {};
 async function writeFileModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface FileDocument {
   userId: string;
@@ -1296,7 +1319,7 @@ export const File = defineModel<FileDocument>('File', {
   isPublic:     { type: 'boolean', default: false },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const File = defineModel('File', {
   userId:       { type: 'string',  required: true },
@@ -1308,8 +1331,8 @@ export const File = defineModel('File', {
   isPublic:     { type: 'boolean', default: false },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for File
+      : ts
+        ? `// TODO: define your Drizzle schema for File
 // import { pgTable, serial, text, boolean, integer, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const files = pgTable('files', {
@@ -1325,7 +1348,7 @@ export const File = defineModel('File', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for File
+        : `// TODO: define your Drizzle schema for File
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `File.${ext}`), content);
@@ -1334,9 +1357,10 @@ export {};
 async function writeSupportTicketModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface SupportTicketDocument {
   userId: string;
@@ -1356,7 +1380,7 @@ export const SupportTicket = defineModel<SupportTicketDocument>('SupportTicket',
   assignedTo: { type: 'string' },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const SupportTicket = defineModel('SupportTicket', {
   userId:     { type: 'string', required: true },
@@ -1367,8 +1391,8 @@ export const SupportTicket = defineModel('SupportTicket', {
   assignedTo: { type: 'string' },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for SupportTicket
+      : ts
+        ? `// TODO: define your Drizzle schema for SupportTicket
 // import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const supportTickets = pgTable('support_tickets', {
@@ -1384,7 +1408,7 @@ export const SupportTicket = defineModel('SupportTicket', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for SupportTicket
+        : `// TODO: define your Drizzle schema for SupportTicket
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `SupportTicket.${ext}`), content);
@@ -1393,9 +1417,10 @@ export {};
 async function writeAuditLogModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface AuditLogDocument {
   adminId: string;
@@ -1415,7 +1440,7 @@ export const AuditLog = defineModel<AuditLogDocument>('AuditLog', {
   ip:       { type: 'string', required: true },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const AuditLog = defineModel('AuditLog', {
   adminId:  { type: 'string', required: true },
@@ -1426,8 +1451,8 @@ export const AuditLog = defineModel('AuditLog', {
   ip:       { type: 'string', required: true },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for AuditLog
+      : ts
+        ? `// TODO: define your Drizzle schema for AuditLog
 // import { pgTable, serial, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const auditLogs = pgTable('audit_logs', {
@@ -1442,7 +1467,7 @@ export const AuditLog = defineModel('AuditLog', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for AuditLog
+        : `// TODO: define your Drizzle schema for AuditLog
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `AuditLog.${ext}`), content);
@@ -1451,9 +1476,10 @@ export {};
 async function writeSubscriptionModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface SubscriptionDocument {
   userId: string;
@@ -1473,7 +1499,7 @@ export const Subscription = defineModel<SubscriptionDocument>('Subscription', {
   cancelledAt: { type: 'date' },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Subscription = defineModel('Subscription', {
   userId:      { type: 'string', required: true },
@@ -1484,8 +1510,8 @@ export const Subscription = defineModel('Subscription', {
   cancelledAt: { type: 'date' },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Subscription
+      : ts
+        ? `// TODO: define your Drizzle schema for Subscription
 // import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const subscriptions = pgTable('subscriptions', {
@@ -1500,7 +1526,7 @@ export const Subscription = defineModel('Subscription', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Subscription
+        : `// TODO: define your Drizzle schema for Subscription
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Subscription.${ext}`), content);
@@ -1509,9 +1535,10 @@ export {};
 async function writePlanModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface PlanDocument {
   name: string;
@@ -1531,7 +1558,7 @@ export const Plan = defineModel<PlanDocument>('Plan', {
   isActive:    { type: 'boolean', default: true },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Plan = defineModel('Plan', {
   name:        { type: 'string',  required: true },
@@ -1542,8 +1569,8 @@ export const Plan = defineModel('Plan', {
   isActive:    { type: 'boolean', default: true },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Plan
+      : ts
+        ? `// TODO: define your Drizzle schema for Plan
 // import { pgTable, serial, text, numeric, boolean, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const plans = pgTable('plans', {
@@ -1558,7 +1585,7 @@ export const Plan = defineModel('Plan', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Plan
+        : `// TODO: define your Drizzle schema for Plan
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Plan.${ext}`), content);
@@ -1567,9 +1594,10 @@ export {};
 async function writeInvoiceModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface InvoiceDocument {
   userId: string;
@@ -1589,7 +1617,7 @@ export const Invoice = defineModel<InvoiceDocument>('Invoice', {
   paidAt:         { type: 'date' },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Invoice = defineModel('Invoice', {
   userId:         { type: 'string', required: true },
@@ -1600,8 +1628,8 @@ export const Invoice = defineModel('Invoice', {
   paidAt:         { type: 'date' },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Invoice
+      : ts
+        ? `// TODO: define your Drizzle schema for Invoice
 // import { pgTable, serial, text, numeric, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const invoices = pgTable('invoices', {
@@ -1616,7 +1644,7 @@ export const Invoice = defineModel('Invoice', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Invoice
+        : `// TODO: define your Drizzle schema for Invoice
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Invoice.${ext}`), content);
@@ -1625,9 +1653,10 @@ export {};
 async function writeApiKeyModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface ApiKeyDocument {
   userId: string;
@@ -1647,7 +1676,7 @@ export const ApiKey = defineModel<ApiKeyDocument>('ApiKey', {
   isActive: { type: 'boolean', default: true },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const ApiKey = defineModel('ApiKey', {
   userId:    { type: 'string',  required: true },
@@ -1658,8 +1687,8 @@ export const ApiKey = defineModel('ApiKey', {
   isActive:  { type: 'boolean', default: true },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for ApiKey
+      : ts
+        ? `// TODO: define your Drizzle schema for ApiKey
 // import { pgTable, serial, text, boolean, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const apiKeys = pgTable('api_keys', {
@@ -1674,7 +1703,7 @@ export const ApiKey = defineModel('ApiKey', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for ApiKey
+        : `// TODO: define your Drizzle schema for ApiKey
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `ApiKey.${ext}`), content);
@@ -1683,9 +1712,10 @@ export {};
 async function writeRoleModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface RoleDocument {
   name: string;
@@ -1699,7 +1729,7 @@ export const Role = defineModel<RoleDocument>('Role', {
   permissions: { type: 'array',  default: [] },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Role = defineModel('Role', {
   name:        { type: 'string', required: true, unique: true },
@@ -1707,8 +1737,8 @@ export const Role = defineModel('Role', {
   permissions: { type: 'array',  default: [] },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Role
+      : ts
+        ? `// TODO: define your Drizzle schema for Role
 // import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const roles = pgTable('roles', {
@@ -1720,7 +1750,7 @@ export const Role = defineModel('Role', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Role
+        : `// TODO: define your Drizzle schema for Role
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Role.${ext}`), content);
@@ -1729,9 +1759,10 @@ export {};
 async function writeFAQModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface FAQDocument {
   question: string;
@@ -1749,7 +1780,7 @@ export const FAQ = defineModel<FAQDocument>('FAQ', {
   isPublished: { type: 'boolean', default: false },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const FAQ = defineModel('FAQ', {
   question:    { type: 'string',  required: true },
@@ -1759,8 +1790,8 @@ export const FAQ = defineModel('FAQ', {
   isPublished: { type: 'boolean', default: false },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for FAQ
+      : ts
+        ? `// TODO: define your Drizzle schema for FAQ
 // import { pgTable, serial, text, boolean, integer, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const faqs = pgTable('faqs', {
@@ -1774,7 +1805,7 @@ export const FAQ = defineModel('FAQ', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for FAQ
+        : `// TODO: define your Drizzle schema for FAQ
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `FAQ.${ext}`), content);
@@ -1783,9 +1814,10 @@ export {};
 async function writeBlogModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface BlogDocument {
   title: string;
@@ -1809,7 +1841,7 @@ export const Blog = defineModel<BlogDocument>('Blog', {
   publishedAt: { type: 'date' },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Blog = defineModel('Blog', {
   title:       { type: 'string', required: true },
@@ -1822,8 +1854,8 @@ export const Blog = defineModel('Blog', {
   publishedAt: { type: 'date' },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Blog
+      : ts
+        ? `// TODO: define your Drizzle schema for Blog
 // import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const blogs = pgTable('blogs', {
@@ -1841,7 +1873,7 @@ export const Blog = defineModel('Blog', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Blog
+        : `// TODO: define your Drizzle schema for Blog
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Blog.${ext}`), content);
@@ -1850,9 +1882,10 @@ export {};
 async function writeCategoryModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface CategoryDocument {
   name: string;
@@ -1868,7 +1901,7 @@ export const Category = defineModel<CategoryDocument>('Category', {
   parentId:    { type: 'string' },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Category = defineModel('Category', {
   name:        { type: 'string', required: true },
@@ -1877,8 +1910,8 @@ export const Category = defineModel('Category', {
   parentId:    { type: 'string' },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Category
+      : ts
+        ? `// TODO: define your Drizzle schema for Category
 // import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const categories = pgTable('categories', {
@@ -1891,7 +1924,7 @@ export const Category = defineModel('Category', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Category
+        : `// TODO: define your Drizzle schema for Category
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Category.${ext}`), content);
@@ -1900,9 +1933,10 @@ export {};
 async function writeCouponModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
-  const content = opts.database === 'mongodb'
-    ? ts
-      ? `import { defineModel } from 'express-file-cluster';
+  const content =
+    opts.database === 'mongodb'
+      ? ts
+        ? `import { defineModel } from 'express-file-cluster';
 
 export interface CouponDocument {
   code: string;
@@ -1924,7 +1958,7 @@ export const Coupon = defineModel<CouponDocument>('Coupon', {
   isActive:  { type: 'boolean', default: true },
 });
 `
-      : `import { defineModel } from 'express-file-cluster';
+        : `import { defineModel } from 'express-file-cluster';
 
 export const Coupon = defineModel('Coupon', {
   code:      { type: 'string',  required: true, unique: true },
@@ -1936,8 +1970,8 @@ export const Coupon = defineModel('Coupon', {
   isActive:  { type: 'boolean', default: true },
 });
 `
-    : ts
-      ? `// TODO: define your Drizzle schema for Coupon
+      : ts
+        ? `// TODO: define your Drizzle schema for Coupon
 // import { pgTable, serial, text, numeric, integer, boolean, timestamp } from 'drizzle-orm/pg-core';
 //
 // export const coupons = pgTable('coupons', {
@@ -1953,7 +1987,7 @@ export const Coupon = defineModel('Coupon', {
 // });
 export {};
 `
-      : `// TODO: define your Drizzle schema for Coupon
+        : `// TODO: define your Drizzle schema for Coupon
 export {};
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Coupon.${ext}`), content);
@@ -1968,6 +2002,7 @@ async function writeAuthExtendedRoutes(dest: string, opts: ScaffoldOptions): Pro
     ? `export const middlewares = [requireAuth('user', 'admin')];\n`
     : `export const middlewares = [requireAuth];\n`;
   const mwUser3 = mwUser2;
+  const reqT = ts ? `import type { Request, Response } from 'express';\n` : '';
   const RA = `import { requireAuth } from 'express-file-cluster/auth';\n`;
 
   const mongo = opts.database === 'mongodb';
@@ -1993,27 +2028,32 @@ async function writeAuthExtendedRoutes(dest: string, opts: ScaffoldOptions): Pro
 `
     : `    // TODO: email this token to the user — enable the Mailer feature to auto-wire SendEmail
 `;
-  const mailerTaskImport = opts.mailer ? `import { enqueue } from 'express-file-cluster/tasks';\n` : '';
+  const mailerTaskImport = opts.mailer
+    ? `import { enqueue } from 'express-file-cluster/tasks';\n`
+    : '';
 
   // refresh.ts
   if (uf.accountSecurity) {
-  const refreshMeta = mkMeta(opts, {
-    POST: { description: 'Refresh the JWT using the refresh-token cookie and issue a new access token.', response: `{ message: 'Token refreshed' }` },
-  });
-  const refreshModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
-  const refreshLookup = hasAdmin
-    ? `  const user = await User.findOne({ refreshToken: token });
+    const refreshMeta = mkMeta(opts, {
+      POST: {
+        description: 'Refresh the JWT using the refresh-token cookie and issue a new access token.',
+        response: `{ message: 'Token refreshed' }`,
+      },
+    });
+    const refreshModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
+    const refreshLookup = hasAdmin
+      ? `  const user = await User.findOne({ refreshToken: token });
   const admin = user ? null : await Admin.findOne({ refreshToken: token });
   const account = user || admin;`
-    : `  const user = await User.findOne({ refreshToken: token });
+      : `  const user = await User.findOne({ refreshToken: token });
   const account = user;`;
-  const refreshPersist = hasAdmin
-    ? `  if (user) await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });
+    const refreshPersist = hasAdmin
+      ? `  if (user) await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });
   else if (admin) await Admin.update(admin.id, { refreshToken: newRefreshToken, refreshTokenExpiry });`
-    : `  await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });`;
-  const refreshContent = mongo
-    ? ts
-      ? `import { issueToken } from 'express-file-cluster/auth';
+      : `  await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });`;
+    const refreshContent = mongo
+      ? ts
+        ? `import { issueToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
 ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
@@ -2043,7 +2083,7 @@ ${refreshPersist}
   res.json({ message: 'Token refreshed' });
 };
 `
-      : `import { issueToken } from 'express-file-cluster/auth';
+        : `import { issueToken } from 'express-file-cluster/auth';
 import crypto from 'node:crypto';
 ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
@@ -2072,30 +2112,38 @@ ${refreshPersist}
   res.json({ message: 'Token refreshed' });
 };
 `
-    : ts
-      ? `${RA}import type { Request, Response } from 'express';
+      : ts
+        ? `${RA}import type { Request, Response } from 'express';
 ${refreshMeta}export const POST = async (_req: Request, res: Response) => {
   // TODO: validate refresh token, issue new JWT
   res.json({ message: 'Token refreshed' });
 };
 `
-      : `${RA}${refreshMeta}export const POST = async (_req, res) => {
+        : `${RA}${refreshMeta}export const POST = async (_req, res) => {
   // TODO: validate refresh token, issue new JWT
   res.json({ message: 'Token refreshed' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `refresh.${ext}`), refreshContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `refresh.${ext}`), refreshContent);
   }
 
   // verify-email.ts
   if (uf.emailVerification) {
-  const veMeta = mkMeta(opts, {
-    GET: { description: 'Verify an email address using the token from the verification link.', query: `{ token: 'a1b2c3d4' }`, response: `{ message: 'Email verified' }` },
-    POST: { description: 'Resend the verification email to a given address.', request: `{ email: 'user@example.com' }`, response: `{ message: 'Verification email sent' }` },
-  });
-  const veContent = mongo
-    ? ts
-      ? `import type { Request, Response } from 'express';
+    const veMeta = mkMeta(opts, {
+      GET: {
+        description: 'Verify an email address using the token from the verification link.',
+        query: `{ token: 'a1b2c3d4' }`,
+        response: `{ message: 'Email verified' }`,
+      },
+      POST: {
+        description: 'Resend the verification email to a given address.',
+        request: `{ email: 'user@example.com' }`,
+        response: `{ message: 'Verification email sent' }`,
+      },
+    });
+    const veContent = mongo
+      ? ts
+        ? `import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
 ${mailerTaskImport}import { User } from '../../model/User.js';
 ${veMeta}export const GET = async (req: Request, res: Response) => {
@@ -2122,7 +2170,7 @@ ${sendVerifyEmailResend}  }
   res.json({ message: 'Verification email sent' });
 };
 `
-      : `import crypto from 'node:crypto';
+        : `import crypto from 'node:crypto';
 ${mailerTaskImport}import { User } from '../../model/User.js';
 ${veMeta}export const GET = async (req, res) => {
   const { token } = req.query;
@@ -2148,8 +2196,8 @@ ${sendVerifyEmailResend}  }
   res.json({ message: 'Verification email sent' });
 };
 `
-    : ts
-      ? `${RA}import type { Request, Response } from 'express';
+      : ts
+        ? `${RA}import type { Request, Response } from 'express';
 ${veMeta}export const GET = async (req: Request, res: Response) => {
   const { token } = req.query;
   // TODO: verify token and mark user as verified
@@ -2161,7 +2209,7 @@ export const POST = async (_req: Request, res: Response) => {
   res.json({ message: 'Verification email sent' });
 };
 `
-      : `${RA}${veMeta}export const GET = async (req, res) => {
+        : `${RA}${veMeta}export const GET = async (req, res) => {
   const { token } = req.query;
   // TODO: verify token and mark user as verified
   res.json({ message: 'Email verified' });
@@ -2172,27 +2220,31 @@ export const POST = async (_req, res) => {
   res.json({ message: 'Verification email sent' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `verify-email.${ext}`), veContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `verify-email.${ext}`), veContent);
   }
 
   // forgot-password.ts / reset-password.ts
   if (uf.forgotPassword) {
-  const fpMeta = mkMeta(opts, {
-    POST: { description: 'Send a password reset email to the given address.', request: `{ email: 'user@example.com' }`, response: `{ message: 'Reset email sent' }` },
-  });
-  const fpModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
-  const fpLookup = hasAdmin
-    ? `  const user = await User.findOne({ email });
+    const fpMeta = mkMeta(opts, {
+      POST: {
+        description: 'Send a password reset email to the given address.',
+        request: `{ email: 'user@example.com' }`,
+        response: `{ message: 'Reset email sent' }`,
+      },
+    });
+    const fpModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
+    const fpLookup = hasAdmin
+      ? `  const user = await User.findOne({ email });
   const admin = user ? null : await Admin.findOne({ email });`
-    : `  const user = await User.findOne({ email });`;
-  const fpGuard = hasAdmin ? 'user || admin' : 'user';
-  const fpPersist = hasAdmin
-    ? `    if (user) await User.update(user.id, { resetToken, resetTokenExpiry });
+      : `  const user = await User.findOne({ email });`;
+    const fpGuard = hasAdmin ? 'user || admin' : 'user';
+    const fpPersist = hasAdmin
+      ? `    if (user) await User.update(user.id, { resetToken, resetTokenExpiry });
     else if (admin) await Admin.update(admin.id, { resetToken, resetTokenExpiry });`
-    : `    await User.update(user.id, { resetToken, resetTokenExpiry });`;
-  const fpContent = mongo
-    ? ts
-      ? `import type { Request, Response } from 'express';
+      : `    await User.update(user.id, { resetToken, resetTokenExpiry });`;
+    const fpContent = mongo
+      ? ts
+        ? `import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
 ${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
@@ -2213,7 +2265,7 @@ ${sendResetEmail}  }
   res.json({ message: 'Reset email sent' });
 };
 `
-      : `import crypto from 'node:crypto';
+        : `import crypto from 'node:crypto';
 ${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
 export const POST = async (req, res) => {
@@ -2233,8 +2285,8 @@ ${sendResetEmail}  }
   res.json({ message: 'Reset email sent' });
 };
 `
-    : ts
-      ? `${RA}import type { Request, Response } from 'express';
+      : ts
+        ? `${RA}import type { Request, Response } from 'express';
 ${fpMeta}export const POST = async (req: Request, res: Response) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email is required' });
@@ -2242,33 +2294,37 @@ ${fpMeta}export const POST = async (req: Request, res: Response) => {
   res.json({ message: 'Reset email sent' });
 };
 `
-      : `${RA}${fpMeta}export const POST = async (req, res) => {
+        : `${RA}${fpMeta}export const POST = async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email is required' });
   // TODO: generate reset token and send email
   res.json({ message: 'Reset email sent' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `forgot-password.${ext}`), fpContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `forgot-password.${ext}`), fpContent);
 
-  // reset-password.ts
-  const rpMeta = mkMeta(opts, {
-    POST: { description: 'Reset password using a valid reset token.', request: `{ token: 'reset-token', password: 'newpassword' }`, response: `{ message: 'Password reset successfully' }` },
-  });
-  const rpModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
-  const rpLookup = hasAdmin
-    ? `  const user = await User.findOne({ resetToken: token });
+    // reset-password.ts
+    const rpMeta = mkMeta(opts, {
+      POST: {
+        description: 'Reset password using a valid reset token.',
+        request: `{ token: 'reset-token', password: 'newpassword' }`,
+        response: `{ message: 'Password reset successfully' }`,
+      },
+    });
+    const rpModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
+    const rpLookup = hasAdmin
+      ? `  const user = await User.findOne({ resetToken: token });
   const admin = user ? null : await Admin.findOne({ resetToken: token });
   const account = user || admin;`
-    : `  const user = await User.findOne({ resetToken: token });
+      : `  const user = await User.findOne({ resetToken: token });
   const account = user;`;
-  const rpPersist = hasAdmin
-    ? `  if (user) await User.update(user.id, { password: hashed, resetToken: '' });
+    const rpPersist = hasAdmin
+      ? `  if (user) await User.update(user.id, { password: hashed, resetToken: '' });
   else if (admin) await Admin.update(admin.id, { password: hashed, resetToken: '' });`
-    : `  await User.update(user.id, { password: hashed, resetToken: '' });`;
-  const rpContent = mongo
-    ? ts
-      ? `import type { Request, Response } from 'express';
+      : `  await User.update(user.id, { password: hashed, resetToken: '' });`;
+    const rpContent = mongo
+      ? ts
+        ? `import type { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 ${rpModelImports}${rpMeta}export const POST = async (req: Request, res: Response) => {
   const { token, password } = req.body;
@@ -2286,7 +2342,7 @@ ${rpPersist}
   res.json({ message: 'Password reset successfully' });
 };
 `
-      : `import bcrypt from 'bcrypt';
+        : `import bcrypt from 'bcrypt';
 ${rpModelImports}${rpMeta}export const POST = async (req, res) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
@@ -2303,8 +2359,8 @@ ${rpPersist}
   res.json({ message: 'Password reset successfully' });
 };
 `
-    : ts
-      ? `${RA}import type { Request, Response } from 'express';
+      : ts
+        ? `${RA}import type { Request, Response } from 'express';
 ${rpMeta}export const POST = async (req: Request, res: Response) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
@@ -2312,23 +2368,27 @@ ${rpMeta}export const POST = async (req: Request, res: Response) => {
   res.json({ message: 'Password reset successfully' });
 };
 `
-      : `${RA}${rpMeta}export const POST = async (req, res) => {
+        : `${RA}${rpMeta}export const POST = async (req, res) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
   // TODO: validate token, hash and update password
   res.json({ message: 'Password reset successfully' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `reset-password.${ext}`), rpContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `reset-password.${ext}`), rpContent);
   }
 
   // change-password.ts (protected)
   if (uf.accountSecurity) {
-  const cpMeta = mkMeta(opts, {
-    POST: { description: 'Change password for the authenticated user.', request: `{ oldPassword: 'current', newPassword: 'newpassword' }`, response: `{ message: 'Password changed successfully' }` },
-  });
-  const cpContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    const cpMeta = mkMeta(opts, {
+      POST: {
+        description: 'Change password for the authenticated user.',
+        request: `{ oldPassword: 'current', newPassword: 'newpassword' }`,
+        response: `{ message: 'Password changed successfully' }`,
+      },
+    });
+    const cpContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${cpMeta}${mwUser2}
 export const POST = async (req: Request, res: Response) => {
   const { oldPassword, newPassword } = req.body;
@@ -2337,7 +2397,7 @@ export const POST = async (req: Request, res: Response) => {
   res.json({ message: 'Password changed successfully' });
 };
 `
-    : `${RA}${cpMeta}${mwUser2}
+      : `${RA}${cpMeta}${mwUser2}
 export const POST = async (req, res) => {
   const { oldPassword, newPassword } = req.body;
   if (!oldPassword || !newPassword) return res.status(400).json({ error: 'oldPassword and newPassword are required' });
@@ -2345,15 +2405,22 @@ export const POST = async (req, res) => {
   res.json({ message: 'Password changed successfully' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `change-password.${ext}`), cpContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `change-password.${ext}`), cpContent);
 
-  // 2fa/setup.ts
-  const tfaSetupMeta = mkMeta(opts, {
-    GET: { description: 'Generate a TOTP secret and QR code to set up 2FA.', response: `{ qrCode: 'otpauth://totp/...', secret: 'BASE32SECRET' }` },
-    POST: { description: 'Confirm a TOTP code to enable 2FA for the authenticated user.', request: `{ code: '123456' }`, response: `{ message: '2FA enabled' }` },
-  });
-  const tfaSetupContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // 2fa/setup.ts
+    const tfaSetupMeta = mkMeta(opts, {
+      GET: {
+        description: 'Generate a TOTP secret and QR code to set up 2FA.',
+        response: `{ qrCode: 'otpauth://totp/...', secret: 'BASE32SECRET' }`,
+      },
+      POST: {
+        description: 'Confirm a TOTP code to enable 2FA for the authenticated user.',
+        request: `{ code: '123456' }`,
+        response: `{ message: '2FA enabled' }`,
+      },
+    });
+    const tfaSetupContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${tfaSetupMeta}${mwUser3}
 export const GET = async (req: Request, res: Response) => {
   // TODO: generate TOTP secret and return QR code URL
@@ -2367,7 +2434,7 @@ export const POST = async (req: Request, res: Response) => {
   res.json({ message: '2FA enabled' });
 };
 `
-    : `${RA}${tfaSetupMeta}${mwUser3}
+      : `${RA}${tfaSetupMeta}${mwUser3}
 export const GET = async (req, res) => {
   // TODO: generate TOTP secret and return QR code URL
   res.json({ qrCode: 'otpauth://totp/...', secret: 'BASE32SECRET' });
@@ -2380,14 +2447,21 @@ export const POST = async (req, res) => {
   res.json({ message: '2FA enabled' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', '2fa', `setup.${ext}`), tfaSetupContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'auth', '2fa', `setup.${ext}`),
+      tfaSetupContent,
+    );
 
-  // 2fa/verify.ts
-  const tfaVerifyMeta = mkMeta(opts, {
-    POST: { description: 'Verify a TOTP code during login.', request: `{ code: '123456' }`, response: `{ message: '2FA verified' }` },
-  });
-  const tfaVerifyContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // 2fa/verify.ts
+    const tfaVerifyMeta = mkMeta(opts, {
+      POST: {
+        description: 'Verify a TOTP code during login.',
+        request: `{ code: '123456' }`,
+        response: `{ message: '2FA verified' }`,
+      },
+    });
+    const tfaVerifyContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${tfaVerifyMeta}export const POST = async (req: Request, res: Response) => {
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'code is required' });
@@ -2395,21 +2469,28 @@ ${tfaVerifyMeta}export const POST = async (req: Request, res: Response) => {
   res.json({ message: '2FA verified' });
 };
 `
-    : `${RA}${tfaVerifyMeta}export const POST = async (req, res) => {
+      : `${RA}${tfaVerifyMeta}export const POST = async (req, res) => {
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'code is required' });
   // TODO: verify TOTP code
   res.json({ message: '2FA verified' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', '2fa', `verify.${ext}`), tfaVerifyContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'auth', '2fa', `verify.${ext}`),
+      tfaVerifyContent,
+    );
 
-  // 2fa/disable.ts
-  const tfaDisableMeta = mkMeta(opts, {
-    POST: { description: 'Disable 2FA for the authenticated user.', request: `{ code: '123456' }`, response: `{ message: '2FA disabled' }` },
-  });
-  const tfaDisableContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // 2fa/disable.ts
+    const tfaDisableMeta = mkMeta(opts, {
+      POST: {
+        description: 'Disable 2FA for the authenticated user.',
+        request: `{ code: '123456' }`,
+        response: `{ message: '2FA disabled' }`,
+      },
+    });
+    const tfaDisableContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${tfaDisableMeta}${mwUser3}
 export const POST = async (req: Request, res: Response) => {
   const { code } = req.body;
@@ -2418,7 +2499,7 @@ export const POST = async (req: Request, res: Response) => {
   res.json({ message: '2FA disabled' });
 };
 `
-    : `${RA}${tfaDisableMeta}${mwUser3}
+      : `${RA}${tfaDisableMeta}${mwUser3}
 export const POST = async (req, res) => {
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'code is required' });
@@ -2426,34 +2507,47 @@ export const POST = async (req, res) => {
   res.json({ message: '2FA disabled' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', '2fa', `disable.${ext}`), tfaDisableContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'auth', '2fa', `disable.${ext}`),
+      tfaDisableContent,
+    );
 
-  // sessions/index.ts
-  const sessListMeta = mkMeta(opts, {
-    GET: { description: 'List all active sessions for the authenticated user.', response: `{ sessions: [] }` },
-  });
-  const sessListContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // sessions/index.ts
+    const sessListMeta = mkMeta(opts, {
+      GET: {
+        description: 'List all active sessions for the authenticated user.',
+        response: `{ sessions: [] }`,
+      },
+    });
+    const sessListContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${sessListMeta}${mwUser3}
 export const GET = async (req: Request, res: Response) => {
   // TODO: fetch sessions for req.user.id
   res.json({ sessions: [] });
 };
 `
-    : `${RA}${sessListMeta}${mwUser3}
+      : `${RA}${sessListMeta}${mwUser3}
 export const GET = async (req, res) => {
   // TODO: fetch sessions for req.user.id
   res.json({ sessions: [] });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', 'sessions', `index.${ext}`), sessListContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'auth', 'sessions', `index.${ext}`),
+      sessListContent,
+    );
 
-  // sessions/[id].ts
-  const sessRevokeMeta = mkMeta(opts, {
-    DELETE: { description: 'Revoke a single active session by ID.', params: `{ id: 'sess_01HXZ' }`, response: `{ message: 'Session sess_01HXZ revoked' }` },
-  });
-  const sessRevokeContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // sessions/[id].ts
+    const sessRevokeMeta = mkMeta(opts, {
+      DELETE: {
+        description: 'Revoke a single active session by ID.',
+        params: `{ id: 'sess_01HXZ' }`,
+        response: `{ message: 'Session sess_01HXZ revoked' }`,
+      },
+    });
+    const sessRevokeContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${sessRevokeMeta}${mwUser3}
 export const DELETE = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -2461,14 +2555,17 @@ export const DELETE = async (req: Request, res: Response) => {
   res.json({ message: \`Session \${id} revoked\` });
 };
 `
-    : `${RA}${sessRevokeMeta}${mwUser3}
+      : `${RA}${sessRevokeMeta}${mwUser3}
 export const DELETE = async (req, res) => {
   const { id } = req.params;
   // TODO: revoke session by id
   res.json({ message: \`Session \${id} revoked\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', 'sessions', `[id].${ext}`), sessRevokeContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'auth', 'sessions', `[id].${ext}`),
+      sessRevokeContent,
+    );
   }
 }
 
@@ -2482,11 +2579,19 @@ async function writeUserExtendedRoutes(dest: string, opts: ScaffoldOptions): Pro
   const mw3 = mw2;
   const RA = `import { requireAuth } from 'express-file-cluster/auth';\n`;
   const user = ts ? `(req as any).user` : `req.user`;
+  const uf = opts.userFeatures;
 
   // avatar.ts
+  if (uf.accountSettings) {
   const avatarMeta = mkMeta(opts, {
-    POST: { description: "Upload a new avatar image for the authenticated user.", response: `{ message: 'Avatar updated', url: 'https://example.com/avatar.jpg' }` },
-    DELETE: { description: "Remove the authenticated user's avatar.", response: `{ message: 'Avatar removed' }` },
+    POST: {
+      description: 'Upload a new avatar image for the authenticated user.',
+      response: `{ message: 'Avatar updated', url: 'https://example.com/avatar.jpg' }`,
+    },
+    DELETE: {
+      description: "Remove the authenticated user's avatar.",
+      response: `{ message: 'Avatar removed' }`,
+    },
   });
   const avatarContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2516,8 +2621,16 @@ export const DELETE = async (req, res) => {
 
   // settings.ts
   const settingsMeta = mkMeta(opts, {
-    GET: { description: 'Get account settings (notifications, language, theme, privacy) for the authenticated user.', response: `{ settings: { notifications: true, language: 'en', theme: 'system', privacy: 'public' } }` },
-    PUT: { description: 'Update account settings for the authenticated user.', request: `{ notifications: true, language: 'en', theme: 'system', privacy: 'public' }`, response: `{ message: 'Settings updated', settings: { notifications: true, language: 'en', theme: 'system', privacy: 'public' } }` },
+    GET: {
+      description:
+        'Get account settings (notifications, language, theme, privacy) for the authenticated user.',
+      response: `{ settings: { notifications: true, language: 'en', theme: 'system', privacy: 'public' } }`,
+    },
+    PUT: {
+      description: 'Update account settings for the authenticated user.',
+      request: `{ notifications: true, language: 'en', theme: 'system', privacy: 'public' }`,
+      response: `{ message: 'Settings updated', settings: { notifications: true, language: 'en', theme: 'system', privacy: 'public' } }`,
+    },
   });
   const settingsContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2549,8 +2662,16 @@ export const PUT = async (req, res) => {
 
   // account.ts
   const accountMeta = mkMeta(opts, {
-    GET: { description: 'Download a personal data export for the authenticated user.', response: `{ data: { user: { id: '1', role: 'user', email: 'user@example.com' }, exportedAt: '2026-01-01T00:00:00.000Z' } }` },
-    DELETE: { description: 'Schedule the authenticated account for deletion (requires password confirmation).', request: `{ password: 'current' }`, response: `{ message: 'Account scheduled for deletion' }` },
+    GET: {
+      description: 'Download a personal data export for the authenticated user.',
+      response: `{ data: { user: { id: '1', role: 'user', email: 'user@example.com' }, exportedAt: '2026-01-01T00:00:00.000Z' } }`,
+    },
+    DELETE: {
+      description:
+        'Schedule the authenticated account for deletion (requires password confirmation).',
+      request: `{ password: 'current' }`,
+      response: `{ message: 'Account scheduled for deletion' }`,
+    },
   });
   const accountContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2584,7 +2705,10 @@ export const DELETE = async (req, res) => {
 
   // dashboard.ts
   const dashMeta = mkMeta(opts, {
-    GET: { description: 'Personal dashboard: stats, recent activity, and quick actions.', response: `{ stats: {}, recentActivity: [], quickActions: [] }` },
+    GET: {
+      description: 'Personal dashboard: stats, recent activity, and quick actions.',
+      response: `{ stats: {}, recentActivity: [], quickActions: [] }`,
+    },
   });
   const dashContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2604,7 +2728,11 @@ export const GET = async (req, res) => {
 
   // activity.ts
   const actMeta = mkMeta(opts, {
-    GET: { description: 'Paginated activity history for the authenticated user.', query: `{ page: '1', limit: '20' }`, response: `{ activities: [], total: 0, page: 1, limit: 20 }` },
+    GET: {
+      description: 'Paginated activity history for the authenticated user.',
+      query: `{ page: '1', limit: '20' }`,
+      response: `{ activities: [], total: 0, page: 1, limit: 20 }`,
+    },
   });
   const actContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2623,11 +2751,19 @@ export const GET = async (req, res) => {
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'user', `activity.${ext}`), actContent);
+  }
 
   // notifications/index.ts
+  if (uf.notifications) {
   const notifListMeta = mkMeta(opts, {
-    GET: { description: 'List notifications for the authenticated user.', response: `{ notifications: [], total: 0, unread: 0 }` },
-    POST: { description: 'Mark all notifications as read for the authenticated user.', response: `{ message: 'All notifications marked as read' }` },
+    GET: {
+      description: 'List notifications for the authenticated user.',
+      response: `{ notifications: [], total: 0, unread: 0 }`,
+    },
+    POST: {
+      description: 'Mark all notifications as read for the authenticated user.',
+      response: `{ message: 'All notifications marked as read' }`,
+    },
   });
   const notifListContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2653,13 +2789,28 @@ export const POST = async (req, res) => {
   res.json({ message: 'All notifications marked as read' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'notifications', `index.${ext}`), notifListContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'notifications', `index.${ext}`),
+    notifListContent,
+  );
 
   // notifications/[id].ts
   const notifByIdMeta = mkMeta(opts, {
-    GET: { description: 'Fetch a single notification by ID.', params: `{ id: 'notif_01HXZ' }`, response: `{ notification: { id: 'notif_01HXZ' } }` },
-    PATCH: { description: 'Mark a single notification as read.', params: `{ id: 'notif_01HXZ' }`, response: `{ message: 'Notification marked as read', id: 'notif_01HXZ' }` },
-    DELETE: { description: 'Delete a single notification.', params: `{ id: 'notif_01HXZ' }`, response: `{ message: 'Notification notif_01HXZ deleted' }` },
+    GET: {
+      description: 'Fetch a single notification by ID.',
+      params: `{ id: 'notif_01HXZ' }`,
+      response: `{ notification: { id: 'notif_01HXZ' } }`,
+    },
+    PATCH: {
+      description: 'Mark a single notification as read.',
+      params: `{ id: 'notif_01HXZ' }`,
+      response: `{ message: 'Notification marked as read', id: 'notif_01HXZ' }`,
+    },
+    DELETE: {
+      description: 'Delete a single notification.',
+      params: `{ id: 'notif_01HXZ' }`,
+      response: `{ message: 'Notification notif_01HXZ deleted' }`,
+    },
   });
   const notifByIdContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2701,12 +2852,24 @@ export const DELETE = async (req, res) => {
   res.json({ message: \`Notification \${id} deleted\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'notifications', `[id].${ext}`), notifByIdContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'notifications', `[id].${ext}`),
+    notifByIdContent,
+  );
+  }
 
-  // files/index.ts
+  // files/index.ts (files, favorites, bookmarks & search share the filesAndMedia toggle)
+  if (uf.filesAndMedia) {
   const filesListMeta = mkMeta(opts, {
-    GET: { description: 'List uploaded files with storage usage for the authenticated user.', response: `{ files: [], total: 0, storageUsed: 0 }` },
-    POST: { description: 'Upload a new file for the authenticated user.', response: `{ message: 'File uploaded', file: { id: 'new-id' } }`, status: 201 },
+    GET: {
+      description: 'List uploaded files with storage usage for the authenticated user.',
+      response: `{ files: [], total: 0, storageUsed: 0 }`,
+    },
+    POST: {
+      description: 'Upload a new file for the authenticated user.',
+      response: `{ message: 'File uploaded', file: { id: 'new-id' } }`,
+      status: 201,
+    },
   });
   const filesListContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2732,12 +2895,23 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'File uploaded', file: { id: 'new-id' } });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'files', `index.${ext}`), filesListContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'files', `index.${ext}`),
+    filesListContent,
+  );
 
   // files/[id].ts
   const fileByIdMeta = mkMeta(opts, {
-    GET: { description: 'Get a download/preview URL for a single file by ID.', params: `{ id: 'file_01HXZ' }`, response: `{ file: { id: 'file_01HXZ', url: 'https://example.com/files/file_01HXZ' } }` },
-    DELETE: { description: 'Delete a file from storage.', params: `{ id: 'file_01HXZ' }`, response: `{ message: 'File file_01HXZ deleted' }` },
+    GET: {
+      description: 'Get a download/preview URL for a single file by ID.',
+      params: `{ id: 'file_01HXZ' }`,
+      response: `{ file: { id: 'file_01HXZ', url: 'https://example.com/files/file_01HXZ' } }`,
+    },
+    DELETE: {
+      description: 'Delete a file from storage.',
+      params: `{ id: 'file_01HXZ' }`,
+      response: `{ message: 'File file_01HXZ deleted' }`,
+    },
   });
   const fileByIdContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2767,12 +2941,23 @@ export const DELETE = async (req, res) => {
   res.json({ message: \`File \${id} deleted\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'files', `[id].${ext}`), fileByIdContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'files', `[id].${ext}`),
+    fileByIdContent,
+  );
 
   // favorites/index.ts
   const favListMeta = mkMeta(opts, {
-    GET: { description: 'List favorites for the authenticated user.', response: `{ favorites: [] }` },
-    POST: { description: "Add an entity to the authenticated user's favorites.", request: `{ entityId: 'post_01HXZ', entityType: 'post' }`, response: `{ message: 'Added to favorites' }`, status: 201 },
+    GET: {
+      description: 'List favorites for the authenticated user.',
+      response: `{ favorites: [] }`,
+    },
+    POST: {
+      description: "Add an entity to the authenticated user's favorites.",
+      request: `{ entityId: 'post_01HXZ', entityType: 'post' }`,
+      response: `{ message: 'Added to favorites' }`,
+      status: 201,
+    },
   });
   const favListContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2802,11 +2987,18 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'Added to favorites' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'favorites', `index.${ext}`), favListContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'favorites', `index.${ext}`),
+    favListContent,
+  );
 
   // favorites/[id].ts
   const favByIdMeta = mkMeta(opts, {
-    DELETE: { description: 'Remove an entity from the authenticated user favorites.', params: `{ id: 'fav_01HXZ' }`, response: `{ message: 'Removed favorite fav_01HXZ' }` },
+    DELETE: {
+      description: 'Remove an entity from the authenticated user favorites.',
+      params: `{ id: 'fav_01HXZ' }`,
+      response: `{ message: 'Removed favorite fav_01HXZ' }`,
+    },
   });
   const favByIdContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2824,12 +3016,23 @@ export const DELETE = async (req, res) => {
   res.json({ message: \`Removed favorite \${id}\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'favorites', `[id].${ext}`), favByIdContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'favorites', `[id].${ext}`),
+    favByIdContent,
+  );
 
   // bookmarks/index.ts
   const bkListMeta = mkMeta(opts, {
-    GET: { description: 'List bookmarks for the authenticated user.', response: `{ bookmarks: [] }` },
-    POST: { description: 'Save a new bookmark for the authenticated user.', request: `{ url: 'https://example.com', title: 'Example' }`, response: `{ message: 'Bookmark saved' }`, status: 201 },
+    GET: {
+      description: 'List bookmarks for the authenticated user.',
+      response: `{ bookmarks: [] }`,
+    },
+    POST: {
+      description: 'Save a new bookmark for the authenticated user.',
+      request: `{ url: 'https://example.com', title: 'Example' }`,
+      response: `{ message: 'Bookmark saved' }`,
+      status: 201,
+    },
   });
   const bkListContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2859,11 +3062,18 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'Bookmark saved' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'bookmarks', `index.${ext}`), bkListContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'bookmarks', `index.${ext}`),
+    bkListContent,
+  );
 
   // bookmarks/[id].ts
   const bkByIdMeta = mkMeta(opts, {
-    DELETE: { description: 'Delete a bookmark by ID.', params: `{ id: 'bm_01HXZ' }`, response: `{ message: 'Bookmark bm_01HXZ removed' }` },
+    DELETE: {
+      description: 'Delete a bookmark by ID.',
+      params: `{ id: 'bm_01HXZ' }`,
+      response: `{ message: 'Bookmark bm_01HXZ removed' }`,
+    },
   });
   const bkByIdContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2881,11 +3091,18 @@ export const DELETE = async (req, res) => {
   res.json({ message: \`Bookmark \${id} removed\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'bookmarks', `[id].${ext}`), bkByIdContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'bookmarks', `[id].${ext}`),
+    bkByIdContent,
+  );
 
   // search.ts
   const searchMeta = mkMeta(opts, {
-    GET: { description: 'Search with filters, sort, and pagination.', query: `{ q: 'query', filter: 'active', sort: 'newest', page: '1', limit: '20' }`, response: `{ results: [], total: 0, page: 1, limit: 20 }` },
+    GET: {
+      description: 'Search with filters, sort, and pagination.',
+      query: `{ q: 'query', filter: 'active', sort: 'newest', page: '1', limit: '20' }`,
+      response: `{ results: [], total: 0, page: 1, limit: 20 }`,
+    },
   });
   const searchContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2904,11 +3121,18 @@ export const GET = async (req, res) => {
 };
 `;
   await fs.outputFile(path.join(dest, 'src', 'api', 'user', `search.${ext}`), searchContent);
+  }
 
   // api-keys/index.ts
+  if (uf.apiAndBilling) {
   const akListMeta = mkMeta(opts, {
     GET: { description: 'List API keys for the authenticated user.', response: `{ apiKeys: [] }` },
-    POST: { description: 'Generate a new API key for the authenticated user.', request: `{ name: 'CI key' }`, response: `{ message: 'API key created', key: 'efc_...' }`, status: 201 },
+    POST: {
+      description: 'Generate a new API key for the authenticated user.',
+      request: `{ name: 'CI key' }`,
+      response: `{ message: 'API key created', key: 'efc_...' }`,
+      status: 201,
+    },
   });
   const akListContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2938,11 +3162,18 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'API key created', key: 'efc_...' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'api-keys', `index.${ext}`), akListContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'api-keys', `index.${ext}`),
+    akListContent,
+  );
 
   // api-keys/[id].ts
   const akByIdMeta = mkMeta(opts, {
-    DELETE: { description: 'Revoke and delete an API key by ID.', params: `{ id: 'key_01HXZ' }`, response: `{ message: 'API key key_01HXZ revoked' }` },
+    DELETE: {
+      description: 'Revoke and delete an API key by ID.',
+      params: `{ id: 'key_01HXZ' }`,
+      response: `{ message: 'API key key_01HXZ revoked' }`,
+    },
   });
   const akByIdContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -2960,7 +3191,11 @@ export const DELETE = async (req, res) => {
   res.json({ message: \`API key \${id} revoked\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'api-keys', `[id].${ext}`), akByIdContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'api-keys', `[id].${ext}`),
+    akByIdContent,
+  );
+  }
 }
 
 async function writeUserBillingRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
@@ -2991,13 +3226,27 @@ export const GET = async (_req, res) => {
   res.json({ plans: [] });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'billing', `plans.${ext}`), plansContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'billing', `plans.${ext}`),
+    plansContent,
+  );
 
   // billing/subscription.ts
   const subMeta = mkMeta(opts, {
-    GET: { description: 'Get the current subscription for the authenticated user.', response: `{ subscription: null }` },
-    POST: { description: 'Subscribe the authenticated user to a plan.', request: `{ planId: 'plan_01HXZ' }`, response: `{ message: 'Subscribed', subscription: { planId: 'plan_01HXZ' } }`, status: 201 },
-    DELETE: { description: 'Cancel the current subscription at period end.', response: `{ message: 'Subscription cancelled' }` },
+    GET: {
+      description: 'Get the current subscription for the authenticated user.',
+      response: `{ subscription: null }`,
+    },
+    POST: {
+      description: 'Subscribe the authenticated user to a plan.',
+      request: `{ planId: 'plan_01HXZ' }`,
+      response: `{ message: 'Subscribed', subscription: { planId: 'plan_01HXZ' } }`,
+      status: 201,
+    },
+    DELETE: {
+      description: 'Cancel the current subscription at period end.',
+      response: `{ message: 'Subscription cancelled' }`,
+    },
   });
   const subContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -3037,12 +3286,23 @@ export const DELETE = async (req, res) => {
   res.json({ message: 'Subscription cancelled' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'billing', `subscription.${ext}`), subContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'billing', `subscription.${ext}`),
+    subContent,
+  );
 
   // billing/payment-methods/index.ts
   const pmListMeta = mkMeta(opts, {
-    GET: { description: 'List payment methods for the authenticated user.', response: `{ paymentMethods: [] }` },
-    POST: { description: 'Attach a new payment method via the payment gateway.', request: `{ token: 'tok_...' }`, response: `{ message: 'Payment method added' }`, status: 201 },
+    GET: {
+      description: 'List payment methods for the authenticated user.',
+      response: `{ paymentMethods: [] }`,
+    },
+    POST: {
+      description: 'Attach a new payment method via the payment gateway.',
+      request: `{ token: 'tok_...' }`,
+      response: `{ message: 'Payment method added' }`,
+      status: 201,
+    },
   });
   const pmListContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -3072,11 +3332,18 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'Payment method added' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'billing', 'payment-methods', `index.${ext}`), pmListContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'billing', 'payment-methods', `index.${ext}`),
+    pmListContent,
+  );
 
   // billing/payment-methods/[id].ts
   const pmByIdMeta = mkMeta(opts, {
-    DELETE: { description: 'Detach a payment method from the payment gateway.', params: `{ id: 'pm_01HXZ' }`, response: `{ message: 'Payment method pm_01HXZ removed' }` },
+    DELETE: {
+      description: 'Detach a payment method from the payment gateway.',
+      params: `{ id: 'pm_01HXZ' }`,
+      response: `{ message: 'Payment method pm_01HXZ removed' }`,
+    },
   });
   const pmByIdContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -3094,11 +3361,17 @@ export const DELETE = async (req, res) => {
   res.json({ message: \`Payment method \${id} removed\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'billing', 'payment-methods', `[id].${ext}`), pmByIdContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'billing', 'payment-methods', `[id].${ext}`),
+    pmByIdContent,
+  );
 
   // billing/invoices/index.ts
   const invListMeta = mkMeta(opts, {
-    GET: { description: 'List all invoices for the authenticated user.', response: `{ invoices: [], total: 0 }` },
+    GET: {
+      description: 'List all invoices for the authenticated user.',
+      response: `{ invoices: [], total: 0 }`,
+    },
   });
   const invListContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -3114,11 +3387,18 @@ export const GET = async (req, res) => {
   res.json({ invoices: [], total: 0 });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'billing', 'invoices', `index.${ext}`), invListContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'billing', 'invoices', `index.${ext}`),
+    invListContent,
+  );
 
   // billing/invoices/[id].ts
   const invByIdMeta = mkMeta(opts, {
-    GET: { description: 'Get the download URL for a single invoice by ID.', params: `{ id: 'inv_01HXZ' }`, response: `{ invoice: { id: 'inv_01HXZ', downloadUrl: 'https://example.com/invoices/inv_01HXZ.pdf' } }` },
+    GET: {
+      description: 'Get the download URL for a single invoice by ID.',
+      params: `{ id: 'inv_01HXZ' }`,
+      response: `{ invoice: { id: 'inv_01HXZ', downloadUrl: 'https://example.com/invoices/inv_01HXZ.pdf' } }`,
+    },
   });
   const invByIdContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -3136,7 +3416,10 @@ export const GET = async (req, res) => {
   res.json({ invoice: { id, downloadUrl: 'https://...' } });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', 'billing', 'invoices', `[id].${ext}`), invByIdContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'user', 'billing', 'invoices', `[id].${ext}`),
+    invByIdContent,
+  );
 }
 
 async function writeSupportRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
@@ -3150,8 +3433,16 @@ async function writeSupportRoutes(dest: string, opts: ScaffoldOptions): Promise<
 
   // support/tickets/index.ts
   const ticketListMeta = mkMeta(opts, {
-    GET: { description: "List the authenticated user's own support tickets.", response: `{ tickets: [], total: 0 }` },
-    POST: { description: 'Create a new support ticket.', request: `{ subject: 'Issue with login', message: 'I cannot log in', priority: 'normal' }`, response: `{ message: 'Ticket created', ticket: { id: 'new-id', subject: 'Issue with login', status: 'open' } }`, status: 201 },
+    GET: {
+      description: "List the authenticated user's own support tickets.",
+      response: `{ tickets: [], total: 0 }`,
+    },
+    POST: {
+      description: 'Create a new support ticket.',
+      request: `{ subject: 'Issue with login', message: 'I cannot log in', priority: 'normal' }`,
+      response: `{ message: 'Ticket created', ticket: { id: 'new-id', subject: 'Issue with login', status: 'open' } }`,
+      status: 201,
+    },
   });
   const ticketListContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -3181,12 +3472,24 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'Ticket created', ticket: { id: 'new-id', subject, status: 'open' } });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'support', 'tickets', `index.${ext}`), ticketListContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'support', 'tickets', `index.${ext}`),
+    ticketListContent,
+  );
 
   // support/tickets/[id].ts
   const ticketByIdMeta = mkMeta(opts, {
-    GET: { description: 'Fetch a single support ticket by ID.', params: `{ id: 'tk_01HXZ' }`, response: `{ ticket: { id: 'tk_01HXZ', subject: 'Issue', status: 'open', replies: [] } }` },
-    PUT: { description: 'Add a reply to a support ticket or update its status.', params: `{ id: 'tk_01HXZ' }`, request: `{ reply: 'Thanks, resolved.', status: 'closed' }`, response: `{ message: 'Ticket updated', ticket: { id: 'tk_01HXZ', status: 'closed' } }` },
+    GET: {
+      description: 'Fetch a single support ticket by ID.',
+      params: `{ id: 'tk_01HXZ' }`,
+      response: `{ ticket: { id: 'tk_01HXZ', subject: 'Issue', status: 'open', replies: [] } }`,
+    },
+    PUT: {
+      description: 'Add a reply to a support ticket or update its status.',
+      params: `{ id: 'tk_01HXZ' }`,
+      request: `{ reply: 'Thanks, resolved.', status: 'closed' }`,
+      response: `{ message: 'Ticket updated', ticket: { id: 'tk_01HXZ', status: 'closed' } }`,
+    },
   });
   const ticketByIdContent = ts
     ? `${RA}import type { Request, Response } from 'express';
@@ -3218,7 +3521,10 @@ export const PUT = async (req, res) => {
   res.json({ message: 'Ticket updated', ticket: { id, status: status ?? 'open' } });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'support', 'tickets', `[id].${ext}`), ticketByIdContent);
+  await fs.outputFile(
+    path.join(dest, 'src', 'api', 'support', 'tickets', `[id].${ext}`),
+    ticketByIdContent,
+  );
 }
 
 async function writeAdminExtendedRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
@@ -3239,32 +3545,41 @@ async function writeAdminExtendedRoutes(dest: string, opts: ScaffoldOptions): Pr
 
   // ── Analytics ──────────────────────────────────────────────────────────
   if (af.analytics) {
-
-  // admin/analytics/index.ts
-  const analyticsOverviewMeta = mkMeta(opts, {
-    GET: { description: 'Analytics overview: users, revenue, traffic (admin only).', response: `{ users: {}, revenue: {}, traffic: {} }` },
-  });
-  const analyticsOverviewContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/analytics/index.ts
+    const analyticsOverviewMeta = mkMeta(opts, {
+      GET: {
+        description: 'Analytics overview: users, revenue, traffic (admin only).',
+        response: `{ users: {}, revenue: {}, traffic: {} }`,
+      },
+    });
+    const analyticsOverviewContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${analyticsOverviewMeta}${mwAdmin3}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  // TODO: aggregate analytics overview
   res.json({ users: {}, revenue: {}, traffic: {} });
 };
 `
-    : `${RA}${analyticsOverviewMeta}${mwAdmin3}
+      : `${RA}${analyticsOverviewMeta}${mwAdmin3}
 export const GET = async (req, res) => {
 ${roleGuard}  // TODO: aggregate analytics overview
   res.json({ users: {}, revenue: {}, traffic: {} });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'analytics', `index.${ext}`), analyticsOverviewContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'analytics', `index.${ext}`),
+      analyticsOverviewContent,
+    );
 
-  const analyticsUsersMeta = mkMeta(opts, {
-    GET: { description: 'User analytics: registrations, active users, churn (admin only).', query: `{ period: '30d' }`, response: `{ registrations: [], activeUsers: 0, churn: 0, period: '30d' }` },
-  });
-  const analyticsUsersContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    const analyticsUsersMeta = mkMeta(opts, {
+      GET: {
+        description: 'User analytics: registrations, active users, churn (admin only).',
+        query: `{ period: '30d' }`,
+        response: `{ registrations: [], activeUsers: 0, churn: 0, period: '30d' }`,
+      },
+    });
+    const analyticsUsersContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${analyticsUsersMeta}${mwAdmin3}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { period = '30d' } = req.query;
@@ -3272,20 +3587,27 @@ ${roleGuard}  const { period = '30d' } = req.query;
   res.json({ registrations: [], activeUsers: 0, churn: 0, period });
 };
 `
-    : `${RA}${analyticsUsersMeta}${mwAdmin3}
+      : `${RA}${analyticsUsersMeta}${mwAdmin3}
 export const GET = async (req, res) => {
 ${roleGuard}  const { period = '30d' } = req.query;
   // TODO: fetch user analytics for period
   res.json({ registrations: [], activeUsers: 0, churn: 0, period });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'analytics', `users.${ext}`), analyticsUsersContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'analytics', `users.${ext}`),
+      analyticsUsersContent,
+    );
 
-  const analyticsRevenueMeta = mkMeta(opts, {
-    GET: { description: 'Revenue analytics: MRR, ARR, payment history (admin only).', query: `{ period: '30d' }`, response: `{ mrr: 0, arr: 0, history: [], period: '30d' }` },
-  });
-  const analyticsRevenueContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    const analyticsRevenueMeta = mkMeta(opts, {
+      GET: {
+        description: 'Revenue analytics: MRR, ARR, payment history (admin only).',
+        query: `{ period: '30d' }`,
+        response: `{ mrr: 0, arr: 0, history: [], period: '30d' }`,
+      },
+    });
+    const analyticsRevenueContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${analyticsRevenueMeta}${mwAdmin3}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { period = '30d' } = req.query;
@@ -3293,20 +3615,27 @@ ${roleGuard}  const { period = '30d' } = req.query;
   res.json({ mrr: 0, arr: 0, history: [], period });
 };
 `
-    : `${RA}${analyticsRevenueMeta}${mwAdmin3}
+      : `${RA}${analyticsRevenueMeta}${mwAdmin3}
 export const GET = async (req, res) => {
 ${roleGuard}  const { period = '30d' } = req.query;
   // TODO: fetch revenue analytics for period
   res.json({ mrr: 0, arr: 0, history: [], period });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'analytics', `revenue.${ext}`), analyticsRevenueContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'analytics', `revenue.${ext}`),
+      analyticsRevenueContent,
+    );
 
-  const analyticsTrafficMeta = mkMeta(opts, {
-    GET: { description: 'Traffic analytics: page views, devices, countries (admin only).', query: `{ period: '30d' }`, response: `{ pageViews: 0, devices: {}, countries: {}, period: '30d' }` },
-  });
-  const analyticsTrafficContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    const analyticsTrafficMeta = mkMeta(opts, {
+      GET: {
+        description: 'Traffic analytics: page views, devices, countries (admin only).',
+        query: `{ period: '30d' }`,
+        response: `{ pageViews: 0, devices: {}, countries: {}, period: '30d' }`,
+      },
+    });
+    const analyticsTrafficContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${analyticsTrafficMeta}${mwAdmin3}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { period = '30d' } = req.query;
@@ -3314,25 +3643,32 @@ ${roleGuard}  const { period = '30d' } = req.query;
   res.json({ pageViews: 0, devices: {}, countries: {}, period });
 };
 `
-    : `${RA}${analyticsTrafficMeta}${mwAdmin3}
+      : `${RA}${analyticsTrafficMeta}${mwAdmin3}
 export const GET = async (req, res) => {
 ${roleGuard}  const { period = '30d' } = req.query;
   // TODO: fetch traffic analytics for period
   res.json({ pageViews: 0, devices: {}, countries: {}, period });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'analytics', `traffic.${ext}`), analyticsTrafficContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'analytics', `traffic.${ext}`),
+      analyticsTrafficContent,
+    );
   }
 
   // ── User Actions ──────────────────────────────────────────────────────
   if (af.userManagement) {
-
-  // admin/users/[id]/suspend.ts
-  const suspendMeta = mkMeta(opts, {
-    POST: { description: 'Suspend a user account (admin only).', params: `{ id: 'usr_01HXZ' }`, request: `{ reason: 'Terms of service violation' }`, response: `{ message: 'User usr_01HXZ suspended', reason: 'Terms of service violation' }` },
-  });
-  const suspendContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/users/[id]/suspend.ts
+    const suspendMeta = mkMeta(opts, {
+      POST: {
+        description: 'Suspend a user account (admin only).',
+        params: `{ id: 'usr_01HXZ' }`,
+        request: `{ reason: 'Terms of service violation' }`,
+        response: `{ message: 'User usr_01HXZ suspended', reason: 'Terms of service violation' }`,
+      },
+    });
+    const suspendContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${suspendMeta}${mwAdmin4}
 export const POST = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
@@ -3341,7 +3677,7 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`User \${id} suspended\`, reason });
 };
 `
-    : `${RA}${suspendMeta}${mwAdmin4}
+      : `${RA}${suspendMeta}${mwAdmin4}
 export const POST = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
   const { reason } = req.body;
@@ -3349,14 +3685,21 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`User \${id} suspended\`, reason });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', '[id]', `suspend.${ext}`), suspendContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'users', '[id]', `suspend.${ext}`),
+      suspendContent,
+    );
 
-  // admin/users/[id]/activate.ts
-  const activateMeta = mkMeta(opts, {
-    POST: { description: 'Reactivate a suspended user account (admin only).', params: `{ id: 'usr_01HXZ' }`, response: `{ message: 'User usr_01HXZ activated' }` },
-  });
-  const activateContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/users/[id]/activate.ts
+    const activateMeta = mkMeta(opts, {
+      POST: {
+        description: 'Reactivate a suspended user account (admin only).',
+        params: `{ id: 'usr_01HXZ' }`,
+        response: `{ message: 'User usr_01HXZ activated' }`,
+      },
+    });
+    const activateContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${activateMeta}${mwAdmin4}
 export const POST = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
@@ -3364,21 +3707,28 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`User \${id} activated\` });
 };
 `
-    : `${RA}${activateMeta}${mwAdmin4}
+      : `${RA}${activateMeta}${mwAdmin4}
 export const POST = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
   // TODO: set user.isActive = true, log audit event
   res.json({ message: \`User \${id} activated\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', '[id]', `activate.${ext}`), activateContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'users', '[id]', `activate.${ext}`),
+      activateContent,
+    );
 
-  // admin/users/[id]/verify.ts
-  const verifyUserMeta = mkMeta(opts, {
-    POST: { description: "Mark a user's email as verified (admin only).", params: `{ id: 'usr_01HXZ' }`, response: `{ message: 'User usr_01HXZ verified' }` },
-  });
-  const verifyUserContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/users/[id]/verify.ts
+    const verifyUserMeta = mkMeta(opts, {
+      POST: {
+        description: "Mark a user's email as verified (admin only).",
+        params: `{ id: 'usr_01HXZ' }`,
+        response: `{ message: 'User usr_01HXZ verified' }`,
+      },
+    });
+    const verifyUserContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${verifyUserMeta}${mwAdmin4}
 export const POST = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
@@ -3386,21 +3736,27 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`User \${id} verified\` });
 };
 `
-    : `${RA}${verifyUserMeta}${mwAdmin4}
+      : `${RA}${verifyUserMeta}${mwAdmin4}
 export const POST = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
   // TODO: set user.isVerified = true
   res.json({ message: \`User \${id} verified\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', '[id]', `verify.${ext}`), verifyUserContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'users', '[id]', `verify.${ext}`),
+      verifyUserContent,
+    );
 
-  // admin/users/export.ts
-  const exportMeta = mkMeta(opts, {
-    GET: { description: 'Export all users as a CSV download (admin only).', response: `'id,name,email,role,createdAt\\n'` },
-  });
-  const exportContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/users/export.ts
+    const exportMeta = mkMeta(opts, {
+      GET: {
+        description: 'Export all users as a CSV download (admin only).',
+        response: `'id,name,email,role,createdAt\\n'`,
+      },
+    });
+    const exportContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${exportMeta}${mwAdmin3}
 export const GET = async (_req: Request, res: Response) => {
 ${roleGuard}  // TODO: generate CSV of all users and stream response
@@ -3409,7 +3765,7 @@ ${roleGuard}  // TODO: generate CSV of all users and stream response
   res.send('id,name,email,role,createdAt\\n');
 };
 `
-    : `${RA}${exportMeta}${mwAdmin3}
+      : `${RA}${exportMeta}${mwAdmin3}
 export const GET = async (_req, res) => {
 ${roleGuard}  // TODO: generate CSV of all users and stream response
   res.setHeader('Content-Type', 'text/csv');
@@ -3417,19 +3773,29 @@ ${roleGuard}  // TODO: generate CSV of all users and stream response
   res.send('id,name,email,role,createdAt\\n');
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'users', `export.${ext}`), exportContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'users', `export.${ext}`),
+      exportContent,
+    );
   }
 
   // ── Admins ────────────────────────────────────────────────────────────
   if (af.adminManagement) {
-
-  // admin/admins/index.ts
-  const adminsListMeta = mkMeta(opts, {
-    GET: { description: 'List all admin accounts (admin only).', response: `{ admins: [], total: 0 }` },
-    POST: { description: 'Create a new admin account (admin only).', request: `{ name: 'Jane Doe', email: 'jane@example.com', role: 'admin' }`, response: `{ message: 'Admin created', admin: { id: 'new-id', name: 'Jane Doe', email: 'jane@example.com', role: 'admin' } }`, status: 201 },
-  });
-  const adminsListContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/admins/index.ts
+    const adminsListMeta = mkMeta(opts, {
+      GET: {
+        description: 'List all admin accounts (admin only).',
+        response: `{ admins: [], total: 0 }`,
+      },
+      POST: {
+        description: 'Create a new admin account (admin only).',
+        request: `{ name: 'Jane Doe', email: 'jane@example.com', role: 'admin' }`,
+        response: `{ message: 'Admin created', admin: { id: 'new-id', name: 'Jane Doe', email: 'jane@example.com', role: 'admin' } }`,
+        status: 201,
+      },
+    });
+    const adminsListContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${adminsListMeta}${mwAdmin3}
 export const GET = async (_req: Request, res: Response) => {
 ${roleGuard}  // TODO: fetch admins from DB
@@ -3443,7 +3809,7 @@ ${roleGuard}  const { name, email, role } = req.body;
   res.status(201).json({ message: 'Admin created', admin: { id: 'new-id', name, email, role: role ?? 'admin' } });
 };
 `
-    : `${RA}${adminsListMeta}${mwAdmin3}
+      : `${RA}${adminsListMeta}${mwAdmin3}
 export const GET = async (_req, res) => {
 ${roleGuard}  // TODO: fetch admins from DB
   res.json({ admins: [], total: 0 });
@@ -3456,16 +3822,32 @@ ${roleGuard}  const { name, email, role } = req.body;
   res.status(201).json({ message: 'Admin created', admin: { id: 'new-id', name, email, role: role ?? 'admin' } });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'admins', `index.${ext}`), adminsListContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'admins', `index.${ext}`),
+      adminsListContent,
+    );
 
-  // admin/admins/[id].ts
-  const adminByIdMeta = mkMeta(opts, {
-    GET: { description: 'Fetch a single admin account by ID (admin only).', params: `{ id: 'adm_01HXZ' }`, response: `{ admin: { id: 'adm_01HXZ' } }` },
-    PUT: { description: 'Update an admin account by ID (admin only).', params: `{ id: 'adm_01HXZ' }`, request: `{ name: 'Jane Doe', role: 'admin' }`, response: `{ message: 'Admin updated', admin: { id: 'adm_01HXZ', name: 'Jane Doe', role: 'admin' } }` },
-    DELETE: { description: 'Delete an admin account by ID (admin only).', params: `{ id: 'adm_01HXZ' }`, response: `{ message: 'Admin adm_01HXZ deleted' }` },
-  });
-  const adminByIdContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/admins/[id].ts
+    const adminByIdMeta = mkMeta(opts, {
+      GET: {
+        description: 'Fetch a single admin account by ID (admin only).',
+        params: `{ id: 'adm_01HXZ' }`,
+        response: `{ admin: { id: 'adm_01HXZ' } }`,
+      },
+      PUT: {
+        description: 'Update an admin account by ID (admin only).',
+        params: `{ id: 'adm_01HXZ' }`,
+        request: `{ name: 'Jane Doe', role: 'admin' }`,
+        response: `{ message: 'Admin updated', admin: { id: 'adm_01HXZ', name: 'Jane Doe', role: 'admin' } }`,
+      },
+      DELETE: {
+        description: 'Delete an admin account by ID (admin only).',
+        params: `{ id: 'adm_01HXZ' }`,
+        response: `{ message: 'Admin adm_01HXZ deleted' }`,
+      },
+    });
+    const adminByIdContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${adminByIdMeta}${mwAdmin3}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
@@ -3485,7 +3867,7 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`Admin \${id} deleted\` });
 };
 `
-    : `${RA}${adminByIdMeta}${mwAdmin3}
+      : `${RA}${adminByIdMeta}${mwAdmin3}
 export const GET = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
   // TODO: fetch admin by id
@@ -3504,17 +3886,25 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: \`Admin \${id} deleted\` });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'admins', `[id].${ext}`), adminByIdContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'admins', `[id].${ext}`),
+      adminByIdContent,
+    );
 
-  // ── Roles (rbac only) ─────────────────────────────────────────────────
+    // ── Roles (rbac only) ─────────────────────────────────────────────────
 
-  if (opts.rbac) {
-    const rolesListMeta = mkMeta(opts, {
-      GET: { description: 'List all roles (admin only).', response: `{ roles: [] }` },
-      POST: { description: 'Create a new role (admin only).', request: `{ name: 'editor', description: 'Can edit content', permissions: ['content:write'] }`, response: `{ message: 'Role created', role: { id: 'new-id', name: 'editor', permissions: ['content:write'] } }`, status: 201 },
-    });
-    const rolesListContent = ts
-      ? `${RA}import type { Request, Response } from 'express';
+    if (opts.rbac) {
+      const rolesListMeta = mkMeta(opts, {
+        GET: { description: 'List all roles (admin only).', response: `{ roles: [] }` },
+        POST: {
+          description: 'Create a new role (admin only).',
+          request: `{ name: 'editor', description: 'Can edit content', permissions: ['content:write'] }`,
+          response: `{ message: 'Role created', role: { id: 'new-id', name: 'editor', permissions: ['content:write'] } }`,
+          status: 201,
+        },
+      });
+      const rolesListContent = ts
+        ? `${RA}import type { Request, Response } from 'express';
 ${rolesListMeta}${mwAdmin3}
 export const GET = async (_req: Request, res: Response) => {
   // TODO: fetch all roles
@@ -3528,7 +3918,7 @@ export const POST = async (req: Request, res: Response) => {
   res.status(201).json({ message: 'Role created', role: { id: 'new-id', name, permissions: permissions ?? [] } });
 };
 `
-      : `${RA}${rolesListMeta}${mwAdmin3}
+        : `${RA}${rolesListMeta}${mwAdmin3}
 export const GET = async (_req, res) => {
   // TODO: fetch all roles
   res.json({ roles: [] });
@@ -3541,15 +3931,31 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'Role created', role: { id: 'new-id', name, permissions: permissions ?? [] } });
 };
 `;
-    await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'roles', `index.${ext}`), rolesListContent);
+      await fs.outputFile(
+        path.join(dest, 'src', 'api', 'admin', 'roles', `index.${ext}`),
+        rolesListContent,
+      );
 
-    const roleByIdMeta = mkMeta(opts, {
-      GET: { description: 'Fetch a single role by ID (admin only).', params: `{ id: 'role_01HXZ' }`, response: `{ role: { id: 'role_01HXZ', name: 'editor', permissions: ['content:write'] } }` },
-      PUT: { description: 'Update a role by ID (admin only).', params: `{ id: 'role_01HXZ' }`, request: `{ name: 'editor', permissions: ['content:write'] }`, response: `{ message: 'Role updated', role: { id: 'role_01HXZ', name: 'editor', permissions: ['content:write'] } }` },
-      DELETE: { description: 'Delete a role by ID (admin only).', params: `{ id: 'role_01HXZ' }`, response: `{ message: 'Role role_01HXZ deleted' }` },
-    });
-    const roleByIdContent = ts
-      ? `${RA}import type { Request, Response } from 'express';
+      const roleByIdMeta = mkMeta(opts, {
+        GET: {
+          description: 'Fetch a single role by ID (admin only).',
+          params: `{ id: 'role_01HXZ' }`,
+          response: `{ role: { id: 'role_01HXZ', name: 'editor', permissions: ['content:write'] } }`,
+        },
+        PUT: {
+          description: 'Update a role by ID (admin only).',
+          params: `{ id: 'role_01HXZ' }`,
+          request: `{ name: 'editor', permissions: ['content:write'] }`,
+          response: `{ message: 'Role updated', role: { id: 'role_01HXZ', name: 'editor', permissions: ['content:write'] } }`,
+        },
+        DELETE: {
+          description: 'Delete a role by ID (admin only).',
+          params: `{ id: 'role_01HXZ' }`,
+          response: `{ message: 'Role role_01HXZ deleted' }`,
+        },
+      });
+      const roleByIdContent = ts
+        ? `${RA}import type { Request, Response } from 'express';
 ${roleByIdMeta}${mwAdmin3}
 export const GET = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -3569,7 +3975,7 @@ export const DELETE = async (req: Request, res: Response) => {
   res.json({ message: \`Role \${id} deleted\` });
 };
 `
-      : `${RA}${roleByIdMeta}${mwAdmin3}
+        : `${RA}${roleByIdMeta}${mwAdmin3}
 export const GET = async (req, res) => {
   const { id } = req.params;
   // TODO: fetch role by id
@@ -3588,20 +3994,30 @@ export const DELETE = async (req, res) => {
   res.json({ message: \`Role \${id} deleted\` });
 };
 `;
-    await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'roles', `[id].${ext}`), roleByIdContent);
-  }
+      await fs.outputFile(
+        path.join(dest, 'src', 'api', 'admin', 'roles', `[id].${ext}`),
+        roleByIdContent,
+      );
+    }
   }
 
   // ── Notifications ─────────────────────────────────────────────────────
   if (af.notificationsAndLogs) {
-
-  // admin/notifications/index.ts
-  const adminNotifMeta = mkMeta(opts, {
-    GET: { description: 'List all sent notifications (admin only).', response: `{ notifications: [], total: 0 }` },
-    POST: { description: 'Send a notification to a specific user (admin only).', request: `{ userId: 'usr_01HXZ', title: 'Welcome', message: 'Thanks for joining!', type: 'info' }`, response: `{ message: 'Notification sent' }`, status: 201 },
-  });
-  const adminNotifContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/notifications/index.ts
+    const adminNotifMeta = mkMeta(opts, {
+      GET: {
+        description: 'List all sent notifications (admin only).',
+        response: `{ notifications: [], total: 0 }`,
+      },
+      POST: {
+        description: 'Send a notification to a specific user (admin only).',
+        request: `{ userId: 'usr_01HXZ', title: 'Welcome', message: 'Thanks for joining!', type: 'info' }`,
+        response: `{ message: 'Notification sent' }`,
+        status: 201,
+      },
+    });
+    const adminNotifContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${adminNotifMeta}${mwAdmin3}
 export const GET = async (_req: Request, res: Response) => {
 ${roleGuard}  // TODO: fetch sent notifications
@@ -3615,7 +4031,7 @@ ${roleGuard}  const { userId, title, message, type } = req.body;
   res.status(201).json({ message: 'Notification sent' });
 };
 `
-    : `${RA}${adminNotifMeta}${mwAdmin3}
+      : `${RA}${adminNotifMeta}${mwAdmin3}
 export const GET = async (_req, res) => {
 ${roleGuard}  // TODO: fetch sent notifications
   res.json({ notifications: [], total: 0 });
@@ -3628,14 +4044,21 @@ ${roleGuard}  const { userId, title, message, type } = req.body;
   res.status(201).json({ message: 'Notification sent' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'notifications', `index.${ext}`), adminNotifContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'notifications', `index.${ext}`),
+      adminNotifContent,
+    );
 
-  // admin/notifications/broadcast.ts
-  const broadcastMeta = mkMeta(opts, {
-    POST: { description: 'Broadcast a notification to all users (admin only).', request: `{ title: 'Announcement', message: 'Hello everyone!', type: 'info' }`, response: `{ message: 'Broadcast sent', count: 0 }` },
-  });
-  const broadcastContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/notifications/broadcast.ts
+    const broadcastMeta = mkMeta(opts, {
+      POST: {
+        description: 'Broadcast a notification to all users (admin only).',
+        request: `{ title: 'Announcement', message: 'Hello everyone!', type: 'info' }`,
+        response: `{ message: 'Broadcast sent', count: 0 }`,
+      },
+    });
+    const broadcastContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${broadcastMeta}${mwAdmin3}
 export const POST = async (req: Request, res: Response) => {
 ${roleGuard}  const { title, message, type } = req.body;
@@ -3644,7 +4067,7 @@ ${roleGuard}  const { title, message, type } = req.body;
   res.json({ message: 'Broadcast sent', count: 0 });
 };
 `
-    : `${RA}${broadcastMeta}${mwAdmin3}
+      : `${RA}${broadcastMeta}${mwAdmin3}
 export const POST = async (req, res) => {
 ${roleGuard}  const { title, message, type } = req.body;
   if (!title || !message) return res.status(400).json({ error: 'title and message are required' });
@@ -3652,16 +4075,23 @@ ${roleGuard}  const { title, message, type } = req.body;
   res.json({ message: 'Broadcast sent', count: 0 });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'notifications', `broadcast.${ext}`), broadcastContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'notifications', `broadcast.${ext}`),
+      broadcastContent,
+    );
 
-  // ── Logs ──────────────────────────────────────────────────────────────
+    // ── Logs ──────────────────────────────────────────────────────────────
 
-  const mkLogContent = (label: string) => {
-    const meta = mkMeta(opts, {
-      GET: { description: `Paginated ${label} log entries (admin only).`, query: `{ page: '1', limit: '50' }`, response: `{ logs: [], total: 0, page: 1, limit: 50 }` },
-    });
-    return ts
-      ? `${RA}import type { Request, Response } from 'express';
+    const mkLogContent = (label: string) => {
+      const meta = mkMeta(opts, {
+        GET: {
+          description: `Paginated ${label} log entries (admin only).`,
+          query: `{ page: '1', limit: '50' }`,
+          response: `{ logs: [], total: 0, page: 1, limit: 50 }`,
+        },
+      });
+      return ts
+        ? `${RA}import type { Request, Response } from 'express';
 ${meta}${mwAdmin3}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { page = 1, limit = 50 } = req.query;
@@ -3669,30 +4099,42 @@ ${roleGuard}  const { page = 1, limit = 50 } = req.query;
   res.json({ logs: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `
-      : `${RA}${meta}${mwAdmin3}
+        : `${RA}${meta}${mwAdmin3}
 export const GET = async (req, res) => {
 ${roleGuard}  const { page = 1, limit = 50 } = req.query;
   // TODO: fetch ${label} logs with pagination
   res.json({ logs: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `;
-  };
+    };
 
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'logs', `audit.${ext}`), mkLogContent('audit'));
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'logs', `activity.${ext}`), mkLogContent('activity'));
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'logs', `security.${ext}`), mkLogContent('security'));
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'logs', `audit.${ext}`),
+      mkLogContent('audit'),
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'logs', `activity.${ext}`),
+      mkLogContent('activity'),
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'logs', `security.${ext}`),
+      mkLogContent('security'),
+    );
   }
 
   // ── Settings & System ─────────────────────────────────────────────────
   if (af.systemSettings) {
-
-  // admin/settings/index.ts
-  const settingsMeta = mkMeta(opts, {
-    GET: { description: 'Get system-wide settings (admin only).', response: `{ settings: {} }` },
-    PUT: { description: 'Update system-wide settings (admin only).', request: `{ maintenanceMode: false }`, response: `{ message: 'Settings updated', settings: { maintenanceMode: false } }` },
-  });
-  const settingsContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/settings/index.ts
+    const settingsMeta = mkMeta(opts, {
+      GET: { description: 'Get system-wide settings (admin only).', response: `{ settings: {} }` },
+      PUT: {
+        description: 'Update system-wide settings (admin only).',
+        request: `{ maintenanceMode: false }`,
+        response: `{ message: 'Settings updated', settings: { maintenanceMode: false } }`,
+      },
+    });
+    const settingsContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${settingsMeta}${mwAdmin3}
 export const GET = async (_req: Request, res: Response) => {
 ${roleGuard}  // TODO: fetch system settings from DB
@@ -3704,7 +4146,7 @@ ${roleGuard}  // TODO: update system settings
   res.json({ message: 'Settings updated', settings: req.body });
 };
 `
-    : `${RA}${settingsMeta}${mwAdmin3}
+      : `${RA}${settingsMeta}${mwAdmin3}
 export const GET = async (_req, res) => {
 ${roleGuard}  // TODO: fetch system settings from DB
   res.json({ settings: {} });
@@ -3715,58 +4157,76 @@ ${roleGuard}  // TODO: update system settings
   res.json({ message: 'Settings updated', settings: req.body });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'settings', `index.${ext}`), settingsContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'settings', `index.${ext}`),
+      settingsContent,
+    );
 
-  // admin/system/health.ts
-  const healthMeta = mkMeta(opts, {
-    GET: { description: 'System health check: DB, queue, cache status (admin only).', response: `{ status: 'ok', db: 'ok', queue: 'ok', uptime: 12345 }` },
-  });
-  const healthContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/system/health.ts
+    const healthMeta = mkMeta(opts, {
+      GET: {
+        description: 'System health check: DB, queue, cache status (admin only).',
+        response: `{ status: 'ok', db: 'ok', queue: 'ok', uptime: 12345 }`,
+      },
+    });
+    const healthContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${healthMeta}${mwAdmin3}
 export const GET = async (_req: Request, res: Response) => {
 ${roleGuard}  // TODO: check DB connection, queue, cache health
   res.json({ status: 'ok', db: 'ok', queue: 'ok', uptime: process.uptime() });
 };
 `
-    : `${RA}${healthMeta}${mwAdmin3}
+      : `${RA}${healthMeta}${mwAdmin3}
 export const GET = async (_req, res) => {
 ${roleGuard}  // TODO: check DB connection, queue, cache health
   res.json({ status: 'ok', db: 'ok', queue: 'ok', uptime: process.uptime() });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'system', `health.${ext}`), healthContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'system', `health.${ext}`),
+      healthContent,
+    );
 
-  // admin/system/cache.ts
-  const cacheMeta = mkMeta(opts, {
-    DELETE: { description: 'Flush the application cache (admin only).', response: `{ message: 'Cache cleared' }` },
-  });
-  const cacheContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/system/cache.ts
+    const cacheMeta = mkMeta(opts, {
+      DELETE: {
+        description: 'Flush the application cache (admin only).',
+        response: `{ message: 'Cache cleared' }`,
+      },
+    });
+    const cacheContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${cacheMeta}${mwAdmin3}
 export const DELETE = async (_req: Request, res: Response) => {
 ${roleGuard}  // TODO: flush Redis or in-memory cache
   res.json({ message: 'Cache cleared' });
 };
 `
-    : `${RA}${cacheMeta}${mwAdmin3}
+      : `${RA}${cacheMeta}${mwAdmin3}
 export const DELETE = async (_req, res) => {
 ${roleGuard}  // TODO: flush Redis or in-memory cache
   res.json({ message: 'Cache cleared' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'system', `cache.${ext}`), cacheContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'system', `cache.${ext}`),
+      cacheContent,
+    );
   }
 
   // ── Support Tickets (admin view) ──────────────────────────────────────
   if (af.supportManagement) {
-
-  // admin/tickets/index.ts
-  const adminTicketsListMeta = mkMeta(opts, {
-    GET: { description: 'List all support tickets with filters (admin only).', query: `{ status: 'open', priority: 'normal', page: '1', limit: '20' }`, response: `{ tickets: [], total: 0, page: 1, limit: 20 }` },
-  });
-  const adminTicketsListContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/tickets/index.ts
+    const adminTicketsListMeta = mkMeta(opts, {
+      GET: {
+        description: 'List all support tickets with filters (admin only).',
+        query: `{ status: 'open', priority: 'normal', page: '1', limit: '20' }`,
+        response: `{ tickets: [], total: 0, page: 1, limit: 20 }`,
+      },
+    });
+    const adminTicketsListContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${adminTicketsListMeta}${mwAdmin3}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { status, priority, page = 1, limit = 20 } = req.query;
@@ -3774,22 +4234,34 @@ ${roleGuard}  const { status, priority, page = 1, limit = 20 } = req.query;
   res.json({ tickets: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `
-    : `${RA}${adminTicketsListMeta}${mwAdmin3}
+      : `${RA}${adminTicketsListMeta}${mwAdmin3}
 export const GET = async (req, res) => {
 ${roleGuard}  const { status, priority, page = 1, limit = 20 } = req.query;
   // TODO: fetch all tickets with filters
   res.json({ tickets: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'tickets', `index.${ext}`), adminTicketsListContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'tickets', `index.${ext}`),
+      adminTicketsListContent,
+    );
 
-  // admin/tickets/[id].ts
-  const adminTicketByIdMeta = mkMeta(opts, {
-    GET: { description: 'Fetch a single support ticket by ID (admin only).', params: `{ id: 'tk_01HXZ' }`, response: `{ ticket: { id: 'tk_01HXZ' } }` },
-    PUT: { description: 'Assign, reply to, or change the status of a support ticket (admin only).', params: `{ id: 'tk_01HXZ' }`, request: `{ reply: 'Looking into it.', status: 'in_progress', assignedTo: 'adm_01HXZ' }`, response: `{ message: 'Ticket updated', ticket: { id: 'tk_01HXZ', status: 'in_progress', assignedTo: 'adm_01HXZ' } }` },
-  });
-  const adminTicketByIdContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/tickets/[id].ts
+    const adminTicketByIdMeta = mkMeta(opts, {
+      GET: {
+        description: 'Fetch a single support ticket by ID (admin only).',
+        params: `{ id: 'tk_01HXZ' }`,
+        response: `{ ticket: { id: 'tk_01HXZ' } }`,
+      },
+      PUT: {
+        description: 'Assign, reply to, or change the status of a support ticket (admin only).',
+        params: `{ id: 'tk_01HXZ' }`,
+        request: `{ reply: 'Looking into it.', status: 'in_progress', assignedTo: 'adm_01HXZ' }`,
+        response: `{ message: 'Ticket updated', ticket: { id: 'tk_01HXZ', status: 'in_progress', assignedTo: 'adm_01HXZ' } }`,
+      },
+    });
+    const adminTicketByIdContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${adminTicketByIdMeta}${mwAdmin3}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
@@ -3804,7 +4276,7 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: 'Ticket updated', ticket: { id, status, assignedTo } });
 };
 `
-    : `${RA}${adminTicketByIdMeta}${mwAdmin3}
+      : `${RA}${adminTicketByIdMeta}${mwAdmin3}
 export const GET = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
   // TODO: fetch ticket by id
@@ -3818,25 +4290,37 @@ ${roleGuard}  const { id } = req.params;
   res.json({ message: 'Ticket updated', ticket: { id, status, assignedTo } });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'tickets', `[id].${ext}`), adminTicketByIdContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'tickets', `[id].${ext}`),
+      adminTicketByIdContent,
+    );
   }
 
   // Shared by Content (FAQs/blogs/categories) and Billing (plans/coupons) below.
-  const mkContentCrud = (
-    name: string,
-    namePlural: string,
-    dir: string[],
-    createFields: string,
-  ) => {
+  const mkContentCrud = (name: string, namePlural: string, dir: string[], createFields: string) => {
     const lower = name.toLowerCase();
     const firstField = createFields.split(', ')[0];
-    const sampleCreateBody = `{ ${createFields.split(', ').map((f) => `${f}: 'sample-${f}'`).join(', ')} }`;
+    const sampleCreateBody = `{ ${createFields
+      .split(', ')
+      .map((f) => `${f}: 'sample-${f}'`)
+      .join(', ')} }`;
     const sampleCreatedRecord = `{ id: 'new-id', ${firstField}: 'sample-${firstField}' }`;
-    const sampleFullRecord = `{ id: '${lower}_01HXZ', ${createFields.split(', ').map((f) => `${f}: 'sample-${f}'`).join(', ')} }`;
+    const sampleFullRecord = `{ id: '${lower}_01HXZ', ${createFields
+      .split(', ')
+      .map((f) => `${f}: 'sample-${f}'`)
+      .join(', ')} }`;
 
     const listMeta = mkMeta(opts, {
-      GET: { description: `List all ${namePlural} (admin only).`, response: `{ ${namePlural}: [], total: 0 }` },
-      POST: { description: `Create a new ${lower} (admin only).`, request: sampleCreateBody, response: `{ message: '${name} created', ${lower}: ${sampleCreatedRecord} }`, status: 201 },
+      GET: {
+        description: `List all ${namePlural} (admin only).`,
+        response: `{ ${namePlural}: [], total: 0 }`,
+      },
+      POST: {
+        description: `Create a new ${lower} (admin only).`,
+        request: sampleCreateBody,
+        response: `{ message: '${name} created', ${lower}: ${sampleCreatedRecord} }`,
+        status: 201,
+      },
     });
     const listContent = ts
       ? `${RA}import type { Request, Response } from 'express';
@@ -3865,9 +4349,22 @@ ${roleGuard}  const { ${createFields} } = req.body;
 };
 `;
     const byIdMeta = mkMeta(opts, {
-      GET: { description: `Fetch a single ${lower} by ID (admin only).`, params: `{ id: '${lower}_01HXZ' }`, response: `{ ${lower}: ${sampleFullRecord} }` },
-      PUT: { description: `Update a ${lower} by ID (admin only).`, params: `{ id: '${lower}_01HXZ' }`, request: sampleCreateBody, response: `{ message: '${name} updated', ${lower}: ${sampleFullRecord} }` },
-      DELETE: { description: `Delete a ${lower} by ID (admin only).`, params: `{ id: '${lower}_01HXZ' }`, response: `{ message: '${name} ${lower}_01HXZ deleted' }` },
+      GET: {
+        description: `Fetch a single ${lower} by ID (admin only).`,
+        params: `{ id: '${lower}_01HXZ' }`,
+        response: `{ ${lower}: ${sampleFullRecord} }`,
+      },
+      PUT: {
+        description: `Update a ${lower} by ID (admin only).`,
+        params: `{ id: '${lower}_01HXZ' }`,
+        request: sampleCreateBody,
+        response: `{ message: '${name} updated', ${lower}: ${sampleFullRecord} }`,
+      },
+      DELETE: {
+        description: `Delete a ${lower} by ID (admin only).`,
+        params: `{ id: '${lower}_01HXZ' }`,
+        response: `{ message: '${name} ${lower}_01HXZ deleted' }`,
+      },
     });
     const byIdContent = ts
       ? `${RA}import type { Request, Response } from 'express';
@@ -3914,35 +4411,94 @@ ${roleGuard}  const { id } = req.params;
 
   // ── Content ───────────────────────────────────────────────────────────
   if (af.contentManagement) {
-  const { listContent: faqList, byIdContent: faqById } = mkContentCrud('FAQ', 'faqs', [], 'question, answer, category');
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'faqs', `index.${ext}`), faqList);
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'faqs', `[id].${ext}`), faqById);
+    const { listContent: faqList, byIdContent: faqById } = mkContentCrud(
+      'FAQ',
+      'faqs',
+      [],
+      'question, answer, category',
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'content', 'faqs', `index.${ext}`),
+      faqList,
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'content', 'faqs', `[id].${ext}`),
+      faqById,
+    );
 
-  const { listContent: blogList, byIdContent: blogById } = mkContentCrud('Blog', 'blogs', [], 'title, slug, content');
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'blogs', `index.${ext}`), blogList);
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'blogs', `[id].${ext}`), blogById);
+    const { listContent: blogList, byIdContent: blogById } = mkContentCrud(
+      'Blog',
+      'blogs',
+      [],
+      'title, slug, content',
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'content', 'blogs', `index.${ext}`),
+      blogList,
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'content', 'blogs', `[id].${ext}`),
+      blogById,
+    );
 
-  const { listContent: catList, byIdContent: catById } = mkContentCrud('Category', 'categories', [], 'name, slug');
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'categories', `index.${ext}`), catList);
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'content', 'categories', `[id].${ext}`), catById);
+    const { listContent: catList, byIdContent: catById } = mkContentCrud(
+      'Category',
+      'categories',
+      [],
+      'name, slug',
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'content', 'categories', `index.${ext}`),
+      catList,
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'content', 'categories', `[id].${ext}`),
+      catById,
+    );
   }
 
   // ── Billing (admin) ───────────────────────────────────────────────────
   if (af.billingManagement) {
-  const { listContent: planList, byIdContent: planById } = mkContentCrud('Plan', 'plans', [], 'name, price, interval');
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'billing', 'plans', `index.${ext}`), planList);
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'billing', 'plans', `[id].${ext}`), planById);
+    const { listContent: planList, byIdContent: planById } = mkContentCrud(
+      'Plan',
+      'plans',
+      [],
+      'name, price, interval',
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'billing', 'plans', `index.${ext}`),
+      planList,
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'billing', 'plans', `[id].${ext}`),
+      planById,
+    );
 
-  const { listContent: couponList, byIdContent: couponById } = mkContentCrud('Coupon', 'coupons', [], 'code, type, value');
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'billing', 'coupons', `index.${ext}`), couponList);
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'billing', 'coupons', `[id].${ext}`), couponById);
+    const { listContent: couponList, byIdContent: couponById } = mkContentCrud(
+      'Coupon',
+      'coupons',
+      [],
+      'code, type, value',
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'billing', 'coupons', `index.${ext}`),
+      couponList,
+    );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'billing', 'coupons', `[id].${ext}`),
+      couponById,
+    );
 
-  // admin/billing/subscriptions/index.ts
-  const adminSubsMeta = mkMeta(opts, {
-    GET: { description: 'List all subscriptions with filters (admin only).', query: `{ status: 'active', page: '1', limit: '20' }`, response: `{ subscriptions: [], total: 0, page: 1, limit: 20 }` },
-  });
-  const adminSubsContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // admin/billing/subscriptions/index.ts
+    const adminSubsMeta = mkMeta(opts, {
+      GET: {
+        description: 'List all subscriptions with filters (admin only).',
+        query: `{ status: 'active', page: '1', limit: '20' }`,
+        response: `{ subscriptions: [], total: 0, page: 1, limit: 20 }`,
+      },
+    });
+    const adminSubsContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${adminSubsMeta}${mwAdmin4}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { status, page = 1, limit = 20 } = req.query;
@@ -3950,13 +4506,16 @@ ${roleGuard}  const { status, page = 1, limit = 20 } = req.query;
   res.json({ subscriptions: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `
-    : `${RA}${adminSubsMeta}${mwAdmin4}
+      : `${RA}${adminSubsMeta}${mwAdmin4}
 export const GET = async (req, res) => {
 ${roleGuard}  const { status, page = 1, limit = 20 } = req.query;
   // TODO: fetch all subscriptions with filters
   res.json({ subscriptions: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'admin', 'billing', 'subscriptions', `index.${ext}`), adminSubsContent);
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'admin', 'billing', 'subscriptions', `index.${ext}`),
+      adminSubsContent,
+    );
   }
 }
