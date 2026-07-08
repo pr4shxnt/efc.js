@@ -30,6 +30,8 @@ export interface EFCConfig {
   workers?: number;
   tasks?: TaskConfig | false;
   cors?: boolean | CorsConfig;
+  /** Request timeout in milliseconds. Requests exceeding this duration will be terminated with 408. */
+  requestTimeout?: number;
   globalMiddlewares?: RequestHandler[];
   onWorkerReady?: (id: number) => void;
   onWorkerCrash?: (id: number, code: number) => void;
