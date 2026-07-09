@@ -1,9 +1,14 @@
 import type { RequestHandler } from 'express';
 
+/**
+ * Chains multiple Express request handlers into a single handler.
+ * Each handler calls the next one via its `next` callback.
+ *
+ * @example
+ * export const GET = compose(requireAuth, rateLimiter, myHandler);
+ */
 export function compose(...handlers: RequestHandler[]): RequestHandler {
   return (req, res, next) => {
-    const index = 0;
-
     function dispatch(i: number): void {
       if (i >= handlers.length) {
         next();
@@ -21,6 +26,6 @@ export function compose(...handlers: RequestHandler[]): RequestHandler {
       }
     }
 
-    dispatch(index);
+    dispatch(0);
   };
 }
