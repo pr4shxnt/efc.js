@@ -26,6 +26,10 @@ export interface EFCConfig {
   databaseUrl?: string;
   authStrategy?: AuthStrategy;
   jwtSecret?: string;
+  /** JWT lifetime, e.g. '15m', '1h', '7d'. Default: '7d'. */
+  jwtExpiresIn?: string;
+  /** Cookie domain for the 'http-only' auth strategy. Default: unset (host-only cookie). */
+  cookieDomain?: string;
   cluster?: boolean;
   workers?: number;
   tasks?: TaskConfig | false;
@@ -84,19 +88,38 @@ export interface TaskDefinition<TPayload = unknown> {
   filePath?: string;
 }
 
+/** Primitive field types usable directly, or as the item type of an `array` field via `of`. */
+export type PrimitiveFieldType = 'string' | 'number' | 'boolean' | 'date' | 'object' | 'objectId';
+
 export interface FieldDefinition {
-  type: 'string' | 'number' | 'boolean' | 'date' | 'object' | 'array';
+  type: PrimitiveFieldType | 'array';
   required?: boolean;
   unique?: boolean;
   default?: unknown;
+  /** Restricts the field to a fixed set of values. Valid on `string` and `number` types. */
+  enum?: readonly (string | number)[];
+  /** Mongoose model name to reference. Valid on `objectId` types (bare or as an array's `of`). */
+  ref?: string;
+  /** Item type for `array` fields, e.g. `{ type: 'array', of: 'string' }`. Omit for an untyped array. */
+  of?: PrimitiveFieldType;
 }
 
-export type ModelSchema = Record<string, FieldDefinition>;
+/**
+ * A schema field is either a `FieldDefinition`, or a one-element tuple holding a nested
+ * `ModelSchema` — the latter defines an array of embedded sub-documents, e.g.:
+ * `route_progress: [{ route_id: { type: 'string' } }]`
+ */
+export type ModelSchema = Record<string, FieldDefinition | [ModelSchema]>;
+
+export interface ModelQueryOptions {
+  /** Mongoose `.populate()` path(s) to resolve on `objectId`/ref fields. */
+  populate?: string | string[];
+}
 
 export interface ModelCRUD<T extends Record<string, any>> {
-  find(filter?: Partial<T>): Promise<T[]>;
-  findById(id: string): Promise<(T & { id: string }) | null>;
-  findOne(filter: Partial<T>): Promise<(T & { id: string }) | null>;
+  find(filter?: Partial<T>, options?: ModelQueryOptions): Promise<T[]>;
+  findById(id: string, options?: ModelQueryOptions): Promise<(T & { id: string }) | null>;
+  findOne(filter: Partial<T>, options?: ModelQueryOptions): Promise<(T & { id: string }) | null>;
   create(data: Partial<T>): Promise<T & { id: string }>;
   update(id: string, data: Partial<T>): Promise<(T & { id: string }) | null>;
   delete(id: string): Promise<void>;

@@ -156,7 +156,7 @@ export const GET = async (req, res) => {
 
 ## Token lifetime
 
-Set `JWT_EXPIRES_IN` in `.env`. Default: `7d`.
+Set `JWT_EXPIRES_IN` in `.env`, then pass it through as `jwtExpiresIn: process.env.JWT_EXPIRES_IN` in `efc.config.ts` (`ignite()` never reads it directly). Default: `7d`.
 
 ```
 JWT_EXPIRES_IN=15m   # short-lived — for high-security use cases
@@ -177,16 +177,16 @@ For multi-subdomain setups (e.g. `api.example.com` setting a cookie for `*.examp
 COOKIE_DOMAIN=.example.com
 ```
 
-or configure it in `ignite()` (read from the env var automatically).
+and pass it through as `cookieDomain: process.env.COOKIE_DOMAIN` in `efc.config.ts` — `ignite()` never reads `COOKIE_DOMAIN` itself.
 
 ---
 
 ## Environment variables
 
-| Variable | Description |
-|---|---|
-| `JWT_SECRET` | Signing key — must be set; generate with `openssl rand -hex 64` |
-| `JWT_EXPIRES_IN` | Token lifetime — default `7d` |
-| `COOKIE_DOMAIN` | Cookie domain for `http-only` strategy |
+| Variable | Wired into (via `efc.config.ts`) | Description |
+|---|---|---|
+| `JWT_SECRET` | `jwtSecret` | Signing key — must be set; generate with `openssl rand -hex 64` |
+| `JWT_EXPIRES_IN` | `jwtExpiresIn` | Token lifetime — default `7d` |
+| `COOKIE_DOMAIN` | `cookieDomain` | Cookie domain for `http-only` strategy |
 
-See the full [Environment Variables reference](./environment-variables.md).
+`ignite()` doesn't read any of these from `process.env` itself — see the full [Environment Variables reference](./environment-variables.md) for how the scaffolded `efc.config.ts` wires them.

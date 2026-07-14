@@ -17,7 +17,7 @@ ignite() called
      │
      ▼
 1. Create Express app
-   - Apply CORS middleware (reads CORS_ORIGINS env var)
+   - Apply CORS middleware (from config.cors — ignite() never reads CORS_ORIGINS itself)
    - Apply express.json()
    - Apply express.urlencoded({ extended: true })
    - Apply cookieParser()
@@ -112,9 +112,10 @@ SIGTERM or SIGINT received
 
 ```
 1. config.port  (if provided and not NaN)
-2. process.env.PORT  (if set and parseable as number)
-3. 3000  (hardcoded default)
+2. 3000  (hardcoded default)
 ```
+
+`ignite()` never reads `process.env.PORT` itself — pass it explicitly (typically via `efc.config.ts`: `port: process.env.PORT ? Number(process.env.PORT) : undefined`).
 
 ---
 

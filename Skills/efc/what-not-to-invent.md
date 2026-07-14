@@ -170,10 +170,26 @@ refreshToken()          // does NOT exist as a core export
 
 ## Environment variables that EFC does NOT read automatically
 
+`ignite()` reads app config only from the `EFCConfig` object it's given — it does not grab any of the following from `process.env` itself. Read them yourself (typically in `efc.config.ts`) and pass them in:
+
 ```
+PORT              — NOT read by ignite(); pass config.port explicitly
+                    (or: port: process.env.PORT ? Number(process.env.PORT) : undefined)
+DATABASE_URL      — NOT read by ignite(); pass config.databaseUrl explicitly
+                    (or: databaseUrl: process.env.DATABASE_URL)
+JWT_SECRET        — NOT read by ignite(); pass config.jwtSecret explicitly
+                    (or: jwtSecret: process.env.JWT_SECRET)
+JWT_EXPIRES_IN    — NOT read by ignite(); pass config.jwtExpiresIn explicitly
+                    (or: jwtExpiresIn: process.env.JWT_EXPIRES_IN)
+COOKIE_DOMAIN     — NOT read by ignite(); pass config.cookieDomain explicitly
+                    (or: cookieDomain: process.env.COOKIE_DOMAIN)
+CORS_ORIGINS      — NOT read by ignite(); pass config.cors.origin explicitly
+                    (or: cors: { origin: process.env.CORS_ORIGINS?.split(',') } )
 REDIS_URL         — NOT read by ignite(); pass tasks.redisUrl explicitly
                     (or read it yourself: tasks: { redisUrl: process.env.REDIS_URL })
 ```
+
+`NODE_ENV` is the one env var the framework *does* still read directly (cluster-in-production default, dev-only dashboard toggle, auth cookie `Secure` flag) — see `pre-flight.md`.
 
 ---
 

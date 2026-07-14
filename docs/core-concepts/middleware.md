@@ -18,7 +18,7 @@ ignite({
 });
 ```
 
-> **CORS is built-in.** EFC applies its own CORS middleware based on the `CORS_ORIGINS` env var (or `cors` option in `ignite()`). You do not need to pass a `cors()` call here — doing so would create a duplicate header.
+> **CORS is built-in.** EFC applies its own CORS middleware based on the `cors` option in `ignite()` (see [`ignite()` reference](../api-reference/ignite.md#cors)). You do not need to pass a `cors()` call here — doing so would create a duplicate header.
 
 ---
 

@@ -25,13 +25,12 @@ Install the peer dependency:
 npm install mongoose
 ```
 
-Configure in `ignite()`:
+Configure in `ignite()` (typically via `efc.config.ts`, reading `process.env.DATABASE_URL` explicitly — `ignite()` itself never reads it):
 
 ```ts
 ignite({
   database: 'mongodb',
   databaseUrl: process.env.DATABASE_URL,
-  // or omit — DATABASE_URL is read automatically
 });
 ```
 

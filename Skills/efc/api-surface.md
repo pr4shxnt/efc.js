@@ -116,19 +116,31 @@ interface TaskDefinition<TPayload = unknown> {
   filePath?: string;
 }
 
+type PrimitiveFieldType = 'string' | 'number' | 'boolean' | 'date' | 'object' | 'objectId';
+
 interface FieldDefinition {
-  type: 'string' | 'number' | 'boolean' | 'date' | 'object' | 'array';
+  type: PrimitiveFieldType | 'array';
   required?: boolean;
   unique?: boolean;
   default?: unknown;
+  enum?: readonly (string | number)[];  // valid on 'string'/'number' types
+  ref?: string;                         // Mongoose model name; valid on 'objectId' types
+  of?: PrimitiveFieldType;              // item type for 'array' fields, e.g. { type: 'array', of: 'string' }
 }
 
-type ModelSchema = Record<string, FieldDefinition>;
+// A field is either a FieldDefinition, or a one-element tuple holding a nested ModelSchema —
+// the latter defines an array of embedded sub-documents:
+// route_progress: [{ route_id: { type: 'string' }, visited: { type: 'boolean' } }]
+type ModelSchema = Record<string, FieldDefinition | [ModelSchema]>;
+
+interface ModelQueryOptions {
+  populate?: string | string[]; // Mongoose .populate() path(s) for objectId/ref fields
+}
 
 interface ModelCRUD<T extends Record<string, any>> {
-  find(filter?: Partial<T>): Promise<(T & { id: string })[]>;
-  findById(id: string): Promise<(T & { id: string }) | null>;
-  findOne(filter: Partial<T>): Promise<(T & { id: string }) | null>;
+  find(filter?: Partial<T>, options?: ModelQueryOptions): Promise<(T & { id: string })[]>;
+  findById(id: string, options?: ModelQueryOptions): Promise<(T & { id: string }) | null>;
+  findOne(filter: Partial<T>, options?: ModelQueryOptions): Promise<(T & { id: string }) | null>;
   create(data: Partial<T>): Promise<T & { id: string }>;
   update(id: string, data: Partial<T>): Promise<(T & { id: string }) | null>;
   delete(id: string): Promise<void>;
@@ -191,15 +203,18 @@ const taskRegistry: Map<string, TaskDefinition>
 
 ---
 
-## Env vars read automatically by `ignite()`
+## `ignite()` does NOT read app config from `process.env` — `NODE_ENV` is the one exception
 
-| Var | Used for |
-|---|---|
-| `PORT` | Listen port (fallback to 3000) |
-| `DATABASE_URL` | DB connection + engine auto-detect |
-| `JWT_SECRET` | JWT signing secret |
-| `JWT_EXPIRES_IN` | Token lifetime (default `7d`) |
-| `COOKIE_DOMAIN` | Cookie domain for http-only auth |
-| `REDIS_URL` | Not read by ignite — pass via `tasks.redisUrl` |
-| `CORS_ORIGINS` | Comma-separated allowed origins |
-| `NODE_ENV` | `production` → cluster default true, Secure cookie |
+`ignite()` never reads `PORT`, `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `COOKIE_DOMAIN`, or `CORS_ORIGINS` itself. Each must be passed explicitly in the `EFCConfig` object — the scaffolder generates an `efc.config.ts` that reads `process.env.X` for each of these and builds that object; `src/index.ts` just spreads it into `ignite()`. See `what-not-to-invent.md` for the full "does not auto-read" list.
+
+| Config field | Typically wired from | Fallback if unset |
+|---|---|---|
+| `port` | `process.env.PORT` | `3000` |
+| `databaseUrl` | `process.env.DATABASE_URL` | none (no DB connects) |
+| `jwtSecret` | `process.env.JWT_SECRET` | none (auth disabled) |
+| `jwtExpiresIn` | `process.env.JWT_EXPIRES_IN` | `'7d'` |
+| `cookieDomain` | `process.env.COOKIE_DOMAIN` | unset (host-only cookie) |
+| `cors.origin` | `process.env.CORS_ORIGINS?.split(',')` | `true` (allow all) |
+| `tasks.redisUrl` | `process.env.REDIS_URL` | `'redis://localhost:6379'` |
+
+`NODE_ENV` is the sole exception — a Node/Express-wide runtime-mode signal, not an app secret — and is still read directly via `process.env['NODE_ENV']` in three places: `ignite()`'s cluster-in-production default, the dev-only dashboard toggle, and the `http-only` auth strategy's cookie `Secure` flag.

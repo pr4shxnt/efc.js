@@ -75,7 +75,7 @@
     <section class="hero" id="hero">
       <div class="hero-glow"></div>
       <div class="container">
-        <div class="badge">v0.3.1</div>
+        <div class="badge">v0.3.5</div>
         <h1 class="hero-title">
           Express, but your folder<br />
           <span class="accent">is your router.</span>
@@ -624,6 +624,31 @@
           <em>Change</em><span style="font-weight: 600">log</span>
         </h2>
         <div class="changelog-list">
+          <div class="changelog-item">
+            <div class="changelog-meta">
+              <div class="cl-version">express-file-cluster v0.3.5 / create-efc-app v0.4.5</div>
+              <div class="cl-date">Jul 10, 2026</div>
+              <div class="cl-tag">SCAFFOLDER</div>
+            </div>
+            <div class="changelog-content">
+              <h3>Granular Portal Features, Request Timeouts &amp; Structured Errors</h3>
+              <p>
+                The <code>create-efc-app</code> wizard now lets you toggle individual sub-features
+                within the User and Admin portals — analytics, billing, support tickets, content
+                management, and more — instead of an all-or-nothing switch, and only scaffolds the
+                models and routes each selection actually needs. <code>express</code> also moved to
+                a peer dependency so your project controls its own Express version.
+              </p>
+              <p>
+                On the framework side, <code>EFCConfig</code> gained a <code>requestTimeout</code>
+                option (milliseconds) — requests that run longer are terminated with a
+                <code>408</code> instead of hanging indefinitely — and <code>HttpError</code> now
+                implements <code>toJSON()</code>, so it serializes consistently whether it's caught
+                by the global error interceptor or passed straight to <code>res.json()</code>.
+              </p>
+            </div>
+          </div>
+
           <div class="changelog-item">
             <div class="changelog-meta">
               <div class="cl-version">express-file-cluster v0.3.1 / create-efc-app v0.4.1</div>

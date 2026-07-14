@@ -42,9 +42,6 @@ describe('ignite() — server integration', () => {
     apiDir = path.join(projectRoot, 'src', 'api');
     fs.mkdirSync(apiDir, { recursive: true });
     process.chdir(projectRoot);
-    // ensure no DATABASE_URL so connectMongo is never called
-    delete process.env['DATABASE_URL'];
-    delete process.env['CORS_ORIGINS'];
   });
 
   afterEach(async () => {
@@ -133,10 +130,16 @@ describe('ignite() — server integration', () => {
     expect(res.headers['access-control-allow-origin']).toBe('http://unknown.example');
   });
 
-  it('restricts origins when CORS_ORIGINS is set', async () => {
-    process.env['CORS_ORIGINS'] = 'http://allowed.example';
+  it('restricts origins when cors.origin is set', async () => {
     writeRoute(apiDir, 'ping.js', `export const GET = async (_req, res) => res.json({});`);
-    server = await ignite({ basePath: '/', cluster: false, port: 0 });
+    server = await ignite({
+      basePath: '/',
+      cluster: false,
+      port: 0,
+      // an array (rather than a bare string) so the `cors` package validates per-request
+      // Origin instead of always echoing back the same static value
+      cors: { origin: ['http://allowed.example'] },
+    });
 
     const allowed = await request(server!).get('/ping').set('Origin', 'http://allowed.example');
     expect(allowed.headers['access-control-allow-origin']).toBe('http://allowed.example');
@@ -145,10 +148,14 @@ describe('ignite() — server integration', () => {
     expect(blocked.headers['access-control-allow-origin']).toBeUndefined();
   });
 
-  it('supports multiple origins in CORS_ORIGINS', async () => {
-    process.env['CORS_ORIGINS'] = 'http://a.example, http://b.example';
+  it('supports multiple origins in cors.origin', async () => {
     writeRoute(apiDir, 'ping.js', `export const GET = async (_req, res) => res.json({});`);
-    server = await ignite({ basePath: '/', cluster: false, port: 0 });
+    server = await ignite({
+      basePath: '/',
+      cluster: false,
+      port: 0,
+      cors: { origin: ['http://a.example', 'http://b.example'] },
+    });
 
     const a = await request(server!).get('/ping').set('Origin', 'http://a.example');
     expect(a.headers['access-control-allow-origin']).toBe('http://a.example');
@@ -164,32 +171,13 @@ describe('ignite() — server integration', () => {
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
 
-  // --- port & env auto-reading ------------------------------------------
+  // --- port -------------------------------------------------------------
 
-  it('reads PORT from env when port is not passed', async () => {
-    process.env['PORT'] = '0'; // 0 = OS assigns a free port
+  it('uses the explicit port passed in config', async () => {
     writeRoute(apiDir, 'hi.js', `export const GET = async (_req, res) => res.json({ hi: true });`);
     server = await ignite({ basePath: '/', cluster: false, port: 0 });
     const addr = server!.address() as { port: number };
     expect(addr.port).toBeGreaterThan(0);
-    delete process.env['PORT'];
-  });
-
-  it('falls back to port 3000 when PORT env is absent', async () => {
-    delete process.env['PORT'];
-    writeRoute(apiDir, 'hi.js', `export const GET = async (_req, res) => res.json({});`);
-    server = await ignite({ basePath: '/', cluster: false, port: 0 }); // 0 avoids binding 3000 in tests
-    const addr = server!.address() as { port: number };
-    expect(addr.port).toBeGreaterThan(0);
-  });
-
-  it('ignores NaN port and falls back to env PORT', async () => {
-    process.env['PORT'] = '0';
-    writeRoute(apiDir, 'hi.js', `export const GET = async (_req, res) => res.json({});`);
-    server = await ignite({ basePath: '/', cluster: false, port: Number(undefined) }); // NaN
-    const addr = server!.address() as { port: number };
-    expect(addr.port).toBeGreaterThan(0);
-    delete process.env['PORT'];
   });
 
   // --- error handling ---------------------------------------------------

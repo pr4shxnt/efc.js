@@ -73,9 +73,12 @@ export const GET = async (req: Request, res: Response) => {
 ```ts
 // src/index.ts
 import { ignite, gracefulShutdown } from 'express-file-cluster';
+import config from '../efc.config.js';
 
-// PORT, DATABASE_URL, JWT_SECRET, CORS_ORIGINS are read from .env automatically
+// efc.config.ts reads PORT, DATABASE_URL, JWT_SECRET, CORS_ORIGINS from .env explicitly —
+// ignite() itself never touches process.env for these (see Environment Variables guide)
 ignite({
+  ...config,
   cluster: true,
 }).then(gracefulShutdown).catch(console.error);
 ```
