@@ -35,6 +35,8 @@ interface EFCConfig {
   // Auth
   authStrategy?: 'http-only' | 'localStorage';
   jwtSecret?: string;
+  jwtExpiresIn?: string;
+  cookieDomain?: string;
 
   // Background tasks
   tasks?: TaskConfig | false;
@@ -79,11 +81,11 @@ ignite({ dashboard: true });
 
 ### `port`
 
-HTTP listen port. Falls back to the `PORT` environment variable, then `3000`.
+HTTP listen port. Default: `3000`. `ignite()` never reads `PORT` from the environment itself — pass it explicitly, typically by reading `process.env.PORT` in `efc.config.ts` (see [Environment Variables](../guides/environment-variables.md)).
 
 ```ts
 ignite({ port: 8080 });
-// or: PORT=8080 in .env
+// or, in efc.config.ts: port: process.env.PORT ? Number(process.env.PORT) : undefined
 ```
 
 ---
@@ -136,7 +138,7 @@ Database engine to connect. When omitted, EFC attempts to detect the engine from
 
 ### `databaseUrl`
 
-Connection string for the database. Falls back to the `DATABASE_URL` environment variable.
+Connection string for the database. `ignite()` never reads `DATABASE_URL` from the environment itself — pass it explicitly (typically `databaseUrl: process.env.DATABASE_URL` in `efc.config.ts`).
 
 ---
 
@@ -155,7 +157,19 @@ Default: `'http-only'`.
 
 ### `jwtSecret`
 
-Secret used to sign and verify JWTs (HS256). Falls back to the `JWT_SECRET` environment variable. Must be at least 32 random bytes for production use.
+Secret used to sign and verify JWTs (HS256). `ignite()` never reads `JWT_SECRET` from the environment itself — pass it explicitly (typically `jwtSecret: process.env.JWT_SECRET` in `efc.config.ts`). Must be at least 32 random bytes for production use.
+
+---
+
+### `jwtExpiresIn`
+
+Token lifetime, e.g. `'15m'`, `'1h'`, `'7d'`, `'30d'`. Default: `'7d'`. Pass explicitly (typically `jwtExpiresIn: process.env.JWT_EXPIRES_IN`); no environment fallback.
+
+---
+
+### `cookieDomain`
+
+Cookie domain used by the `'http-only'` auth strategy. Default: unset (host-only cookie, correct for `localhost`). Pass explicitly (typically `cookieDomain: process.env.COOKIE_DOMAIN`); no environment fallback.
 
 ---
 
@@ -177,23 +191,19 @@ interface TaskConfig {
 
 ### `cors`
 
-CORS configuration. Default: `true` (allow all origins).
-
-When `true` and `CORS_ORIGINS` is set in the environment, EFC restricts the `Access-Control-Allow-Origin` header to the comma-separated list of allowed origins.
+CORS configuration. Default: `true` (allow all origins). `ignite()` never reads `CORS_ORIGINS` from the environment itself — pass `cors.origin` explicitly.
 
 ```ts
-// Explicit config
 ignite({
   cors: {
+    // typically built from `process.env.CORS_ORIGINS?.split(',').map(o => o.trim())`
+    // in efc.config.ts — pass an array (not a bare string) so per-request Origin
+    // validation actually happens instead of a single static header value
     origin: ['https://app.example.com', 'https://admin.example.com'],
     credentials: true,
     maxAge: 86400,
   },
 });
-
-// Env-driven (preferred)
-// CORS_ORIGINS=https://app.example.com,https://admin.example.com
-ignite({ cors: true });
 ```
 
 Set `cors: false` to skip CORS headers entirely.

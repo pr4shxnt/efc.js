@@ -61,13 +61,13 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
     }
   }
 
-  const envPort = process.env['PORT'] != null ? Number(process.env['PORT']) : NaN;
-  const port =
-    _port != null && !Number.isNaN(_port) ? _port : !Number.isNaN(envPort) ? envPort : 3000;
-  const databaseUrl = config.databaseUrl ?? process.env['DATABASE_URL'];
+  const port = _port != null && !Number.isNaN(_port) ? _port : 3000;
+  const databaseUrl = config.databaseUrl;
   const database = config.database ?? detectDatabase(databaseUrl);
-  const jwtSecret = config.jwtSecret ?? process.env['JWT_SECRET'];
+  const jwtSecret = config.jwtSecret;
   const authStrategy = config.authStrategy ?? 'http-only';
+  // NODE_ENV is a Node/Express-wide runtime-mode signal set by the platform, not an app
+  // secret — unlike PORT/DATABASE_URL/JWT_SECRET/etc. this one is still read directly.
   const clusterEnabled = config.cluster ?? process.env['NODE_ENV'] === 'production';
 
   if (clusterEnabled && cluster.isPrimary) {
@@ -83,19 +83,8 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
 
   const corsOption = config.cors ?? true;
   if (corsOption !== false) {
-    const envOrigins = process.env['CORS_ORIGINS'];
-    let origin: string | string[] | boolean;
-    if (envOrigins) {
-      const list = envOrigins
-        .split(',')
-        .map((o) => o.trim())
-        .filter(Boolean);
-      origin = list; // always array so cors validates against the request Origin
-    } else if (typeof corsOption === 'object' && corsOption.origin !== undefined) {
-      origin = corsOption.origin;
-    } else {
-      origin = true;
-    }
+    const origin =
+      typeof corsOption === 'object' && corsOption.origin !== undefined ? corsOption.origin : true;
     const corsOpts = typeof corsOption === 'object' ? { ...corsOption, origin } : { origin };
     app.use(cors(corsOpts));
   }
@@ -116,12 +105,11 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
 
   // Pre-Flight step 2: Configure auth
   if (jwtSecret) {
-    const cookieDomain = process.env['COOKIE_DOMAIN'];
     configureAuth({
       secret: jwtSecret,
       strategy: authStrategy,
-      expiresIn: process.env['JWT_EXPIRES_IN'] ?? '7d',
-      ...(cookieDomain !== undefined && { cookieDomain }),
+      expiresIn: config.jwtExpiresIn ?? '7d',
+      ...(config.cookieDomain !== undefined && { cookieDomain: config.cookieDomain }),
     });
   }
 
@@ -223,4 +211,6 @@ export type {
   AuthStrategy,
   ModelSchema,
   ModelCRUD,
+  ModelQueryOptions,
+  FieldDefinition,
 } from './types.js';

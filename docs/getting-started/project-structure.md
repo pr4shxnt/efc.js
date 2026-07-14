@@ -95,24 +95,45 @@ See [`ignite()` API reference](../api-reference/ignite.md).
 
 ---
 
-## `efc.config.ts` — Structural configuration
+## `efc.config.ts` — where every runtime value is wired
 
-The scaffolder generates a typed config file that captures structural choices (auth strategy, task backend). Runtime secrets stay in `.env`.
+`ignite()` never reads `process.env` itself for app config (the one exception is `NODE_ENV`, a Node/Express-wide runtime-mode signal — see [Environment Variables](../guides/environment-variables.md#precedence)). The scaffolder generates a typed config file that reads `.env` explicitly and builds the object `ignite()` receives — both structural choices (auth strategy, task backend) and runtime values (port, database URL, JWT secret, CORS origins, ...) live here:
 
 ```ts
 import type { EFCConfig } from 'express-file-cluster';
 
-// Structural config only — runtime values (PORT, DATABASE_URL, JWT_SECRET, etc.) are read from .env
+// The framework never reads process.env itself — every runtime value it needs is read
+// here, explicitly, and passed in. Edit .env to change values; edit this file to change
+// which env vars are wired up or add new ones.
+const corsOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : undefined;
+
 const config: EFCConfig = {
+  port: process.env.PORT ? Number(process.env.PORT) : undefined,
+  databaseUrl: process.env.DATABASE_URL,
+  jwtSecret: process.env.JWT_SECRET,
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN,
+  cookieDomain: process.env.COOKIE_DOMAIN,
+  cors: corsOrigins ? { origin: corsOrigins } : true,
   authStrategy: 'http-only',
-  tasks: { backend: 'bullmq', concurrency: 5 },
+  tasks: { backend: 'bullmq', concurrency: 5, redisUrl: process.env.REDIS_URL },
   globalMiddlewares: [],
 };
 
 export default config;
 ```
 
-> `efc.config.ts` is currently informational — `ignite()` does **not** auto-load it. `src/index.ts` is the actual runtime entrypoint; import from `efc.config.ts` yourself and spread its fields into `ignite()` if you want them applied.
+`ignite()` itself does **not** auto-load `efc.config.ts` — `src/index.ts` is the actual runtime entrypoint. The generated `src/index.ts` imports `efc.config.ts` and spreads its fields into `ignite()`, so this file is the single source of truth for what's actually applied:
+
+```ts
+import { ignite, gracefulShutdown } from 'express-file-cluster';
+import config from '../efc.config.js';
+
+ignite({ ...config, cluster: true }).then(gracefulShutdown).catch(console.error);
+```
+
+The scaffolded `tsconfig.json` includes `efc.config.ts` alongside `src/**/*` so this import typechecks without a `rootDir` violation.
 
 ---
 

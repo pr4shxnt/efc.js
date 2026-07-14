@@ -27,14 +27,21 @@ function defineModel<T extends Record<string, any>>(
 ### `ModelSchema`
 
 ```ts
-type ModelSchema = Record<string, FieldDefinition>;
+type PrimitiveFieldType = 'string' | 'number' | 'boolean' | 'date' | 'object' | 'objectId';
 
 interface FieldDefinition {
-  type: 'string' | 'number' | 'boolean' | 'date' | 'object' | 'array';
+  type: PrimitiveFieldType | 'array';
   required?: boolean;
   unique?: boolean;
   default?: unknown;
+  enum?: readonly (string | number)[];  // valid on 'string'/'number' types
+  ref?: string;                         // Mongoose model name; valid on 'objectId' types
+  of?: PrimitiveFieldType;              // item type for 'array' fields
 }
+
+// A field is either a FieldDefinition, or a one-element tuple holding a nested ModelSchema —
+// the latter defines an array of embedded sub-documents (see "Nested array schemas" below).
+type ModelSchema = Record<string, FieldDefinition | [ModelSchema]>;
 ```
 
 ### Example
@@ -52,7 +59,35 @@ interface User {
 export const User = defineModel<User>('User', {
   name:  { type: 'string', required: true },
   email: { type: 'string', required: true, unique: true },
-  role:  { type: 'string', default: 'member' },
+  role:  { type: 'string', enum: ['member', 'admin'], default: 'member' },
+});
+```
+
+### `objectId` references
+
+```ts
+export const Trip = defineModel<Trip>('Trip', {
+  visiting_place_id: { type: 'objectId', ref: 'VisitingPlace', required: true },
+  tags:              { type: 'array', of: 'string' },
+  waypoint_ids:      { type: 'array', of: 'objectId', ref: 'Waypoint' },
+});
+```
+
+`type: 'objectId'` validates the field is cast to a Mongo `ObjectId` (invalid strings raise a cast error before saving) and `ref` records which model it points to, enabling `.populate()` via the `populate` query option (see below).
+
+### Nested array schemas
+
+An array of embedded sub-documents is written as a one-element array literal in place of a `FieldDefinition`:
+
+```ts
+export const Trip = defineModel<Trip>('Trip', {
+  route_progress: [
+    {
+      route_id:    { type: 'string', required: true },
+      route_index: { type: 'number', required: true },
+      visited:     { type: 'boolean', required: true },
+    },
+  ],
 });
 ```
 
@@ -62,10 +97,14 @@ export const User = defineModel<User>('User', {
 
 Every model exposes these async methods:
 
-### `find(filter?)`
+### `find(filter?, options?)`
 
 ```ts
-find(filter?: Partial<T>): Promise<(T & { id: string })[]>
+interface ModelQueryOptions {
+  populate?: string | string[]; // Mongoose .populate() path(s) for objectId/ref fields
+}
+
+find(filter?: Partial<T>, options?: ModelQueryOptions): Promise<(T & { id: string })[]>
 ```
 
 Returns all records matching the filter. Pass no arguments to return all records.
@@ -73,14 +112,15 @@ Returns all records matching the filter. Pass no arguments to return all records
 ```ts
 const users = await User.find();
 const admins = await User.find({ role: 'admin' });
+const trips = await Trip.find({}, { populate: 'visiting_place_id' });
 ```
 
 ---
 
-### `findById(id)`
+### `findById(id, options?)`
 
 ```ts
-findById(id: string): Promise<(T & { id: string }) | null>
+findById(id: string, options?: ModelQueryOptions): Promise<(T & { id: string }) | null>
 ```
 
 Finds a single record by its primary key. Returns `null` if not found. The `id` string is cast to the engine's native PK type (`ObjectId` for MongoDB).
@@ -92,10 +132,10 @@ if (!user) throw new HttpError(404, 'User not found');
 
 ---
 
-### `findOne(filter)`
+### `findOne(filter, options?)`
 
 ```ts
-findOne(filter: Partial<T>): Promise<(T & { id: string }) | null>
+findOne(filter: Partial<T>, options?: ModelQueryOptions): Promise<(T & { id: string }) | null>
 ```
 
 Finds the first record matching the filter. Returns `null` if not found.

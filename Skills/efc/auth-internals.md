@@ -112,7 +112,7 @@ Uses `jose` (not `jsonwebtoken`). Key is UTF-8 encoded via `new TextEncoder().en
 
 ## Token expiry
 
-`expiresIn` is read once in `configureAuth` from `process.env.JWT_EXPIRES_IN ?? '7d'`. All tokens issued in the same process lifetime use the same expiry value.
+`expiresIn` is passed into `configureAuth` as a plain string by `ignite()` (`config.jwtExpiresIn ?? '7d'`) — `configureAuth` itself never touches `process.env`. All tokens issued in the same process lifetime use the same expiry value.
 
 Format accepted by `jose`: `'15m'`, `'1h'`, `'7d'`, `'30d'`, integer seconds, etc.
 

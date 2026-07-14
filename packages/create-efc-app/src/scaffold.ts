@@ -173,9 +173,12 @@ async function writeTsConfig(dest: string, opts: ScaffoldOptions): Promise<void>
       esModuleInterop: true,
       skipLibCheck: true,
       outDir: './dist',
-      rootDir: './src',
     },
-    include: ['src/**/*'],
+    // No explicit rootDir: efc.config.ts lives at the project root, outside src/, and
+    // src/index.ts imports it. `efc build prod` only uses this config for `tsc --noEmit`
+    // typechecking — the actual dist/index.js output path is decided by tsup's entry arg,
+    // so leaving rootDir implicit here has no effect on the production build's output layout.
+    include: ['src/**/*', 'efc.config.ts'],
     exclude: ['node_modules', 'dist'],
   };
   await fs.writeJson(path.join(dest, 'tsconfig.json'), config, { spaces: 2 });
@@ -184,13 +187,25 @@ async function writeTsConfig(dest: string, opts: ScaffoldOptions): Promise<void>
 async function writeEfcConfig(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const tasks = opts.tasks
-    ? `{ backend: '${opts.taskBackend ?? 'bullmq'}', concurrency: 5 }`
+    ? `{ backend: '${opts.taskBackend ?? 'bullmq'}', concurrency: 5, redisUrl: process.env.REDIS_URL }`
     : 'false';
 
   const content = `import type { EFCConfig } from 'express-file-cluster';
 
-// Structural config only — runtime values (PORT, DATABASE_URL, JWT_SECRET, etc.) are read from .env
+// The framework never reads process.env itself — every runtime value it needs is read
+// here, explicitly, and passed in. Edit .env to change values; edit this file to change
+// which env vars are wired up or add new ones.
+const corsOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : undefined;
+
 const config: EFCConfig = {
+  port: process.env.PORT ? Number(process.env.PORT) : undefined,
+  databaseUrl: process.env.DATABASE_URL,
+  jwtSecret: process.env.JWT_SECRET,
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN,
+  cookieDomain: process.env.COOKIE_DOMAIN,
+  cors: corsOrigins ? { origin: corsOrigins } : true,
   authStrategy: '${opts.authStrategy}',
   tasks: ${tasks},
   globalMiddlewares: [],
@@ -203,13 +218,16 @@ export default config;
 
 async function writeEntryPoint(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const taskLine = opts.tasks ? `  tasks: { backend: '${opts.taskBackend ?? 'bullmq'}' },\n` : '';
   const content = `import { ignite, gracefulShutdown } from 'express-file-cluster';
+import config from '../efc.config.js';
 
-// PORT, DATABASE_URL, JWT_SECRET, CORS_ORIGINS are read from .env automatically
+// Every runtime value (PORT, DATABASE_URL, JWT_SECRET, CORS_ORIGINS, ...) is wired from
+// .env in efc.config.${ext} and spread in below — ignite() itself never touches process.env
+// for these, so this object is the single source of truth for what's actually applied.
 ignite({
+  ...config,
   cluster: ${opts.cluster},
-${taskLine}}).then(gracefulShutdown).catch(console.error);
+}).then(gracefulShutdown).catch(console.error);
 `;
   await fs.outputFile(path.join(dest, 'src', `index.${ext}`), content);
 }

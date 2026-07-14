@@ -1,4 +1,4 @@
-import type { ModelSchema, ModelCRUD } from '../types.js';
+import type { FieldDefinition, ModelSchema, ModelCRUD } from '../types.js';
 
 type AnyRecord = Record<string, unknown> & { id: string };
 
@@ -7,9 +7,72 @@ function normalise(doc: Record<string, unknown>): AnyRecord {
   return { ...doc, id } as AnyRecord;
 }
 
+function isNestedArraySchema(def: FieldDefinition | [ModelSchema]): def is [ModelSchema] {
+  return Array.isArray(def);
+}
+
+function primitiveCtor(type: FieldDefinition['type'], mg: typeof import('mongoose')): unknown {
+  switch (type) {
+    case 'string':
+      return String;
+    case 'number':
+      return Number;
+    case 'boolean':
+      return Boolean;
+    case 'date':
+      return Date;
+    case 'object':
+      return Object;
+    case 'objectId':
+      return mg.Schema.Types.ObjectId;
+    case 'array':
+      return Array;
+  }
+}
+
+function buildFieldEntry(def: FieldDefinition, mg: typeof import('mongoose')): Record<string, unknown> {
+  const entry: Record<string, unknown> = {};
+
+  if (def.type === 'array') {
+    if (def.of === 'objectId') {
+      const item: Record<string, unknown> = { type: mg.Schema.Types.ObjectId };
+      if (def.ref !== undefined) item['ref'] = def.ref;
+      entry['type'] = [item];
+    } else if (def.of) {
+      entry['type'] = [primitiveCtor(def.of, mg)];
+    } else {
+      entry['type'] = Array;
+    }
+  } else {
+    entry['type'] = primitiveCtor(def.type, mg);
+    if (def.type === 'objectId' && def.ref !== undefined) entry['ref'] = def.ref;
+  }
+
+  if (def.required !== undefined) entry['required'] = def.required;
+  if (def.unique !== undefined) entry['unique'] = def.unique;
+  if (def.default !== undefined) entry['default'] = def.default;
+  if (def.enum !== undefined) entry['enum'] = def.enum;
+  return entry;
+}
+
+function buildMongooseSchema(
+  schema: ModelSchema,
+  mg: typeof import('mongoose'),
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, def] of Object.entries(schema)) {
+    if (isNestedArraySchema(def)) {
+      out[key] = def[0] ? [buildMongooseSchema(def[0], mg)] : [];
+    } else {
+      out[key] = buildFieldEntry(def, mg);
+    }
+  }
+  return out;
+}
+
 async function getModel(
   name: string,
-  schemaObj: Record<string, unknown>,
+  schema: ModelSchema,
 ): Promise<import('mongoose').Model<Record<string, unknown>>> {
   let mg: typeof import('mongoose');
   try {
@@ -21,90 +84,63 @@ async function getModel(
 
   if (mg.models[name]) return mg.models[name] as import('mongoose').Model<Record<string, unknown>>;
 
+  const schemaObj = buildMongooseSchema(schema, mg);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const schema = new mg.Schema(schemaObj as any, { timestamps: true });
-  return mg.model<Record<string, unknown>>(name, schema);
-}
-
-function buildMongooseSchema(schema: ModelSchema): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, def] of Object.entries(schema)) {
-    const entry: Record<string, unknown> = {};
-    switch (def.type) {
-      case 'string':
-        entry['type'] = String;
-        break;
-      case 'number':
-        entry['type'] = Number;
-        break;
-      case 'boolean':
-        entry['type'] = Boolean;
-        break;
-      case 'date':
-        entry['type'] = Date;
-        break;
-      case 'object':
-        entry['type'] = Object;
-        break;
-      case 'array':
-        entry['type'] = Array;
-        break;
-    }
-    if (def.required !== undefined) entry['required'] = def.required;
-    if (def.unique !== undefined) entry['unique'] = def.unique;
-    if (def.default !== undefined) entry['default'] = def.default;
-    out[key] = entry;
-  }
-  return out;
+  const mongooseSchema = new mg.Schema(schemaObj as any, { timestamps: true });
+  return mg.model<Record<string, unknown>>(name, mongooseSchema);
 }
 
 export function defineModel<T extends Record<string, any>>(
   name: string,
   schema: ModelSchema,
 ): ModelCRUD<T> {
-  const mongooseSchema = buildMongooseSchema(schema);
-
   return {
-    async find(filter = {}) {
-      const M = await getModel(name, mongooseSchema);
-      const docs = await M.find(filter as Record<string, unknown>).lean();
+    async find(filter = {}, options) {
+      const M = await getModel(name, schema);
+      const query = M.find(filter as Record<string, unknown>);
+      if (options?.populate) query.populate(options.populate);
+      const docs = await query.lean();
       return (docs as Record<string, unknown>[]).map(normalise) as (T & { id: string })[];
     },
 
-    async findById(id) {
-      const M = await getModel(name, mongooseSchema);
-      const doc = await M.findById(id).lean();
+    async findById(id, options) {
+      const M = await getModel(name, schema);
+      const query = M.findById(id);
+      if (options?.populate) query.populate(options.populate);
+      const doc = await query.lean();
       if (!doc) return null;
       return normalise(doc as Record<string, unknown>) as T & { id: string };
     },
 
-    async findOne(filter) {
-      const M = await getModel(name, mongooseSchema);
-      const doc = await M.findOne(filter as Record<string, unknown>).lean();
+    async findOne(filter, options) {
+      const M = await getModel(name, schema);
+      const query = M.findOne(filter as Record<string, unknown>);
+      if (options?.populate) query.populate(options.populate);
+      const doc = await query.lean();
       if (!doc) return null;
       return normalise(doc as Record<string, unknown>) as T & { id: string };
     },
 
     async create(data) {
-      const M = await getModel(name, mongooseSchema);
+      const M = await getModel(name, schema);
       const doc = await M.create(data);
       return normalise(doc.toObject() as Record<string, unknown>) as T & { id: string };
     },
 
     async update(id, data) {
-      const M = await getModel(name, mongooseSchema);
+      const M = await getModel(name, schema);
       const doc = await M.findByIdAndUpdate(id, data, { new: true }).lean();
       if (!doc) return null;
       return normalise(doc as Record<string, unknown>) as T & { id: string };
     },
 
     async delete(id) {
-      const M = await getModel(name, mongooseSchema);
+      const M = await getModel(name, schema);
       await M.findByIdAndDelete(id);
     },
 
     async count(filter = {}) {
-      const M = await getModel(name, mongooseSchema);
+      const M = await getModel(name, schema);
       return M.countDocuments(filter as Record<string, unknown>);
     },
   };
