@@ -196,6 +196,8 @@ export { HttpError, isHttpError } from './errors.js';
 export { compose } from './compose.js';
 export { db, setDbClient, getDbClient, defineModel } from './db/index.js';
 export { scanDir } from './router/scan.js';
+export { listTasks } from './tasks/index.js';
+export { workerCount } from './cluster/index.js';
 export type {
   EFCConfig,
   CorsConfig,
