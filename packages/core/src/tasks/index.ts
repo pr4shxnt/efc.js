@@ -39,11 +39,25 @@ export function setEnqueueImpl(impl: EnqueueImpl): void {
 
 export async function enqueue<T>(name: string, payload: T): Promise<void> {
   if (!_impl) {
-    throw new Error(`[EFC] Task queue not initialised. Set tasks.backend in ignite() config.`);
+    throw new Error(
+      `[EFC] Cannot enqueue task "${name}": task queue not initialised. Set tasks.backend in ignite() config.`,
+    );
   }
   return _impl(name, payload as unknown);
 }
 
 export function registerTask(name: string, def: TaskDefinition): void {
   taskRegistry.set(name, { ...def, name });
+}
+
+/**
+ * Returns a read-only snapshot of all registered tasks.
+ * Each entry contains the task name and its configured options.
+ *
+ * @example
+ * const tasks = listTasks();
+ * console.log(tasks.map(t => t.name));
+ */
+export function listTasks(): ReadonlyArray<{ name: string; options: TaskOptions }> {
+  return Array.from(taskRegistry.values()).map(({ name, options }) => ({ name, options }));
 }
