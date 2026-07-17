@@ -1,5 +1,4 @@
 import cluster from 'node:cluster';
-import os from 'node:os';
 
 interface ClusterOptions {
   workers?: number;
@@ -9,13 +8,21 @@ interface ClusterOptions {
 
 let isShuttingDown = false;
 
+/**
+ * Returns the number of currently alive (not yet exited) cluster workers.
+ * Returns `0` when running in single-process mode.
+ */
+export function workerCount(): number {
+  return Object.keys(cluster.workers ?? {}).length;
+}
+
 export function shutdownMaster(): void {
   isShuttingDown = true;
-  console.log('[EFC] Cluster master shutting down, waiting for workers…');
+  console.log(`[EFC] Cluster master (pid=${process.pid}) shutting down, waiting for workers…`);
 }
 
 export function runMaster(options: ClusterOptions = {}): void {
-  const count = options.workers ?? os.cpus().length;
+  const count = options.workers ?? 1;
 
   console.log(`[EFC] Primary ${process.pid} starting ${count} workers`);
 
@@ -31,7 +38,7 @@ export function runMaster(options: ClusterOptions = {}): void {
     const exitCode = code ?? (signal ? -1 : 0);
     if (isShuttingDown) {
       console.log(`[EFC] Worker ${worker.id} gracefully exited`);
-      if (Object.keys(cluster.workers ?? {}).length === 0) {
+      if (workerCount() === 0) {
         console.log('[EFC] All workers exited. Primary exiting.');
         process.exit(0);
       }
