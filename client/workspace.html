@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EFC — Workspace Simulation</title>
+    <meta
+      name="description"
+      content="A simulated VS Code-style workspace showing how to build with express-file-cluster: file-based routing, background tasks, auth, and a MongoDB model — plus a boot log you can run yourself."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Favicons -->
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="assets/icon-512.png" />
+    <meta name="theme-color" content="#080b0f" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="workspace.css" />
+  </head>
+  <body class="workspace-body">
+    <!-- ENTRANCE ANIMATION: create-efc-app scaffold replay -->
+    <div class="intro-overlay" id="introOverlay">
+      <div class="intro-glow"></div>
+      <div class="hero-code-wrap intro-window">
+        <div class="code-bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="code-bar-label">Terminal — npx create-efc-app</span>
+        </div>
+        <div class="intro-card">
+          <div class="intro-steps" id="introSteps"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOP BAR -->
+    <header class="ws-topbar">
+      <button class="hamburger ws-menu-toggle" id="menuToggle" aria-label="Toggle Explorer">
+        <span></span><span></span><span></span>
+      </button>
+      <a href="index.html" class="logo">
+        <svg class="logo-img" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="EFC logo">
+          <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor" />
+          <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85" />
+          <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor" />
+        </svg>
+        efc<span class="logo-dot">.</span>js
+      </a>
+      <span class="ws-topbar-label">Workspace</span>
+      <span class="ws-topbar-note">Static preview — no real server is running.</span>
+      <a href="index.html" class="btn-ghost ws-back">← Back to site</a>
+    </header>
+
+    <!-- IDE -->
+    <main class="ws-main">
+      <div class="ide" id="ide">
+        <div class="ide-titlebar">
+          <div class="tl-dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+          <div class="tl-title">Workspace — Visual Studio Code</div>
+          <div class="tl-menu">
+            <span>File</span><span>Edit</span><span>View</span><span>Run</span><span>Terminal</span><span>Help</span>
+          </div>
+        </div>
+
+        <div class="ide-body">
+          <!-- ACTIVITY BAR -->
+          <nav class="activity-bar">
+            <button class="ab-icon active" title="Explorer">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M5 3.5h9l4 4v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5"/><path d="M14 3.5v4h4" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+            <button class="ab-icon" title="Search">
+              <svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M15.5 15.5L20 20" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </button>
+            <button class="ab-icon" title="Source Control">
+              <svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="5" r="2" stroke="currentColor" stroke-width="1.6"/><circle cx="6" cy="19" r="2" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="12" r="2" stroke="currentColor" stroke-width="1.6"/><path d="M6 7v10" stroke="currentColor" stroke-width="1.6"/><path d="M6 12h6a6 6 0 0 0 6-6" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+            </button>
+            <button class="ab-icon" title="Extensions">
+              <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6" opacity=".5"/><rect x="4" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6" opacity=".5"/><rect x="13" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/></svg>
+            </button>
+            <div class="ab-spacer"></div>
+            <button class="ab-icon" title="Run">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5-13-7.5z"/></svg>
+            </button>
+          </nav>
+
+          <!-- SIDEBAR / EXPLORER -->
+          <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">Explorer</div>
+            <div class="sidebar-project">WORKSPACE</div>
+            <ul class="file-tree" id="fileTree">
+      <li class="tree-folder open" data-folder="src">
+        <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>src</span></div>
+        <ul>
+          <li class="tree-folder open" data-folder="api">
+            <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>api</span></div>
+            <ul>
+              <li class="tree-folder" data-folder="admin">
+                <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>admin</span></div>
+                <ul>
+                  <li class="tree-folder" data-folder="admins">
+                    <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>admins</span></div>
+                    <ul>
+                      <li class="tree-file" data-path="src/api/admin/admins/[id].ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>[id].ts</span></div></li>
+                      <li class="tree-file" data-path="src/api/admin/admins/index.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>index.ts</span></div></li>
+                    </ul>
+                  </li>
+                  <li class="tree-file" data-path="src/api/admin/dashboard.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>dashboard.ts</span></div></li>
+                  <li class="tree-folder" data-folder="roles">
+                    <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>roles</span></div>
+                    <ul>
+                      <li class="tree-file" data-path="src/api/admin/roles/[id].ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>[id].ts</span></div></li>
+                      <li class="tree-file" data-path="src/api/admin/roles/index.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>index.ts</span></div></li>
+                    </ul>
+                  </li>
+                  <li class="tree-folder" data-folder="users">
+                    <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>users</span></div>
+                    <ul>
+                      <li class="tree-file" data-path="src/api/admin/users/[id].ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>[id].ts</span></div></li>
+                      <li class="tree-folder" data-folder="[id]">
+                        <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>[id]</span></div>
+                        <ul>
+                          <li class="tree-file" data-path="src/api/admin/users/[id]/activate.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>activate.ts</span></div></li>
+                          <li class="tree-file" data-path="src/api/admin/users/[id]/suspend.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>suspend.ts</span></div></li>
+                          <li class="tree-file" data-path="src/api/admin/users/[id]/verify.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>verify.ts</span></div></li>
+                        </ul>
+                      </li>
+                      <li class="tree-file" data-path="src/api/admin/users/export.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>export.ts</span></div></li>
+                      <li class="tree-file" data-path="src/api/admin/users/index.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>index.ts</span></div></li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+              <li class="tree-folder" data-folder="auth">
+                <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>auth</span></div>
+                <ul>
+                  <li class="tree-folder" data-folder="2fa">
+                    <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>2fa</span></div>
+                    <ul>
+                      <li class="tree-file" data-path="src/api/auth/2fa/disable.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>disable.ts</span></div></li>
+                      <li class="tree-file" data-path="src/api/auth/2fa/setup.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>setup.ts</span></div></li>
+                      <li class="tree-file" data-path="src/api/auth/2fa/verify.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>verify.ts</span></div></li>
+                    </ul>
+                  </li>
+                  <li class="tree-file" data-path="src/api/auth/change-password.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>change-password.ts</span></div></li>
+                  <li class="tree-file" data-path="src/api/auth/forgot-password.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>forgot-password.ts</span></div></li>
+                  <li class="tree-file" data-path="src/api/auth/login.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>login.ts</span></div></li>
+                  <li class="tree-file" data-path="src/api/auth/logout.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>logout.ts</span></div></li>
+                  <li class="tree-file" data-path="src/api/auth/me.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>me.ts</span></div></li>
+                  <li class="tree-file" data-path="src/api/auth/refresh.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>refresh.ts</span></div></li>
+                  <li class="tree-file" data-path="src/api/auth/register.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>register.ts</span></div></li>
+                  <li class="tree-file" data-path="src/api/auth/reset-password.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>reset-password.ts</span></div></li>
+                  <li class="tree-folder" data-folder="sessions">
+                    <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>sessions</span></div>
+                    <ul>
+                      <li class="tree-file" data-path="src/api/auth/sessions/[id].ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>[id].ts</span></div></li>
+                      <li class="tree-file" data-path="src/api/auth/sessions/index.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>index.ts</span></div></li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+              <li class="tree-file" data-path="src/api/health.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>health.ts</span></div></li>
+              <li class="tree-folder open" data-folder="user">
+                <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>user</span></div>
+                <ul>
+                  <li class="tree-file" data-path="src/api/user/profile.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>profile.ts</span></div></li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+          <li class="tree-file" data-path="src/index.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>index.ts</span></div></li>
+          <li class="tree-folder open" data-folder="model">
+            <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>model</span></div>
+            <ul>
+              <li class="tree-file" data-path="src/model/Admin.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>Admin.ts</span></div></li>
+              <li class="tree-file" data-path="src/model/Role.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>Role.ts</span></div></li>
+              <li class="tree-file" data-path="src/model/Session.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>Session.ts</span></div></li>
+              <li class="tree-file" data-path="src/model/User.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>User.ts</span></div></li>
+            </ul>
+          </li>
+          <li class="tree-folder open" data-folder="tasks">
+            <div class="tree-row folder-row"><svg class="chevron" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>tasks</span></div>
+            <ul>
+              <li class="tree-file" data-path="src/tasks/SendEmail.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>SendEmail.ts</span></div></li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li class="tree-file" data-path="efc.config.ts"><div class="tree-row"><span class="ico ico-ts">TS</span><span>efc.config.ts</span></div></li>
+      <li class="tree-file" data-path="package.json"><div class="tree-row"><span class="ico ico-json">{}</span><span>package.json</span></div></li>
+      <li class="tree-file" data-path=".env.example"><div class="tree-row"><span class="ico ico-env">•</span><span>.env.example</span></div></li>
+            </ul>
+          </aside>
+
+          <!-- EDITOR -->
+          <section class="editor-area">
+            <div class="tabbar" id="tabbar"></div>
+            <div class="breadcrumbs" id="breadcrumbs"></div>
+            <div class="editor-scroll">
+              <div class="editor-empty" id="editorEmpty">Select a file from the Explorer to preview it.</div>
+              <div class="editor-code" id="editorCode"></div>
+            </div>
+          </section>
+        </div>
+
+        <!-- PANEL: TERMINAL -->
+        <div class="panel">
+          <div class="panel-tabs">
+            <span class="panel-tab active">Terminal</span>
+            <span class="panel-tab">Problems</span>
+            <span class="panel-tab">Output</span>
+            <button class="panel-run" id="runBtn">▶ Run <code>efc start dev</code></button>
+          </div>
+          <div class="terminal-body" id="terminalBody">
+            <div class="term-line"><span class="c-dim">$</span> click <em>Run</em> to boot the dev server and fire a couple of requests at it&hellip;</div>
+          </div>
+        </div>
+
+        <!-- STATUS BAR -->
+        <div class="statusbar">
+          <div class="sb-left">
+            <span class="sb-item">
+              <svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="5" r="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6" cy="19" r="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="12" r="1.8" stroke="currentColor" stroke-width="1.6"/><path d="M6 7v10" stroke="currentColor" stroke-width="1.6"/><path d="M6 12h6a6 6 0 0 0 6-6" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+              main
+            </span>
+            <span class="sb-item">0 <span aria-hidden="true">⚠</span></span>
+          </div>
+          <div class="sb-right">
+            <span class="sb-item"><span class="sb-dot" id="sbDot"></span><span id="sbWorkers">offline</span></span>
+            <span class="sb-item">TypeScript</span>
+            <span class="sb-item">UTF-8</span>
+            <span class="sb-item">express-file-cluster v0.3.11</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script src="workspace.js"></script>
+  </body>
+</html>
+
