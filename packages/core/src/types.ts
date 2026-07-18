@@ -116,7 +116,7 @@ export interface ModelQueryOptions {
   populate?: string | string[];
 }
 
-export interface ModelCRUD<T extends Record<string, any>> {
+export interface ModelCRUD<T extends object> {
   find(filter?: Partial<T>, options?: ModelQueryOptions): Promise<T[]>;
   findById(id: string, options?: ModelQueryOptions): Promise<(T & { id: string }) | null>;
   findOne(filter: Partial<T>, options?: ModelQueryOptions): Promise<(T & { id: string }) | null>;
