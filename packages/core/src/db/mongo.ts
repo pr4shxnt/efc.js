@@ -1,8 +1,9 @@
 // Wraps mongoose connection for Pre-Flight. Throws clearly if mongoose isn't installed.
+import type * as MongooseNS from 'mongoose';
 
-let mongoose: typeof import('mongoose');
+let mongoose: typeof MongooseNS;
 
-async function loadMongoose(): Promise<typeof import('mongoose')> {
+async function loadMongoose(): Promise<typeof MongooseNS> {
   if (mongoose) return mongoose;
   try {
     mongoose = await import('mongoose');
@@ -12,7 +13,7 @@ async function loadMongoose(): Promise<typeof import('mongoose')> {
   }
 }
 
-export async function connectMongo(url: string): Promise<import('mongoose').Connection> {
+export async function connectMongo(url: string): Promise<MongooseNS.Connection> {
   const mg = await loadMongoose();
   await mg.connect(url);
   console.log('[EFC] MongoDB connected');
