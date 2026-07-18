@@ -235,8 +235,10 @@ ignite({
     concurrency: 5, // jobs processed in parallel per worker
   },
 
+  // --- CORS (built-in — no need to pass your own `cors` package) ---
+  cors: { origin: process.env.CORS_ORIGINS?.split(',') ?? true },
+
   // --- Global Middleware (runs before every route) ---
-  // CORS is built-in — set CORS_ORIGINS in .env instead of passing a cors package
   globalMiddlewares: [rateLimiter],
 
   // --- Hooks ---
@@ -441,7 +443,10 @@ Configured in `ignite()`. Applied to **every** request before route resolution.
 
 ```typescript
 ignite({ globalMiddlewares: [rateLimiter, requestLogger] });
-// CORS is built-in — configure origins via CORS_ORIGINS in .env
+// CORS is built-in via the `cors` option — pass a boolean or a CorsConfig
+// object (origin/methods/allowedHeaders/credentials/maxAge). ignite() does
+// not read env vars itself; the scaffolder's generated efc.config.ts reads
+// CORS_ORIGINS from .env and passes it in explicitly.
 ```
 
 ### 2. Route-Level Middleware
@@ -688,7 +693,7 @@ export default config;
 
 ### Environment Variables
 
-`create-efc-app` generates two files: a committed **`.env.example`** (documented placeholders) and a gitignored **`.env`** (with a cryptographically-random `JWT_SECRET` already filled in). The config above reads from these via `process.env`.
+`create-efc-app` generates two files: a committed **`.env.example`** (documented placeholders) and a gitignored **`.env`** (with a cryptographically-random `JWT_SECRET` already filled in). The generated `efc.config.ts` reads these via `process.env` and passes them into `ignite()` explicitly — `ignite()` itself never reads `process.env` (`NODE_ENV` is the sole exception, used for cluster/dashboard defaults).
 
 | Variable         | Required            | Description                                                                             |
 | ---------------- | ------------------- | --------------------------------------------------------------------------------------- |
