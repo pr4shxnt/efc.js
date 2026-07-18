@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Server } from 'node:http';
-import { ignite } from './index.js';
+import { ignite } from '../index.js';
 
 // helpers ----------------------------------------------------------------
 // ignite() resolves `src/api` relative to process.cwd() by convention (see

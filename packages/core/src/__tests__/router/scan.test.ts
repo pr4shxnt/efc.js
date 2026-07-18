@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filePathToUrlPath } from './scan.js';
+import { filePathToUrlPath } from '../../router/scan.js';
 
 describe('filePathToUrlPath', () => {
   it('maps static files to their path', () => {

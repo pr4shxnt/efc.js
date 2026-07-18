@@ -3,8 +3,8 @@ import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { mountRoutes } from './mount.js';
-import type { RouteEntry } from '../types.js';
+import { mountRoutes } from '../../router/mount.js';
+import type { RouteEntry } from '../../types.js';
 
 function makeApp() {
   return express();
@@ -67,6 +67,12 @@ describe('mountRoutes', () => {
     const app = makeApp();
     const routes: RouteEntry[] = [{ urlPath: '/noop', filePath: file, params: [] }];
 
-    await expect(mountRoutes(app, routes)).resolves.toBeUndefined();
+    const mounted = await mountRoutes(app, routes);
+
+    expect(mounted).toEqual([{ urlPath: '/noop', filePath: file, params: [], methods: [] }]);
+
+    type Layer = { route?: { path: string } };
+    const stack: Layer[] = app._router?.stack ?? [];
+    expect(stack.some((l) => l.route?.path === '/noop')).toBe(false);
   });
 });

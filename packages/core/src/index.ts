@@ -147,8 +147,18 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   } else {
     app.use(
       (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+        // isHttpError() covers the common case, but errors can also arrive as plain
+        // objects with a numeric statusCode (e.g. thrown across a module boundary, or
+        // duck-typed by user code) — fall back to that shape before giving up to 500.
+        const duckTyped =
+          err instanceof Error && typeof (err as { statusCode?: unknown }).statusCode === 'number'
+            ? (err as Error & { statusCode: number })
+            : null;
+
         if (isHttpError(err)) {
           res.status(err.statusCode).json({ error: err.message, statusCode: err.statusCode });
+        } else if (duckTyped) {
+          res.status(duckTyped.statusCode).json({ error: duckTyped.message, statusCode: duckTyped.statusCode });
         } else {
           console.error('[EFC] Unhandled error:', err);
           res.status(500).json({ error: 'Internal Server Error', statusCode: 500 });
