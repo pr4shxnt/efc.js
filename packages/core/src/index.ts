@@ -11,7 +11,7 @@ import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
 import { runMaster, shutdownMaster } from './cluster/index.js';
 import { configureAuth } from './auth/index.js';
-import type { HttpError } from './errors.js';
+import { isHttpError } from './errors.js';
 import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
 import { scanTasks } from './tasks/scanner.js';
@@ -147,11 +147,8 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   } else {
     app.use(
       (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-        const asHttp = err instanceof Error && 'statusCode' in err ? (err as HttpError) : null;
-        if (asHttp) {
-          res
-            .status(asHttp.statusCode)
-            .json({ error: asHttp.message, statusCode: asHttp.statusCode });
+        if (isHttpError(err)) {
+          res.status(err.statusCode).json({ error: err.message, statusCode: err.statusCode });
         } else {
           console.error('[EFC] Unhandled error:', err);
           res.status(500).json({ error: 'Internal Server Error', statusCode: 500 });
@@ -195,7 +192,7 @@ export function gracefulShutdown(server: http.Server | undefined, timeoutMs = 10
   process.once('SIGINT', () => shutdown('SIGINT'));
 }
 
-export { HttpError } from './errors.js';
+export { HttpError, isHttpError } from './errors.js';
 export { compose } from './compose.js';
 export { db, setDbClient, getDbClient, defineModel } from './db/index.js';
 export { scanDir } from './router/scan.js';
