@@ -1,4 +1,5 @@
 import type { FieldDefinition, ModelSchema, ModelCRUD } from '../types.js';
+import type * as MongooseNS from 'mongoose';
 
 type AnyRecord = Record<string, unknown> & { id: string };
 
@@ -11,7 +12,7 @@ function isNestedArraySchema(def: FieldDefinition | [ModelSchema]): def is [Mode
   return Array.isArray(def);
 }
 
-function primitiveCtor(type: FieldDefinition['type'], mg: typeof import('mongoose')): unknown {
+function primitiveCtor(type: FieldDefinition['type'], mg: typeof MongooseNS): unknown {
   switch (type) {
     case 'string':
       return String;
@@ -30,7 +31,7 @@ function primitiveCtor(type: FieldDefinition['type'], mg: typeof import('mongoos
   }
 }
 
-function buildFieldEntry(def: FieldDefinition, mg: typeof import('mongoose')): Record<string, unknown> {
+function buildFieldEntry(def: FieldDefinition, mg: typeof MongooseNS): Record<string, unknown> {
   const entry: Record<string, unknown> = {};
 
   if (def.type === 'array') {
@@ -57,7 +58,7 @@ function buildFieldEntry(def: FieldDefinition, mg: typeof import('mongoose')): R
 
 function buildMongooseSchema(
   schema: ModelSchema,
-  mg: typeof import('mongoose'),
+  mg: typeof MongooseNS,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, def] of Object.entries(schema)) {
@@ -73,16 +74,16 @@ function buildMongooseSchema(
 async function getModel(
   name: string,
   schema: ModelSchema,
-): Promise<import('mongoose').Model<Record<string, unknown>>> {
-  let mg: typeof import('mongoose');
+): Promise<MongooseNS.Model<Record<string, unknown>>> {
+  let mg: typeof MongooseNS;
   try {
     const mod = await import('mongoose');
-    mg = (mod.default || mod) as typeof import('mongoose');
+    mg = (mod.default || mod) as typeof MongooseNS;
   } catch {
     throw new Error('[EFC] mongoose is not installed. Run: npm install mongoose');
   }
 
-  if (mg.models[name]) return mg.models[name] as import('mongoose').Model<Record<string, unknown>>;
+  if (mg.models[name]) return mg.models[name] as MongooseNS.Model<Record<string, unknown>>;
 
   const schemaObj = buildMongooseSchema(schema, mg);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,7 +91,7 @@ async function getModel(
   return mg.model<Record<string, unknown>>(name, mongooseSchema);
 }
 
-export function defineModel<T extends Record<string, any>>(
+export function defineModel<T extends object>(
   name: string,
   schema: ModelSchema,
 ): ModelCRUD<T> {

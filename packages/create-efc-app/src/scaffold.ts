@@ -2020,7 +2020,6 @@ async function writeAuthExtendedRoutes(dest: string, opts: ScaffoldOptions): Pro
     ? `export const middlewares = [requireAuth('user', 'admin')];\n`
     : `export const middlewares = [requireAuth];\n`;
   const mwUser3 = mwUser2;
-  const reqT = ts ? `import type { Request, Response } from 'express';\n` : '';
   const RA = `import { requireAuth } from 'express-file-cluster/auth';\n`;
 
   const mongo = opts.database === 'mongodb';

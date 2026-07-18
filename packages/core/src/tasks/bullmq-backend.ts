@@ -1,4 +1,5 @@
 import type { Job } from 'bullmq';
+import type * as BullMQNS from 'bullmq';
 import { taskRegistry, setEnqueueImpl } from './index.js';
 import { runInThread } from './thread-runner.js';
 
@@ -8,7 +9,7 @@ interface BullMQOpts {
 }
 
 export async function initBullMQ(opts: BullMQOpts): Promise<void> {
-  let bullmq: typeof import('bullmq');
+  let bullmq: typeof BullMQNS;
   try {
     bullmq = await import('bullmq');
   } catch {
