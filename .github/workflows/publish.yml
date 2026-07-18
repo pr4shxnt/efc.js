@@ -8,14 +8,10 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -38,15 +34,12 @@ jobs:
       - name: Build packages
         run: npm run build --workspaces --if-present
 
-      - name: Configure git
-        run: |
-          git config user.name "Prashant Adhikari"
-          git config user.email "prashant_adhikari_a25@sunway.edu.np"
-
       - name: Publish packages
         run: |
-          BUMPED=false
-
+          # Versions are bumped manually before pushing to main — this step
+          # never writes back to git (main is a protected/locked branch, so a
+          # push from CI can't land anyway). If a version is already on npm,
+          # fail loudly instead of silently bumping past what was intended.
           for pkg in packages/*/; do
             PKG_JSON="./$pkg/package.json"
             [ -f "$PKG_JSON" ] || continue
@@ -59,20 +52,12 @@ jobs:
             PUBLISHED=$(npm show "$PKG_NAME@$LOCAL_VER" version 2>/dev/null || echo "")
 
             if [ -n "$PUBLISHED" ]; then
-              echo "↑ $PKG_NAME@$LOCAL_VER already on npm — bumping patch"
-              (cd "./$pkg" && npm version patch --no-git-tag-version)
-              LOCAL_VER=$(node -p "require('$PKG_JSON').version")
-              BUMPED=true
+              echo "✗ $PKG_NAME@$LOCAL_VER is already published. Bump the version before pushing to main."
+              exit 1
             fi
 
             echo "→ Publishing $PKG_NAME@$LOCAL_VER"
             npm publish "./$pkg" --access public
           done
-
-          if [ "$BUMPED" = "true" ]; then
-            git add packages/*/package.json package-lock.json
-            git commit -m "chore: auto-bump versions [skip ci]"
-            git push
-          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
