@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { scanTasks } from './scanner.js';
-import { taskRegistry } from './index.js';
+import { scanTasks } from '../../tasks/scanner.js';
+import { taskRegistry } from '../../tasks/index.js';
 
 describe('scanTasks', () => {
   let tmpDir: string;
