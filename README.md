@@ -608,12 +608,12 @@ npm run lint         # ESLint
 
 ## Roadmap
 
-| Phase | Target | Status | Focus |
-|---|---|---|---|
-| **1** | Q3 2026 | 🟡 In progress | Router, clustering, MongoDB, BullMQ, auth, CLI, scaffolder |
-| **2** | Q4 2026 | ⬜ Planned | PostgreSQL (Drizzle), Zod validation, structured logging (`pino`), cron tasks |
-| **3** | Q1 2027 | ⬜ Planned | Plugins, WebSockets, OpenAPI auto-gen, OpenTelemetry, `efc studio` |
-| **4** | 2027+ | ⬜ Planned | Edge/serverless adapter, gRPC, GraphQL |
+| Phase | Status | Focus |
+|---|---|---|
+| **1** | 🟡 In progress | Router, clustering, MongoDB, BullMQ, auth, CLI, scaffolder |
+| **2** | ⬜ Planned | PostgreSQL (Drizzle), Zod validation, structured logging (`pino`), cron tasks |
+| **3** | ⬜ Planned | Plugins, WebSockets, OpenAPI auto-gen, OpenTelemetry, `efc studio` |
+| **4** | ⬜ Planned | Edge/serverless adapter, gRPC, GraphQL |
 
 See [`todo.md`](./todo.md) for the full implementation checklist.
 
