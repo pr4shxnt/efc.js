@@ -4,7 +4,7 @@
 
 EFC is an opinionated backend framework built on Express. Drop files in `src/api/` and they become routes. Every CPU core serves traffic automatically. Heavy work goes to a queue-backed task subsystem so requests stay fast.
 
-> **Status: v0.3.10 (Beta).** The router, clustering, auth, MongoDB adapter, and BullMQ task queue backend are all implemented.
+> **Status: v0.3.14 (Beta).** The router, clustering, auth, MongoDB adapter, and BullMQ task queue backend are all implemented.
 
 ---
 
@@ -18,6 +18,8 @@ Most Express apps grow the same way: a working prototype, then a maze of `router
 | Single-threaded Node under load | Auto-detected CPU count → worker processes |
 | Blocking work on the request path | `enqueue()` ships it to a queue; respond immediately |
 | Wiring auth, DB, and middleware by hand | `ignite()` — one call bootstraps everything |
+| Scattered model definitions | `defineModel()` — typed CRUD with zero ORM ceremony |
+| Per-request user context in nested calls | `AsyncLocalStorage`-backed `getCurrentUser()` |
 
 ---
 
@@ -49,13 +51,15 @@ my-api/
 │   ├── tasks/                    # Background jobs
 │   │   ├── SendEmail.ts
 │   │   └── ResizeImage.ts
-│   ├── models/                   # Engine-agnostic models
+│   ├── model/                    # Engine-agnostic models
 │   │   └── User.ts
 │   └── index.ts                  # Framework entry point
 ├── efc.config.ts
 ├── .env                          # Gitignored — JWT_SECRET auto-filled
 └── .env.example
 ```
+
+`src/api` and `src/tasks` are resolved by convention — they are **not** `ignite()` options. EFC probes `src/api`/`src/tasks`, then `<cwd>/api`/`<cwd>/tasks`, then `dist/api`/`dist/tasks`. You only need a different layout if you're doing something unusual.
 
 Routing rules:
 
@@ -75,7 +79,7 @@ Export uppercase HTTP method names. Anything not exported returns **405 Method N
 ```ts
 // src/api/users/index.ts
 import type { Request, Response } from 'express';
-import { User } from '../../models/User';
+import { User } from '../../model/User.js';
 
 export const GET = async (req: Request, res: Response) => {
   const users = await User.find();
@@ -91,7 +95,7 @@ export const POST = async (req: Request, res: Response) => {
 ```ts
 // src/api/users/[id].ts
 import type { Request, Response } from 'express';
-import { User } from '../../models/User';
+import { User } from '../../model/User.js';
 import { HttpError } from 'express-file-cluster';
 
 export const GET = async (req: Request, res: Response) => {
@@ -114,7 +118,6 @@ Three tiers, each with a clear scope:
 
 ```ts
 // 1. Global — applies to every request
-// CORS is built-in — configure it via CORS_ORIGINS in .env, not a separate package
 ignite({ globalMiddlewares: [rateLimiter()] });
 
 // 2. Route-level — applies to every handler in this file
@@ -127,6 +130,94 @@ export const POST = compose(
   validateBody(CreateUserSchema),
   async (req, res) => { /* req.body is validated */ },
 );
+```
+
+---
+
+## Database
+
+### `defineModel(name, schema, options?)`
+
+Declare a typed model with a schema. EFC compiles it to a Mongoose model and wraps it in a clean CRUD surface.
+
+```ts
+// src/model/User.ts
+import { defineModel } from 'express-file-cluster';
+
+interface UserDocument {
+  name: string;
+  email: string;
+  role: 'admin' | 'user';
+  verifyToken: string;
+  createdAt?: Date;
+}
+
+export const User = defineModel<UserDocument>('User', {
+  name:        { type: 'string', required: true },
+  email:       { type: 'string', required: true, unique: true },
+  role:        { type: 'string', enum: ['admin', 'user'], default: 'user' },
+  verifyToken: { type: 'string', default: '$uuid' },   // fresh UUID per document
+});
+```
+
+### Schema default operator codes
+
+Instead of a literal or a raw function, `default` also accepts a sentinel string — resolved to a fresh per-document value at schema-compile time, never baked in once:
+
+| Code | Resolves to |
+|---|---|
+| `'$now'` | `new Date()` |
+| `'$uuid'` | `crypto.randomUUID()` |
+| `'$objectId'` | fresh Mongoose `ObjectId` |
+| `'$timestamp'` | `Date.now()` (number) |
+| `'$shortId'` | random 16-char base64url string |
+| `'$currentUser'` | full JWT payload from the in-flight request |
+| `'$currentUser.<key>'` | single field from that payload (e.g. `'$currentUser.id'`) |
+
+Any other value is used as-is — only these exact strings are special-cased.
+
+### Auto-increment (`sequence`)
+
+```ts
+export const Order = defineModel<OrderDocument>('Order', {
+  orderNumber: { type: 'number', sequence: true, required: true },
+  // sequence: 'global.orders' — explicit key to share a counter across models
+});
+```
+
+`sequence` is a field option, not a `default` code — an auto-increment needs an async read-modify-write against a counters collection, but `default` resolves synchronously. It's assigned atomically in a `pre('validate')` hook, before `required` validation runs, so the field can be both `required: true` and auto-filled. Top-level fields only.
+
+### Timestamps control
+
+```ts
+// Disable Mongoose's automatic createdAt/updatedAt (default: on)
+export const Role = defineModel<RoleDocument>('Role', schema, {
+  timestamps: false,
+});
+
+// Or rename them
+export const Audit = defineModel<AuditDocument>('Audit', schema, {
+  timestamps: { createdAt: 'created_at', updatedAt: false },
+});
+```
+
+### CRUD surface
+
+```ts
+await User.find({ role: 'admin' });            // find all matching
+await User.findById('66a1...');                // by _id
+await User.findOne({ email: 'a@b.com' });      // first match
+await User.create({ name: 'Alice', ... });     // insert
+await User.update('66a1...', { name: 'Bob' }); // findOneAndUpdate
+await User.delete('66a1...');                  // remove
+await User.count({ role: 'user' });            // count matching
+```
+
+Populate references:
+
+```ts
+await Post.find({}, { populate: 'author' });
+await Post.findById(id, { populate: ['author', 'comments.user'] });
 ```
 
 ---
@@ -178,7 +269,9 @@ Task options:
 | `retries` | `3` | Retry attempts before dead-lettering |
 | `backoff` | `'exponential'` | Delay strategy between retries |
 | `concurrency` | `tasks.concurrency` | Parallel jobs for this task |
-| `schedule` | — | Cron expression for recurring tasks |
+| `schedule` | — | Cron expression (accepted, not executed yet — planned) |
+
+> `enqueue()` fails fast on an unknown task name, but currently has no timeout of its own if the queue backend (Redis) is unreachable — wrap it yourself if you need one.
 
 ---
 
@@ -215,60 +308,80 @@ export const POST = async (req, res) => {
 };
 ```
 
+### Role-gating and request context
+
+```ts
+// Role-gated route
+export const middlewares = [requireAuth('admin')];
+
+// getCurrentUser() reads the same verified JWT payload from anywhere in the
+// async call chain — not just where `req` is in scope. This is also what
+// powers the '$currentUser' / '$currentUser.<key>' defineModel default codes.
+import { getCurrentUser } from 'express-file-cluster/auth';
+
+const user = getCurrentUser(); // Record<string, unknown> | undefined
+```
+
 ---
 
 ## Bootstrapper
 
+Every runtime value (`PORT`, `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, ...) is read from `process.env` explicitly, once, in `efc.config.ts` — `ignite()` itself never touches `process.env` (`NODE_ENV` is the sole exception).
+
+```ts
+// efc.config.ts
+import type { EFCConfig } from 'express-file-cluster';
+
+const corsOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : undefined;
+
+const config: EFCConfig = {
+  port: process.env.PORT ? Number(process.env.PORT) : undefined,
+  databaseUrl: process.env.DATABASE_URL,
+  jwtSecret: process.env.JWT_SECRET,
+  cors: corsOrigins ? { origin: corsOrigins } : true,
+  authStrategy: 'http-only',
+  tasks: { backend: 'bullmq', concurrency: 5, redisUrl: process.env.REDIS_URL },
+};
+
+export default config;
+```
+
 ```ts
 // src/index.ts
-import { ignite } from 'express-file-cluster';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { ignite, gracefulShutdown } from 'express-file-cluster';
+import config from '../efc.config.js';
 
 ignite({
-  port: Number(process.env.PORT) || 3000,
-  apiDir: path.join(__dirname, 'api'),
-  tasksDir: path.join(__dirname, 'tasks'),
-
-  database: 'mongodb',
-  databaseUrl: process.env.DATABASE_URL,
-
-  authStrategy: 'http-only',
-  jwtSecret: process.env.JWT_SECRET,
-
-  cluster: true,          // false → single process (auto-disabled in dev)
-  workers: 4,             // defaults to os.cpus().length
-
-  tasks: {
-    backend: 'bullmq',
-    redisUrl: process.env.REDIS_URL,
-    concurrency: 5,
-  },
-
-  globalMiddlewares: [],
-  onWorkerReady: (id) => console.log(`Worker ${id} ready`),
-  onWorkerCrash: (id, code) => console.error(`Worker ${id} crashed (${code})`),
-});
+  ...config,
+}).then(gracefulShutdown).catch(console.error);
 ```
+
+> Don't hardcode `cluster: true` here. `ignite()`'s own default (`NODE_ENV === 'production'`)
+> already gives clustering in prod and a single process in dev — an explicit boolean always
+> wins over that default, so `cluster: true` would cluster in dev too. Only pass `cluster`
+> to force one way regardless of `NODE_ENV`.
 
 ### `ignite()` options
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `port` | `number` | `3000` | HTTP listen port |
-| `apiDir` | `string` | — | Path to route modules |
-| `tasksDir` | `string` | — | Path to task modules |
-| `database` | `'mongodb' \| 'postgresql'` | — | Database engine |
-| `databaseUrl` | `string` | `DATABASE_URL` | Connection string |
-| `authStrategy` | `'http-only' \| 'localStorage'` | — | Token delivery |
-| `jwtSecret` | `string` | `JWT_SECRET` | JWT signing secret |
-| `cluster` | `boolean` | `true` | Enable multi-core clustering |
+| `basePath` | `string` | `'/v1/api'` | URL prefix for all routes |
+| `database` | `'mongodb' \| 'postgresql'` | auto-detected from `databaseUrl` | Database engine |
+| `databaseUrl` | `string` | — | Connection string — not read from env automatically, pass it explicitly |
+| `authStrategy` | `'http-only' \| 'localStorage'` | `'http-only'` | Token delivery |
+| `jwtSecret` | `string` | — | JWT signing secret — not read from env automatically, pass it explicitly |
+| `jwtExpiresIn` | `string` | `'7d'` | Token lifetime |
+| `cookieDomain` | `string` | — | Cookie domain (`http-only` only) |
+| `cluster` | `boolean` | `true` in prod, `false` in dev | Enable multi-core clustering |
 | `workers` | `number` | `os.cpus().length` | Worker count override |
 | `tasks` | `TaskConfig \| false` | `false` | Background task runtime |
-| `cors` | `boolean \| CorsConfig` | `true` | CORS — origins driven by `CORS_ORIGINS` env var |
+| `cors` | `boolean \| CorsConfig` | `true` | CORS — pass `origin` explicitly, not auto-read from env |
+| `requestTimeout` | `number` | — | Request timeout in ms (408 on exceed) |
 | `globalMiddlewares` | `RequestHandler[]` | `[]` | Applied to every route |
+| `dashboard` | `boolean` | `true` in dev | Dev route dashboard at `/` |
 | `onWorkerReady` | `(id) => void` | — | Called when a worker boots |
 | `onWorkerCrash` | `(id, code) => void` | — | Called before respawn |
 | `onError` | `ErrorRequestHandler` | built-in | Override global error handler |
@@ -279,7 +392,7 @@ ignite({
 
 ```bash
 # Development
-efc start dev         # Hot-reload single process, source maps, pretty logs
+efc start dev         # Hot-reload single process (tsx --watch), .env re-read on every restart
 
 # Production
 efc build prod        # Type-check + compile to dist/ (tsup, dual CJS/ESM)
@@ -296,7 +409,7 @@ efc generate middleware authorize   # → src/middlewares/authorize.ts
 # Diagnostics
 efc routes            # Print resolved route table (path → file → methods)
 efc tasks             # List registered background tasks
-efc doctor            # Validate config, env vars, DB connectivity
+efc doctor            # Validate project setup, package.json/tsconfig, .env vars
 ```
 
 ---
@@ -312,12 +425,13 @@ efc doctor            # Validate config, env vars, DB connectivity
             │      │      │
        Worker 1  Worker 2  Worker N
        Pre-Flight lifecycle per worker:
-         1. Connect DB
+         1. Connect database
          2. Configure auth
-         3. Scan apiDir → route map
-         4. Register tasks
-         5. Mount routes on Express
-         6. Listen (OS round-robins connections)
+         3. Scan tasksDir → register tasks
+         4. Start BullMQ backend
+         5. Scan apiDir → build route map
+         6. Mount routes on Express
+         7. Listen (OS round-robins connections)
 ```
 
 CPU-bound tasks fan out further into `worker_threads` — the request loop stays unblocked at every layer.
@@ -349,14 +463,14 @@ ignite({
 
 ## Environment Variables
 
-`create-efc-app` generates `.env` (gitignored, `JWT_SECRET` pre-filled) and `.env.example` (committed, documented).
+`create-efc-app` generates `.env` (gitignored, `JWT_SECRET` pre-filled) and `.env.example` (committed, documented). EFC **does not** auto-load any of these — read them yourself in `efc.config.ts` and pass them to `ignite()`.
 
 | Variable | Required | Description |
 |---|---|---|
 | `PORT` | No (default `3000`) | HTTP listen port |
-| `NODE_ENV` | No | `development \| production \| test` |
-| `DATABASE_URL` | Yes | MongoDB or PostgreSQL connection string |
-| `JWT_SECRET` | Yes | JWT signing key — auto-generated by scaffolder |
+| `NODE_ENV` | No | `development \| production \| test` — the only env var EFC reads directly |
+| `DATABASE_URL` | If using a database | MongoDB or PostgreSQL connection string |
+| `JWT_SECRET` | If using auth | JWT signing key — auto-generated by scaffolder |
 | `JWT_EXPIRES_IN` | No (default `7d`) | Token lifetime |
 | `COOKIE_DOMAIN` | No | Cookie domain for `http-only` auth |
 | `REDIS_URL` | If using BullMQ | Redis connection for the task queue |

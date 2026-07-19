@@ -2,7 +2,7 @@
 
 **express-file-cluster (EFC)** is an opinionated backend framework built on Express. It removes routing ceremony, saturates every CPU core automatically, and ships a production-grade background-task subsystem — all from a single `ignite()` call.
 
-> **Status: v0.3.10 — Beta.** The router, clustering, auth, MongoDB adapter, and BullMQ task queue are implemented. PostgreSQL and the pg-boss task backend are scaffolded as choices but not yet implemented in the runtime.
+> **Status: v0.3.14 — Beta.** The router, clustering, auth, MongoDB adapter, and BullMQ task queue are implemented. PostgreSQL and the pg-boss task backend are scaffolded as choices but not yet implemented in the runtime.
 
 ---
 
@@ -79,8 +79,7 @@ import config from '../efc.config.js';
 // ignite() itself never touches process.env for these (see Environment Variables guide)
 ignite({
   ...config,
-  cluster: true,
 }).then(gracefulShutdown).catch(console.error);
 ```
 
-The framework always scans `src/api/` on boot (this path is a fixed convention, not configurable), derives route paths from file names, forks `os.cpus().length` worker processes, and handles `SIGTERM`/`SIGINT` gracefully — zero extra code required.
+The framework always scans `src/api/` on boot (this path is a fixed convention, not configurable), derives route paths from file names, forks `os.cpus().length` worker processes in production (single-process in dev — `ignite()`'s own default, don't override it with a hardcoded `cluster: true`), and handles `SIGTERM`/`SIGINT` gracefully — zero extra code required.
