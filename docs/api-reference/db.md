@@ -8,7 +8,7 @@ import { defineModel, db } from 'express-file-cluster';
 
 ---
 
-## `defineModel(name, schema)`
+## `defineModel(name, schema, options?)`
 
 Creates an engine-agnostic model with a unified CRUD surface. Designed to work against MongoDB (via `mongoose`, implemented today) or PostgreSQL (via Drizzle, planned — see below).
 
@@ -16,6 +16,7 @@ Creates an engine-agnostic model with a unified CRUD surface. Designed to work a
 function defineModel<T extends Record<string, any>>(
   name: string,
   schema: ModelSchema,
+  options?: ModelOptions,
 ): ModelCRUD<T>
 ```
 
@@ -23,6 +24,7 @@ function defineModel<T extends Record<string, any>>(
 |---|---|---|
 | `name` | `string` | Model name (used as the Mongoose model name / SQL table name) |
 | `schema` | `ModelSchema` | Field definitions — see below |
+| `options` | `ModelOptions` | Model-level options — see [Model options](#modeloptions) below |
 
 ### `ModelSchema`
 
@@ -37,6 +39,7 @@ interface FieldDefinition {
   enum?: readonly (string | number)[];  // valid on 'string'/'number' types
   ref?: string;                         // Mongoose model name; valid on 'objectId' types
   of?: PrimitiveFieldType;              // item type for 'array' fields
+  sequence?: boolean | string;          // auto-increment — see "Sequence fields" below
 }
 
 // A field is either a FieldDefinition, or a one-element tuple holding a nested ModelSchema —
@@ -61,6 +64,86 @@ export const User = defineModel<User>('User', {
   email: { type: 'string', required: true, unique: true },
   role:  { type: 'string', enum: ['member', 'admin'], default: 'member' },
 });
+```
+
+### Default value operator codes
+
+Besides literal values, `default` accepts sentinel strings that are resolved to a generator function at schema-compile time — each document gets a freshly-computed value, not one baked in at schema-definition time:
+
+| Code | Resolves to | Pair with |
+|---|---|---|
+| `'$now'` | `new Date()`, evaluated per document | `type: 'date'` |
+| `'$uuid'` | `crypto.randomUUID()`, evaluated per document | `type: 'string'` |
+| `'$objectId'` | a fresh Mongoose `ObjectId`, evaluated per document | `type: 'objectId'` |
+| `'$timestamp'` | current epoch milliseconds (`Date.now()`, a `number`), evaluated per document | `type: 'number'` |
+| `'$shortId'` | a random 16-character base64url string, evaluated per document | `type: 'string'` |
+| `'$currentUser'` | the JWT payload [`requireAuth`](./auth.md) attached to the in-flight request (via [`getCurrentUser()`](./auth.md#getcurrentuser)) | `type: 'object'` |
+| `'$currentUser.<key>'` | a single field plucked from that payload, e.g. `'$currentUser.id'` | matches that field's shape |
+
+```ts
+export const Session = defineModel<Session>('Session', {
+  token:     { type: 'string', default: '$uuid' },
+  apiKey:    { type: 'string', default: '$shortId' },
+  ownerId:   { type: 'objectId', default: '$objectId' },
+  createdAt: { type: 'date',   default: '$now' },
+  createdAtMs: { type: 'number', default: '$timestamp' },
+});
+
+export const Post = defineModel<Post>('Post', {
+  title:     { type: 'string', required: true },
+  createdBy: { type: 'string', default: '$currentUser.id' }, // e.g. the JWT's `id` claim
+});
+```
+
+`'$currentUser'` and `'$currentUser.<key>'` resolve to `undefined` outside a request, or on a route that never ran through `requireAuth` — they don't throw. The value is read live from the same `AsyncLocalStorage` context `getCurrentUser()` uses, so it reflects whatever payload the request's `requireAuth` middleware verified, not a snapshot taken at schema-definition time.
+
+Any other string (or value) passed to `default` is used as-is, unchanged — only these exact strings/prefixes are special-cased.
+
+### Sequence fields (auto-increment)
+
+`'$increment'` is **not** a `default` code — `default` is resolved synchronously by mongoose, but an auto-increment needs an async read-modify-write against a counters collection. Instead, use the `sequence` field option:
+
+```ts
+interface FieldDefinition {
+  // ...
+  sequence?: boolean | string;
+}
+```
+
+```ts
+export const Order = defineModel<Order>('Order', {
+  orderNumber: { type: 'number', sequence: true, required: true },
+});
+```
+
+- `sequence: true` uses `'<ModelName>.<field>'` as the counter key.
+- `sequence: 'some-key'` uses an explicit key, letting multiple fields (even across different models) share one counter — useful for a single global document number.
+- The value is assigned in a `pre('validate')` hook (before `required` is checked, so `sequence` fields can also be `required: true`), only on new documents, and only when the field wasn't already set explicitly (so passing your own value on `create()` still wins).
+- The counter itself lives in an internal `efc_counters` collection and is incremented atomically (`$inc` + upsert), so it's safe under concurrent inserts across workers/processes.
+- Only supported on top-level fields — not inside nested array sub-schemas.
+
+### `ModelOptions`
+
+```ts
+interface ModelOptions {
+  timestamps?: boolean | { createdAt?: string | false; updatedAt?: string | false };
+}
+```
+
+Passed straight through to mongoose's own `timestamps` schema option. Default is `true` (adds `createdAt`/`updatedAt`), matching EFC's previous hardcoded behavior — pass `false` to disable both, or an object to rename/selectively disable one:
+
+```ts
+export const Log = defineModel<Log>(
+  'Log',
+  { message: { type: 'string', required: true } },
+  { timestamps: false },
+);
+
+export const Event = defineModel<Event>(
+  'Event',
+  { name: { type: 'string', required: true } },
+  { timestamps: { createdAt: 'created_at', updatedAt: false } },
+);
 ```
 
 ### `objectId` references

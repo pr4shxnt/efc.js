@@ -14,6 +14,7 @@ import { configureAuth } from './auth/index.js';
 import { isHttpError } from './errors.js';
 import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
+import { runWithContext } from './context.js';
 import { scanTasks } from './tasks/scanner.js';
 import { initBullMQ } from './tasks/bullmq-backend.js';
 import { generateDashboard } from './dashboard.js';
@@ -80,6 +81,13 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   }
 
   const app = express();
+
+  // Wraps every request in its own AsyncLocalStorage context, first thing, so
+  // requireAuth (below) and any downstream code — including a `$currentUser`
+  // default resolved inside a mongoose `.create()` call — share the same store.
+  app.use((_req, _res, next) => {
+    runWithContext({}, next);
+  });
 
   const corsOption = config.cors ?? true;
   if (corsOption !== false) {
@@ -221,5 +229,7 @@ export type {
   ModelSchema,
   ModelCRUD,
   ModelQueryOptions,
+  ModelOptions,
   FieldDefinition,
+  DefaultOperator,
 } from './types.js';

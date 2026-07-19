@@ -40,7 +40,7 @@ function setDbClient(client: Record<string, unknown>): void
 function getDbClient(): Record<string, unknown>
 
 // Create an engine-agnostic model
-function defineModel<T>(name: string, schema: ModelSchema): ModelCRUD<T>
+function defineModel<T>(name: string, schema: ModelSchema, options?: ModelOptions): ModelCRUD<T>
 
 // Scan a directory and return route entries (used internally by ignite)
 function scanDir(dir: string, base?: string): RouteEntry[]
@@ -122,10 +122,41 @@ interface FieldDefinition {
   type: PrimitiveFieldType | 'array';
   required?: boolean;
   unique?: boolean;
-  default?: unknown;
+  default?: unknown;                    // literal value, OR a DefaultOperator sentinel string (below)
   enum?: readonly (string | number)[];  // valid on 'string'/'number' types
   ref?: string;                         // Mongoose model name; valid on 'objectId' types
   of?: PrimitiveFieldType;              // item type for 'array' fields, e.g. { type: 'array', of: 'string' }
+  sequence?: boolean | string;          // auto-increment via a counters collection — see below
+}
+
+// Sentinel default-value codes resolved at schema-compile time to a generator
+// function, so each document gets a freshly-computed value:
+//   '$now'              → new Date()                       — pair with type: 'date'
+//   '$uuid'              → crypto.randomUUID()               — pair with type: 'string'
+//   '$objectId'          → new mongoose.Types.ObjectId()     — pair with type: 'objectId'
+//   '$timestamp'         → Date.now() (number, epoch ms)     — pair with type: 'number'
+//   '$shortId'           → random 16-char base64url string   — pair with type: 'string'
+//   '$currentUser'       → getCurrentUser() (auth payload)   — pair with type: 'object'
+//   '$currentUser.<key>' → getCurrentUser()?.[key]           — e.g. '$currentUser.id'
+// Any other string/value passed to `default` is used as-is.
+type DefaultOperator =
+  | '$now' | '$uuid' | '$objectId' | '$timestamp' | '$shortId'
+  | '$currentUser' | `$currentUser.${string}`;
+
+// '$increment' is NOT a DefaultOperator — default resolution is synchronous, and an
+// auto-increment counter needs an async read-modify-write against a counters
+// collection. Use FieldDefinition.sequence instead:
+//   { orderNumber: { type: 'number', sequence: true, required: true } }
+// `sequence: true` keys the counter as '<ModelName>.<field>'; a string sets an
+// explicit shared key. Assigned in a pre('validate') hook (before `required` runs),
+// only on new docs, only if not already set. Top-level fields only — not inside
+// nested array sub-schemas. Counter storage: internal 'efc_counters' collection,
+// incremented atomically ($inc + upsert).
+
+interface ModelOptions {
+  // Passed straight through to mongoose's `timestamps` schema option.
+  // Default: true (matches the framework's previous hardcoded behavior).
+  timestamps?: boolean | { createdAt?: string | false; updatedAt?: string | false };
 }
 
 // A field is either a FieldDefinition, or a one-element tuple holding a nested ModelSchema —
@@ -175,9 +206,17 @@ const requireAuth: RequireAuth
 
 // Internal — called by ignite()
 function configureAuth(config: { secret: string; strategy: AuthStrategy; expiresIn: string; cookieDomain?: string }): void
+
+// Reads the JWT payload requireAuth attached to the in-flight request, from
+// anywhere in the async call chain (backed by AsyncLocalStorage — see context.ts).
+// Returns undefined outside a request, or on a route that never ran requireAuth.
+// Also what powers the '$currentUser'/'$currentUser.<key>' defineModel default codes.
+function getCurrentUser(): Record<string, unknown> | undefined
 ```
 
 Cookie name: `efc_token`. Algorithm: HS256. Library: `jose`.
+
+Every request run through `ignite()` is wrapped in its own `AsyncLocalStorage` context (`packages/core/src/context.ts`) before any other middleware runs; `requireAuth` populates it with the verified JWT payload. This DOES exist now — it's no longer accurate to say EFC has no request context (see `what-not-to-invent.md`, which has been updated).
 
 ---
 
