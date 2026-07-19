@@ -14,7 +14,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - MongoDB adapter via mongoose
 - CLI (`efc` binary)
 
-**Status: v0.3.14 Beta.** See `README.md` and `docs/` for full documentation.
+**Status: v0.3.15 Beta.** See `README.md` and `docs/` for full documentation.
 
 ---
 
