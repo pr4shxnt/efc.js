@@ -198,7 +198,7 @@ export const POST = compose(
 Declare a typed model with a schema. EFC compiles it to a Mongoose model and wraps it in a clean CRUD surface.
 
 ```ts
-// src/models/User.ts
+// src/model/User.ts
 import { defineModel } from 'express-file-cluster';
 
 interface UserDocument {
@@ -484,69 +484,52 @@ efc doctor                           # Validate config, env vars, DB connectivit
 
 ## Configuration Reference
 
+EFC uses a two-file convention: all runtime values are read from `process.env` in `efc.config.ts` and passed explicitly to `ignite()`. The framework never reads `process.env` itself (except `NODE_ENV`).
+
 ```ts
-// src/index.ts
-import { ignite } from 'express-file-cluster';
+// efc.config.ts  ← single source of truth for all runtime values
+import type { EFCConfig } from 'express-file-cluster';
 
-ignite({
-  // Server
-  port: Number(process.env.PORT) || 3000,
-  basePath: '/v1/api',           // default: '/v1/api'
+const corsOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : undefined;
 
-  // Routing
-  apiDir: path.join(__dirname, 'api'),
-  tasksDir: path.join(__dirname, 'tasks'),
-
-  // Database (MongoDB only in Phase 1)
-  database: 'mongodb',
+const config: EFCConfig = {
+  port: process.env.PORT ? Number(process.env.PORT) : undefined,
   databaseUrl: process.env.DATABASE_URL,
-
-  // Auth
-  authStrategy: 'http-only',    // 'http-only' | 'localStorage'
   jwtSecret: process.env.JWT_SECRET,
-  jwtExpiresIn: '7d',           // default: '7d'
-  cookieDomain: '.myapp.com',   // http-only strategy only
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN,
+  cookieDomain: process.env.COOKIE_DOMAIN,
+  cors: corsOrigins ? { origin: corsOrigins } : true,
+  authStrategy: 'http-only',   // 'http-only' | 'localStorage'
+  tasks: { backend: 'bullmq', concurrency: 5, redisUrl: process.env.REDIS_URL },
+  globalMiddlewares: [],
+};
 
-  // Clustering
-  cluster: true,
-  workers: 4,                    // default: os.cpus().length
-  onWorkerReady: (id) => console.log(`Worker ${id} ready`),
-  onWorkerCrash: (id, code) => console.error(`Worker ${id} crashed (${code})`),
-
-  // Background tasks (BullMQ + Redis)
-  tasks: {
-    backend: 'bullmq',
-    redisUrl: process.env.REDIS_URL,
-    concurrency: 5,
-  },
-
-  // CORS
-  cors: {
-    origin: process.env.CORS_ORIGINS?.split(',') ?? true,
-    credentials: true,
-  },
-
-  // Middleware
-  globalMiddlewares: [rateLimiter(), helmet()],
-
-  // Error handling
-  onError: (err, req, res, next) => { ... },
-
-  // Request timeout (ms) — responds 408 if exceeded
-  requestTimeout: 30_000,
-});
+export default config;
 ```
 
-### `ignite()` options
+```ts
+// src/index.ts  ← entry point: spread config, choose cluster mode
+import { ignite, gracefulShutdown } from 'express-file-cluster';
+import config from '../efc.config.js';
+
+ignite({
+  ...config,
+  cluster: true,   // false in dev (efc start dev forces single-process)
+}).then(gracefulShutdown).catch(console.error);
+```
+
+`apiDir` and `tasksDir` are **auto-resolved** — EFC probes `src/api`, `src/tasks`, `dist/api`, `dist/tasks` in order. You only need to pass them if your layout differs from the convention.
+
+### `EFCConfig` options
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `port` | `number` | `3000` | HTTP listen port |
 | `basePath` | `string` | `'/v1/api'` | URL prefix for all routes |
-| `apiDir` | `string` | auto-resolved | Path to route modules |
-| `tasksDir` | `string` | auto-resolved | Path to task modules |
 | `database` | `'mongodb' \| 'postgresql'` | auto-detected | Database engine |
-| `databaseUrl` | `string` | — | Connection string |
+| `databaseUrl` | `string` | — | Connection string (MongoDB auto-detected from `mongodb://` prefix) |
 | `authStrategy` | `'http-only' \| 'localStorage'` | `'http-only'` | Token delivery method |
 | `jwtSecret` | `string` | — | JWT signing secret |
 | `jwtExpiresIn` | `string` | `'7d'` | Token lifetime |
