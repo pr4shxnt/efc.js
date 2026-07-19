@@ -8,6 +8,7 @@ import {
   revokeToken,
   signToken,
   requireAuth,
+  getCurrentUser,
 } from 'express-file-cluster/auth';
 ```
 
@@ -168,6 +169,29 @@ export const DELETE = compose(requireAuth('admin'), async (req, res) => {
   res.status(204).send();
 });
 ```
+
+---
+
+## `getCurrentUser()`
+
+Reads the JWT payload `requireAuth` attached to the in-flight request, from anywhere in the async call chain — not just where `req` is in scope. Backed by `AsyncLocalStorage`; every request run through `ignite()` gets its own isolated context.
+
+```ts
+function getCurrentUser(): Record<string, unknown> | undefined
+```
+
+Returns `undefined` outside a request, or on a request that never ran through `requireAuth` (e.g. a public route).
+
+```ts
+import { getCurrentUser } from 'express-file-cluster/auth';
+
+export const GET = async (req, res) => {
+  const user = getCurrentUser(); // same payload as req.user here, but callable from deeper code paths
+  res.json({ userId: user?.['sub'] });
+};
+```
+
+This is also what powers the `'$currentUser'` / `'$currentUser.<key>'` `defineModel` default operator codes — see the [`db` API reference](./db.md#default-value-operator-codes) — so a `createdBy` field can be populated automatically on `.create()` without threading `req.user` through every route handler.
 
 ---
 

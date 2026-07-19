@@ -77,7 +77,7 @@
     <section class="hero" id="hero">
       <div class="hero-glow"></div>
       <div class="container">
-        <div class="badge">v0.3.12</div>
+        <div class="badge">v0.3.14</div>
         <h1 class="hero-title">
           Express, but your folder<br />
           <span class="accent">is your router.</span>
@@ -626,6 +626,40 @@
           <em>Change</em><span style="font-weight: 600">log</span>
         </h2>
         <div class="changelog-list">
+          <div class="changelog-item">
+            <div class="changelog-meta">
+              <div class="cl-version">express-file-cluster v0.3.14</div>
+              <div class="cl-date">Jul 19, 2026</div>
+              <div class="cl-tag">SCHEMA</div>
+            </div>
+            <div class="changelog-content">
+              <h3>Schema Default Operators, Auto-Increment Fields &amp; Request Context</h3>
+              <p>
+                <code>defineModel</code> field defaults now accept sentinel operator codes resolved
+                fresh per document instead of a static value: <code>'$now'</code>, <code>'$uuid'</code>,
+                <code>'$objectId'</code>, <code>'$timestamp'</code>, <code>'$shortId'</code>, and
+                <code>'$currentUser'</code> / <code>'$currentUser.&lt;key&gt;'</code> — the latter reads
+                the authenticated request's JWT payload via a new <code>AsyncLocalStorage</code>-backed
+                context, exposed as <code>getCurrentUser()</code> from
+                <code>express-file-cluster/auth</code>. A new <code>sequence</code> field option adds
+                real auto-incrementing counters (backed by an atomic, upsert-safe internal
+                collection) for cases <code>default</code> can't handle, since it resolves
+                synchronously. <code>defineModel</code> also takes an optional third
+                <code>ModelOptions</code> argument to control mongoose's <code>timestamps</code>
+                behavior per model instead of it being hardcoded on.
+              </p>
+              <p>
+                Also fixed two CLI bugs found while reviewing Phase 1: <code>efc doctor</code> was
+                checking <code>process.env</code> directly and reporting <code>DATABASE_URL</code>/
+                <code>JWT_SECRET</code> as missing even when they were set in <code>.env</code>, since
+                nothing had loaded it into the process; and <code>efc start dev</code> could silently
+                fail to force development mode if the parent shell already exported
+                <code>NODE_ENV=production</code>, undermining the documented single-process dev
+                guarantee.
+              </p>
+            </div>
+          </div>
+
           <div class="changelog-item">
             <div class="changelog-meta">
               <div class="cl-version">express-file-cluster v0.3.12 / create-efc-app v0.3.12</div>

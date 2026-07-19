@@ -95,8 +95,12 @@ function startDev(): void {
   const preloadPath = writeDevEnvPreload(cwd);
 
   const env: NodeJS.ProcessEnv = {
-    NODE_ENV: 'development',
     ...process.env,
+    // Always last: `efc start dev` must force development mode even if the
+    // parent shell/CI already exports NODE_ENV=production, otherwise ignite()'s
+    // cluster default (`NODE_ENV === 'production'`) silently enables clustering
+    // in what's supposed to be a single-process dev server.
+    NODE_ENV: 'development',
     NODE_OPTIONS: [process.env['NODE_OPTIONS'], `--import ${preloadPath}`]
       .filter(Boolean)
       .join(' '),

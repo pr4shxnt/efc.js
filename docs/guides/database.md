@@ -64,7 +64,7 @@ export const User = defineModel<User>('User', {
 });
 ```
 
-For MongoDB, this produces a Mongoose schema with `timestamps: true` (adds `createdAt` and `updatedAt` automatically).
+For MongoDB, this produces a Mongoose schema with `timestamps: true` by default (adds `createdAt` and `updatedAt` automatically). Pass a third `ModelOptions` argument to disable or rename them — see [`ModelOptions`](../api-reference/db.md#modeloptions).
 
 > `create-efc-app`'s User/Admin portal options scaffold many more models this way (`Session`, `Notification`, `File`, `Subscription`, `Invoice`, and more) — see [Generated Portals](./generated-portals.md) for the full list.
 

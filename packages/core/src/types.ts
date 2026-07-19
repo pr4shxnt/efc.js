@@ -91,10 +91,41 @@ export interface TaskDefinition<TPayload = unknown> {
 /** Primitive field types usable directly, or as the item type of an `array` field via `of`. */
 export type PrimitiveFieldType = 'string' | 'number' | 'boolean' | 'date' | 'object' | 'objectId';
 
+/**
+ * Sentinel default-value codes, resolved at schema-compile time to a generator
+ * function so each document gets a freshly-computed value (never baked in once
+ * at schema-definition time):
+ * - `'$now'` — the current `Date` (pair with `type: 'date'`)
+ * - `'$uuid'` — a fresh `crypto.randomUUID()` string (pair with `type: 'string'`)
+ * - `'$objectId'` — a fresh Mongoose `ObjectId` (pair with `type: 'objectId'`)
+ * - `'$timestamp'` — the current epoch milliseconds as a `number` (pair with `type: 'number'`)
+ * - `'$shortId'` — a random 16-character base64url string (pair with `type: 'string'`);
+ *   a shorter, non-UUID-shaped alternative to `'$uuid'` for tokens/keys
+ * - `'$currentUser'` — the JWT payload `requireAuth` attached to the in-flight request
+ *   (via `getCurrentUser()`), or `undefined` outside a request / without `requireAuth`
+ * - `` `$currentUser.<key>` `` — a single field plucked from that payload, e.g.
+ *   `'$currentUser.id'` (pair with a `type` matching that field's shape)
+ *
+ * `'$increment'` is intentionally NOT a `default` code — see `FieldDefinition.sequence`
+ * instead. Auto-increment needs an async read-modify-write against a counters
+ * collection; mongoose resolves `default` synchronously, so it can't live here.
+ *
+ * Any other string/value passed to `default` is used as a literal default, unchanged.
+ */
+export type DefaultOperator =
+  | '$now'
+  | '$uuid'
+  | '$objectId'
+  | '$timestamp'
+  | '$shortId'
+  | '$currentUser'
+  | `$currentUser.${string}`;
+
 export interface FieldDefinition {
   type: PrimitiveFieldType | 'array';
   required?: boolean;
   unique?: boolean;
+  /** A literal default value, or a `DefaultOperator` sentinel code (see above). */
   default?: unknown;
   /** Restricts the field to a fixed set of values. Valid on `string` and `number` types. */
   enum?: readonly (string | number)[];
@@ -102,6 +133,14 @@ export interface FieldDefinition {
   ref?: string;
   /** Item type for `array` fields, e.g. `{ type: 'array', of: 'string' }`. Omit for an untyped array. */
   of?: PrimitiveFieldType;
+  /**
+   * Auto-increments a shared counter (stored in an internal `efc_counters` collection)
+   * and assigns it on insert, before `required` validation runs. `true` uses
+   * `'<ModelName>.<field>'` as the counter key; a string sets an explicit key so
+   * multiple fields/models can share one counter (e.g. a global order number).
+   * Only supported on top-level fields — not inside nested array sub-schemas.
+   */
+  sequence?: boolean | string;
 }
 
 /**
@@ -114,6 +153,16 @@ export type ModelSchema = Record<string, FieldDefinition | [ModelSchema]>;
 export interface ModelQueryOptions {
   /** Mongoose `.populate()` path(s) to resolve on `objectId`/ref fields. */
   populate?: string | string[];
+}
+
+export interface ModelOptions {
+  /**
+   * Passed straight through to mongoose's own schema `timestamps` option.
+   * `true` (the default) adds `createdAt`/`updatedAt`; `false` disables both;
+   * an object lets you rename or selectively disable one, e.g.
+   * `{ createdAt: 'created_at', updatedAt: false }`.
+   */
+  timestamps?: boolean | { createdAt?: string | false; updatedAt?: string | false };
 }
 
 export interface ModelCRUD<T extends object> {

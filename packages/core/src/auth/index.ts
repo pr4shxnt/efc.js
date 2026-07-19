@@ -1,6 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { SignJWT, jwtVerify } from 'jose';
 import type { AuthStrategy } from '../types.js';
+import { setCurrentUser } from '../context.js';
 
 interface AuthConfig {
   secret: string;
@@ -87,6 +88,7 @@ async function authenticate(
     }
 
     (req as typeof req & { user: unknown }).user = payload;
+    setCurrentUser(payload as Record<string, unknown>);
     next();
   } catch {
     res.status(401).json({ error: 'Unauthorized' });
@@ -113,3 +115,8 @@ export const requireAuth: RequireAuth = ((...args: unknown[]) => {
   const [req, res, next] = args as [Request, Response, NextFunction];
   void authenticate(req, res, next, []);
 }) as RequireAuth;
+
+// Reads the JWT payload requireAuth attached for the in-flight request, from
+// anywhere — not just where `req` is in scope. Returns undefined outside a
+// request, or on a request that never ran through requireAuth.
+export { getCurrentUser } from '../context.js';

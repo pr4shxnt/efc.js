@@ -55,11 +55,35 @@ function tasksCommand(): Command {
   });
 }
 
+// `efc doctor` runs as a standalone CLI invocation — nothing has loaded .env into
+// process.env yet (that only happens inside `efc start dev`'s spawned child process).
+// Parse .env directly so vars that only live there, not in the shell, are still seen.
+function readEnvFile(cwd: string): Record<string, string> {
+  const envPath = path.join(cwd, '.env');
+  if (!fs.existsSync(envPath)) return {};
+
+  const vars: Record<string, string> = {};
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const raw = trimmed.slice(eq + 1).trim();
+    vars[key] = raw.replace(/^(['"])(.*)\1$/, '$2');
+  }
+  return vars;
+}
+
 function doctorCommand(): Command {
   return new Command('doctor')
     .description('Validate config, env vars, and project setup')
     .action(() => {
       const cwd = process.cwd();
+      const envFileVars = readEnvFile(cwd);
+      const hasEnvVar = (key: string): boolean =>
+        Boolean(process.env[key]) || Boolean(envFileVars[key]);
+
       const checks: { label: string; ok: boolean; hint?: string }[] = [
         {
           label: 'package.json exists',
@@ -77,12 +101,12 @@ function doctorCommand(): Command {
         },
         {
           label: 'DATABASE_URL set',
-          ok: Boolean(process.env['DATABASE_URL']),
+          ok: hasEnvVar('DATABASE_URL'),
           hint: 'Add DATABASE_URL to .env',
         },
         {
           label: 'JWT_SECRET set',
-          ok: Boolean(process.env['JWT_SECRET']),
+          ok: hasEnvVar('JWT_SECRET'),
           hint: 'Add JWT_SECRET to .env (generate: openssl rand -hex 64)',
         },
       ];
