@@ -1,27 +1,34 @@
-# express-file-cluster &nbsp;·&nbsp; `efc`
+<div align="center">
 
-**File-based routing. Multi-core clustering. Background tasks. Zero boilerplate.**
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none">
+  <rect width="120" height="120" rx="24" fill="#0f0f0f"/>
+  <rect x="12" y="12" width="96" height="96" rx="18" fill="url(#grad)"/>
+  <text x="60" y="72" font-family="monospace" font-size="38" font-weight="bold" fill="white" text-anchor="middle">efc</text>
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+</svg>
 
-EFC is an opinionated backend framework built on Express. Drop files in `src/api/` and they become routes. Every CPU core serves traffic automatically. Heavy work goes to a queue-backed task subsystem so requests stay fast.
+# express-file-cluster
 
-> **Status: v0.3.10 (Beta).** The router, clustering, auth, MongoDB adapter, and BullMQ task queue backend are all implemented.
+**File-based routing · Multi-core clustering · Background tasks · Zero boilerplate**
+
+[![npm version](https://img.shields.io/npm/v/express-file-cluster?color=6366f1&label=npm&logo=npm&logoColor=white)](https://www.npmjs.com/package/express-file-cluster)
+[![npm downloads](https://img.shields.io/npm/dm/express-file-cluster?color=8b5cf6&logo=npm&logoColor=white)](https://www.npmjs.com/package/express-file-cluster)
+[![CI](https://img.shields.io/github/actions/workflow/status/pr4shxnt/efc.js/ci.yml?branch=main&label=CI&logo=github&logoColor=white)](https://github.com/pr4shxnt/efc.js/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?logo=opensourceinitiative&logoColor=white)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-6366f1?logo=github&logoColor=white)](https://github.com/pr4shxnt/efc.js/pulls)
+
+</div>
 
 ---
 
-## Why EFC
-
-Most Express apps grow the same way: a working prototype, then a maze of `router.get(...)` calls spread across files, a clustering setup copy-pasted from a blog post, and background jobs bolted on as an afterthought. EFC collapses all of that into conventions:
-
-| Problem | EFC's answer |
-|---|---|
-| Route registration ceremony | The file tree **is** the route tree |
-| Single-threaded Node under load | Auto-detected CPU count → worker processes |
-| Blocking work on the request path | `enqueue()` ships it to a queue; respond immediately |
-| Wiring auth, DB, and middleware by hand | `ignite()` — one call bootstraps everything |
-
----
-
-## Quick Start
+EFC is an opinionated backend framework built on Express. Drop files in `src/api/` and they become routes. Every CPU core serves traffic automatically. Heavy work goes to a queue-backed task system so your request handlers stay fast.
 
 ```bash
 npx create-efc-app my-api
@@ -29,7 +36,63 @@ cd my-api
 efc start dev
 ```
 
-The interactive scaffolder asks for language, database, auth strategy, and whether you want clustering and background tasks — then writes the boilerplate, generates a `.env` with a real `JWT_SECRET`, and runs `npm install`.
+---
+
+## Table of Contents
+
+- [Why EFC](#why-efc)
+- [Installation](#installation)
+- [Project Structure](#project-structure)
+- [File-Based Routing](#file-based-routing)
+- [Middleware](#middleware)
+- [Database](#database)
+- [Authentication](#authentication)
+- [Background Tasks](#background-tasks)
+- [Clustering](#clustering)
+- [Error Handling](#error-handling)
+- [CLI Reference](#cli-reference)
+- [Configuration Reference](#configuration-reference)
+- [Environment Variables](#environment-variables)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Why EFC
+
+Most Express apps grow the same way: a working prototype, then a maze of `router.get(...)` calls spread across files, a clustering setup copy-pasted from a blog post, and background jobs bolted on as an afterthought.
+
+EFC collapses all of that into conventions:
+
+| Pain point | EFC's answer |
+|---|---|
+| Route registration ceremony | The file tree **is** the route tree |
+| Single-threaded Node under load | Auto-detected CPU count → worker processes |
+| Blocking work on the request path | `enqueue()` ships it off; respond immediately |
+| Wiring auth, DB, and middleware by hand | `ignite()` — one call bootstraps everything |
+| Scattered model definitions | `defineModel()` — typed CRUD with zero ORM ceremony |
+| Per-request user context in nested calls | `AsyncLocalStorage`-backed `getCurrentUser()` |
+
+---
+
+## Installation
+
+**Scaffold a new project (recommended):**
+
+```bash
+npx create-efc-app my-api
+```
+
+The interactive scaffolder asks for language, database, auth strategy, clustering, and task queue — then generates everything including a `.env` with a real `JWT_SECRET`.
+
+**Add to an existing Express project:**
+
+```bash
+npm install express-file-cluster
+```
+
+> **Requires:** Node.js ≥ 20 · TypeScript 5.x (optional but recommended)
 
 ---
 
@@ -38,39 +101,41 @@ The interactive scaffolder asks for language, database, auth strategy, and wheth
 ```
 my-api/
 ├── src/
-│   ├── api/                      # Every file here is a route
-│   │   ├── health.ts             # GET /health
+│   ├── api/                          # Every file here becomes a route
+│   │   ├── health.ts                 # → GET /v1/api/health
 │   │   ├── users/
-│   │   │   ├── index.ts          # GET /users  •  POST /users
-│   │   │   └── [id].ts           # GET /users/:id  •  DELETE /users/:id
+│   │   │   ├── index.ts              # → GET /v1/api/users  POST /v1/api/users
+│   │   │   └── [id].ts              # → GET /v1/api/users/:id  DELETE …
 │   │   └── posts/
 │   │       └── [slug]/
-│   │           └── comments.ts   # GET /posts/:slug/comments
-│   ├── tasks/                    # Background jobs
+│   │           └── comments.ts       # → GET /v1/api/posts/:slug/comments
+│   ├── tasks/                        # Background job definitions
 │   │   ├── SendEmail.ts
 │   │   └── ResizeImage.ts
-│   ├── models/                   # Engine-agnostic models
-│   │   └── User.ts
-│   └── index.ts                  # Framework entry point
+│   ├── models/
+│   │   └── User.ts                   # defineModel() schemas
+│   └── index.ts                      # ignite() entry point
 ├── efc.config.ts
-├── .env                          # Gitignored — JWT_SECRET auto-filled
+├── .env                              # Gitignored — JWT_SECRET auto-generated
 └── .env.example
 ```
 
-Routing rules:
-
-| File | URL |
-|---|---|
-| `api/health.ts` | `/health` |
-| `api/users/index.ts` | `/users` |
-| `api/users/[id].ts` | `/users/:id` |
-| `api/posts/[slug]/comments.ts` | `/posts/:slug/comments` |
-
 ---
 
-## Route Handlers
+## File-Based Routing
 
-Export uppercase HTTP method names. Anything not exported returns **405 Method Not Allowed** automatically.
+Export uppercase HTTP method names from any file under `src/api/`. Everything else returns **405 Method Not Allowed** automatically.
+
+### Routing rules
+
+| File | Route |
+|---|---|
+| `api/health.ts` | `GET /health` |
+| `api/users/index.ts` | `GET /users` · `POST /users` |
+| `api/users/[id].ts` | `GET /users/:id` · `DELETE /users/:id` |
+| `api/posts/[slug]/comments.ts` | `GET /posts/:slug/comments` |
+
+### Route handler
 
 ```ts
 // src/api/users/index.ts
@@ -113,27 +178,176 @@ export const DELETE = async (req: Request, res: Response) => {
 Three tiers, each with a clear scope:
 
 ```ts
-// 1. Global — applies to every request
-// CORS is built-in — configure it via CORS_ORIGINS in .env, not a separate package
+// 1. Global — runs on every request (configured in ignite())
 ignite({ globalMiddlewares: [rateLimiter()] });
 
-// 2. Route-level — applies to every handler in this file
+// 2. Route-level — applies to all handlers in this file
 export const middlewares = [requireAuth];
 
-// 3. Handler-level — applies to one handler via compose()
+// 3. Handler-level — compose() wraps a single handler
 import { compose } from 'express-file-cluster';
 
 export const POST = compose(
   validateBody(CreateUserSchema),
-  async (req, res) => { /* req.body is validated */ },
+  async (req, res) => {
+    // req.body is validated here
+  },
 );
+```
+
+---
+
+## Database
+
+### `defineModel()`
+
+Declare a typed model with a schema. EFC compiles it to a Mongoose model and wraps it in a clean CRUD surface.
+
+```ts
+// src/models/User.ts
+import { defineModel } from 'express-file-cluster';
+
+interface UserDocument {
+  name: string;
+  email: string;
+  role: 'admin' | 'user';
+  verifyToken: string;
+  createdAt?: Date;
+}
+
+export const User = defineModel<UserDocument>('User', {
+  name:        { type: 'string', required: true },
+  email:       { type: 'string', required: true, unique: true },
+  role:        { type: 'string', enum: ['admin', 'user'], default: 'user' },
+  verifyToken: { type: 'string', default: '$uuid' },   // fresh UUID per document
+});
+```
+
+### Schema default operator codes
+
+Instead of a literal or a raw function, pass a sentinel string — EFC resolves it to a fresh per-document value at schema-compile time:
+
+| Code | Resolves to |
+|---|---|
+| `'$now'` | `new Date()` |
+| `'$uuid'` | `crypto.randomUUID()` |
+| `'$objectId'` | fresh Mongoose `ObjectId` |
+| `'$timestamp'` | `Date.now()` (number) |
+| `'$shortId'` | random 16-char base64url string |
+| `'$currentUser'` | full JWT payload from the in-flight request |
+| `'$currentUser.<key>'` | single field from that payload (e.g. `'$currentUser.id'`) |
+
+### Auto-increment (`sequence`)
+
+```ts
+export const Order = defineModel<OrderDocument>('Order', {
+  orderNumber: { type: 'number', sequence: true, required: true },
+  // sequence: 'global.orders' — explicit key to share a counter across models
+});
+```
+
+`sequence` is assigned atomically in a `pre('validate')` hook — it fires before `required` validation, so the field can be both `required: true` and auto-filled.
+
+### Timestamps control
+
+```ts
+// Disable Mongoose's automatic createdAt/updatedAt
+export const Role = defineModel<RoleDocument>('Role', schema, {
+  timestamps: false,
+});
+
+// Or rename them
+export const Audit = defineModel<AuditDocument>('Audit', schema, {
+  timestamps: { createdAt: 'created_at', updatedAt: false },
+});
+```
+
+### CRUD surface
+
+```ts
+await User.find({ role: 'admin' });            // find all matching
+await User.findById('66a1...');                // by _id
+await User.findOne({ email: 'a@b.com' });      // first match
+await User.create({ name: 'Alice', ... });     // insert
+await User.update('66a1...', { name: 'Bob' }); // findOneAndUpdate
+await User.delete('66a1...');                  // remove
+await User.count({ role: 'user' });            // count matching
+```
+
+Populate references:
+
+```ts
+await Post.find({}, { populate: 'author' });
+await Post.findById(id, { populate: ['author', 'comments.user'] });
+```
+
+---
+
+## Authentication
+
+### `http-only` strategy _(recommended for SSR)_
+
+Tokens are stored in `HttpOnly; Secure; SameSite=Strict` cookies — no JS access, no XSS risk.
+
+```ts
+import { issueToken, revokeToken, requireAuth } from 'express-file-cluster/auth';
+
+// Login
+export const POST = async (req, res) => {
+  const user = await verifyCredentials(req.body);
+  issueToken(res, { sub: user.id, role: user.role });
+  res.json({ ok: true });
+};
+
+// Logout
+export const DELETE = async (req, res) => {
+  revokeToken(res);
+  res.json({ ok: true });
+};
+```
+
+### `localStorage` strategy _(SPA-friendly)_
+
+Token returned in the response body; client attaches `Authorization: Bearer <token>`.
+
+```ts
+import { signToken } from 'express-file-cluster/auth';
+
+export const POST = async (req, res) => {
+  const token = signToken({ sub: user.id });
+  res.json({ token });
+};
+```
+
+### Protecting routes
+
+```ts
+// Route-level (all handlers in this file)
+export const middlewares = [requireAuth];
+
+// Role-gated
+export const middlewares = [requireAuth('admin')];
+
+// Handler-level
+export const DELETE = compose(requireAuth('admin'), async (req, res) => { ... });
+```
+
+### Request context
+
+```ts
+import { getCurrentUser } from 'express-file-cluster/auth';
+
+// Available anywhere inside a request (including inside defineModel defaults)
+const user = getCurrentUser(); // Record<string, unknown> | undefined
 ```
 
 ---
 
 ## Background Tasks
 
-Tasks run off the request path — respond immediately, let the queue handle the work.
+Tasks run off the request path — enqueue and respond immediately; the queue handles the rest.
+
+### Define a task
 
 ```ts
 // src/tasks/SendEmail.ts
@@ -147,11 +361,11 @@ export default defineTask<Payload>(async (payload) => {
 ```
 
 ```ts
-// src/tasks/ResizeImage.ts — CPU-bound: runs in a worker_threads thread
+// src/tasks/ResizeImage.ts — CPU-bound: runs in worker_threads
 import { defineTask } from 'express-file-cluster/tasks';
 
 export default defineTask<{ key: string; width: number }>(
-  { thread: true },
+  { thread: true, retries: 2, backoff: 'exponential' },
   async ({ key, width }) => {
     const buf = await sharp(await download(key)).resize(width).toBuffer();
     await upload(`${key}@${width}`, buf);
@@ -159,8 +373,9 @@ export default defineTask<{ key: string; width: number }>(
 );
 ```
 
+### Enqueue from a route
+
 ```ts
-// Trigger from a route handler
 import { enqueue } from 'express-file-cluster/tasks';
 
 export const POST = async (req, res) => {
@@ -170,173 +385,73 @@ export const POST = async (req, res) => {
 };
 ```
 
-Task options:
+### Task options
 
-| Option | Default | Description |
-|---|---|---|
-| `thread` | `false` | Run in a `worker_threads` thread (CPU-bound work) |
-| `retries` | `3` | Retry attempts before dead-lettering |
-| `backoff` | `'exponential'` | Delay strategy between retries |
-| `concurrency` | `tasks.concurrency` | Parallel jobs for this task |
-| `schedule` | — | Cron expression for recurring tasks |
-
----
-
-## Authentication
-
-### `http-only` (recommended for SSR/SSG)
-
-Tokens stored in `HttpOnly + Secure + SameSite=Strict` cookies.
-
-```ts
-import { issueToken, revokeToken, requireAuth } from 'express-file-cluster/auth';
-
-// src/api/auth/login.ts
-export const POST = async (req, res) => {
-  const user = await verifyCredentials(req.body);
-  issueToken(res, { sub: user.id, role: user.role });
-  res.json({ message: 'Logged in' });
-};
-
-// Protect a route
-export const middlewares = [requireAuth];
-```
-
-### `localStorage` (SPA-friendly)
-
-Token returned in body; client attaches `Authorization: Bearer <token>`.
-
-```ts
-import { signToken } from 'express-file-cluster/auth';
-
-export const POST = async (req, res) => {
-  const token = signToken({ sub: user.id });
-  res.json({ token });
-};
-```
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `thread` | `boolean` | `false` | Run in a `worker_threads` thread (CPU-bound work) |
+| `retries` | `number` | `3` | Attempts before dead-lettering |
+| `backoff` | `'fixed' \| 'exponential'` | `'exponential'` | Retry delay strategy |
+| `concurrency` | `number` | `tasks.concurrency` | Parallel workers for this task |
 
 ---
 
-## Bootstrapper
+## Clustering
+
+EFC uses Node's built-in `cluster` module. The master process forks one worker per CPU core; each worker runs the full Pre-Flight lifecycle independently.
+
+```
+           Master Process
+      ┌────────────────────┐
+      │  fork × N workers  │
+      │  respawn on crash  │
+      └──┬──────┬──────┬───┘
+         │      │      │
+    Worker 1  Worker 2  Worker N
+    ─────────────────────────────
+    Pre-Flight (per worker):
+      1. Connect database
+      2. Configure auth
+      3. Scan tasksDir → register tasks
+      4. Start BullMQ backend
+      5. Scan apiDir → build route map
+      6. Mount routes on Express
+      7. server.listen()   ← OS load-balances connections
+```
+
+CPU-bound tasks fan out further into `worker_threads` — the request loop stays unblocked at every layer.
 
 ```ts
-// src/index.ts
-import { ignite } from 'express-file-cluster';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 ignite({
-  port: Number(process.env.PORT) || 3000,
-  apiDir: path.join(__dirname, 'api'),
-  tasksDir: path.join(__dirname, 'tasks'),
-
-  database: 'mongodb',
-  databaseUrl: process.env.DATABASE_URL,
-
-  authStrategy: 'http-only',
-  jwtSecret: process.env.JWT_SECRET,
-
-  cluster: true,          // false → single process (auto-disabled in dev)
-  workers: 4,             // defaults to os.cpus().length
-
-  tasks: {
-    backend: 'bullmq',
-    redisUrl: process.env.REDIS_URL,
-    concurrency: 5,
-  },
-
-  globalMiddlewares: [],
+  cluster: true,         // false → single process (auto in dev)
+  workers: 4,            // default: os.cpus().length
   onWorkerReady: (id) => console.log(`Worker ${id} ready`),
   onWorkerCrash: (id, code) => console.error(`Worker ${id} crashed (${code})`),
 });
 ```
 
-### `ignite()` options
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `port` | `number` | `3000` | HTTP listen port |
-| `apiDir` | `string` | — | Path to route modules |
-| `tasksDir` | `string` | — | Path to task modules |
-| `database` | `'mongodb' \| 'postgresql'` | — | Database engine |
-| `databaseUrl` | `string` | `DATABASE_URL` | Connection string |
-| `authStrategy` | `'http-only' \| 'localStorage'` | — | Token delivery |
-| `jwtSecret` | `string` | `JWT_SECRET` | JWT signing secret |
-| `cluster` | `boolean` | `true` | Enable multi-core clustering |
-| `workers` | `number` | `os.cpus().length` | Worker count override |
-| `tasks` | `TaskConfig \| false` | `false` | Background task runtime |
-| `cors` | `boolean \| CorsConfig` | `true` | CORS — origins driven by `CORS_ORIGINS` env var |
-| `globalMiddlewares` | `RequestHandler[]` | `[]` | Applied to every route |
-| `onWorkerReady` | `(id) => void` | — | Called when a worker boots |
-| `onWorkerCrash` | `(id, code) => void` | — | Called before respawn |
-| `onError` | `ErrorRequestHandler` | built-in | Override global error handler |
-
----
-
-## CLI Reference
-
-```bash
-# Development
-efc start dev         # Hot-reload single process, source maps, pretty logs
-
-# Production
-efc build prod        # Type-check + compile to dist/ (tsup, dual CJS/ESM)
-efc start prod        # Run dist/ with clustering enabled
-
-# Tests
-efc run tests         # Vitest  (--watch, --coverage passthrough)
-
-# Code generation
-efc generate route users/[id]       # → src/api/users/[id].ts
-efc generate task ProcessPayment    # → src/tasks/ProcessPayment.ts
-efc generate middleware authorize   # → src/middlewares/authorize.ts
-
-# Diagnostics
-efc routes            # Print resolved route table (path → file → methods)
-efc tasks             # List registered background tasks
-efc doctor            # Validate config, env vars, DB connectivity
-```
-
----
-
-## Clustering Architecture
-
-```
-              Master Process
-         ┌────────────────────┐
-         │  fork × N workers  │
-         │  respawn on crash   │
-         └──┬──────┬──────┬───┘
-            │      │      │
-       Worker 1  Worker 2  Worker N
-       Pre-Flight lifecycle per worker:
-         1. Connect DB
-         2. Configure auth
-         3. Scan apiDir → route map
-         4. Register tasks
-         5. Mount routes on Express
-         6. Listen (OS round-robins connections)
-```
-
-CPU-bound tasks fan out further into `worker_threads` — the request loop stays unblocked at every layer.
-
 ---
 
 ## Error Handling
 
-```ts
-import { HttpError } from 'express-file-cluster';
+Throw `HttpError` from any handler — it's caught and formatted automatically.
 
-// Throw from any handler — caught and formatted automatically
+```ts
+import { HttpError, isHttpError } from 'express-file-cluster';
+
 export const GET = async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) throw new HttpError(404, 'User not found');
   res.json(user);
 };
 
-// Override the global handler
+// Factory method for wrapping unknown errors
+const err = HttpError.from(someError, 500);
+```
+
+Override the global error handler:
+
+```ts
 ignite({
   onError: (err, req, res, next) => {
     logger.error(err);
@@ -347,20 +462,128 @@ ignite({
 
 ---
 
+## CLI Reference
+
+```bash
+# Development
+efc start dev                        # Hot-reload single process (tsx --watch)
+
+# Production
+efc build prod                       # Type-check + compile (tsup, dual CJS/ESM)
+efc start prod                       # Run dist/ with clustering enabled
+
+# Testing
+efc run tests                        # Vitest (--watch, --coverage passthrough)
+
+# Code generation
+efc generate route users/[id]        # → src/api/users/[id].ts
+efc generate task ProcessPayment     # → src/tasks/ProcessPayment.ts
+efc generate middleware authorize    # → src/middlewares/authorize.ts
+
+# Diagnostics
+efc routes                           # Print resolved route table (path → file → methods)
+efc tasks                            # List registered background tasks
+efc doctor                           # Validate config, env vars, DB connectivity
+```
+
+---
+
+## Configuration Reference
+
+```ts
+// src/index.ts
+import { ignite } from 'express-file-cluster';
+
+ignite({
+  // Server
+  port: Number(process.env.PORT) || 3000,
+  basePath: '/v1/api',           // default: '/v1/api'
+
+  // Routing
+  apiDir: path.join(__dirname, 'api'),
+  tasksDir: path.join(__dirname, 'tasks'),
+
+  // Database (MongoDB only in Phase 1)
+  database: 'mongodb',
+  databaseUrl: process.env.DATABASE_URL,
+
+  // Auth
+  authStrategy: 'http-only',    // 'http-only' | 'localStorage'
+  jwtSecret: process.env.JWT_SECRET,
+  jwtExpiresIn: '7d',           // default: '7d'
+  cookieDomain: '.myapp.com',   // http-only strategy only
+
+  // Clustering
+  cluster: true,
+  workers: 4,                    // default: os.cpus().length
+  onWorkerReady: (id) => console.log(`Worker ${id} ready`),
+  onWorkerCrash: (id, code) => console.error(`Worker ${id} crashed (${code})`),
+
+  // Background tasks (BullMQ + Redis)
+  tasks: {
+    backend: 'bullmq',
+    redisUrl: process.env.REDIS_URL,
+    concurrency: 5,
+  },
+
+  // CORS
+  cors: {
+    origin: process.env.CORS_ORIGINS?.split(',') ?? true,
+    credentials: true,
+  },
+
+  // Middleware
+  globalMiddlewares: [rateLimiter(), helmet()],
+
+  // Error handling
+  onError: (err, req, res, next) => { ... },
+
+  // Request timeout (ms) — responds 408 if exceeded
+  requestTimeout: 30_000,
+});
+```
+
+### `ignite()` options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `port` | `number` | `3000` | HTTP listen port |
+| `basePath` | `string` | `'/v1/api'` | URL prefix for all routes |
+| `apiDir` | `string` | auto-resolved | Path to route modules |
+| `tasksDir` | `string` | auto-resolved | Path to task modules |
+| `database` | `'mongodb' \| 'postgresql'` | auto-detected | Database engine |
+| `databaseUrl` | `string` | — | Connection string |
+| `authStrategy` | `'http-only' \| 'localStorage'` | `'http-only'` | Token delivery method |
+| `jwtSecret` | `string` | — | JWT signing secret |
+| `jwtExpiresIn` | `string` | `'7d'` | Token lifetime |
+| `cookieDomain` | `string` | — | Cookie domain (`http-only` only) |
+| `cluster` | `boolean` | `true` in prod | Enable multi-core clustering |
+| `workers` | `number` | `os.cpus().length` | Worker count override |
+| `tasks` | `TaskConfig \| false` | `false` | Background task runtime |
+| `cors` | `boolean \| CorsConfig` | `true` | CORS configuration |
+| `requestTimeout` | `number` | — | Request timeout in ms (408 on exceed) |
+| `globalMiddlewares` | `RequestHandler[]` | `[]` | Applied to every route |
+| `dashboard` | `boolean` | `true` in dev | Dev route dashboard at `/` |
+| `onWorkerReady` | `(id) => void` | — | Called when a worker boots |
+| `onWorkerCrash` | `(id, code) => void` | — | Called before respawn |
+| `onError` | `ErrorRequestHandler` | built-in | Override global error handler |
+
+---
+
 ## Environment Variables
 
-`create-efc-app` generates `.env` (gitignored, `JWT_SECRET` pre-filled) and `.env.example` (committed, documented).
+`create-efc-app` generates `.env` (gitignored, `JWT_SECRET` pre-filled) and `.env.example` (committed, documented). EFC **does not** auto-load any of these — read them yourself in `efc.config.ts` and pass them to `ignite()`.
 
 | Variable | Required | Description |
 |---|---|---|
 | `PORT` | No (default `3000`) | HTTP listen port |
-| `NODE_ENV` | No | `development \| production \| test` |
-| `DATABASE_URL` | Yes | MongoDB or PostgreSQL connection string |
-| `JWT_SECRET` | Yes | JWT signing key — auto-generated by scaffolder |
+| `NODE_ENV` | No | `development \| production \| test` — **only** env var EFC reads directly |
+| `DATABASE_URL` | If using a database | MongoDB or PostgreSQL connection string |
+| `JWT_SECRET` | If using auth | JWT signing key — auto-generated by scaffolder |
 | `JWT_EXPIRES_IN` | No (default `7d`) | Token lifetime |
 | `COOKIE_DOMAIN` | No | Cookie domain for `http-only` auth |
 | `REDIS_URL` | If using BullMQ | Redis connection for the task queue |
-| `CORS_ORIGINS` | No | Comma-separated allowed origins — e.g. `http://localhost:3000,https://myapp.com` |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins |
 
 ---
 
@@ -368,58 +591,58 @@ ignite({
 
 ```
 packages/
-  core/             → express-file-cluster  (the framework)
-  create-efc-app/   → interactive scaffolder
+  core/               → express-file-cluster        (the framework)
+  create-efc-app/     → npx create-efc-app           (interactive scaffolder)
+docs/                 → documentation source
+client/               → marketing site
 ```
 
+### Contributing locally
+
 ```bash
-# Install
-npm install
+git clone https://github.com/pr4shxnt/efc.js.git
+cd efc.js
+npm install          # installs all workspace packages
 
-# Build all packages
-npm run build
-
-# Run tests
-npm test
-
-# Type-check
-npm run typecheck
-
-# Lint
-npm run lint
+npm run build        # build all packages
+npm test             # run tests (Vitest)
+npm run typecheck    # tsc across all packages
+npm run lint         # ESLint
 ```
 
 ---
 
 ## Roadmap
 
+| Phase | Target | Status | Focus |
+|---|---|---|---|
+| **1** | Q3 2026 | 🟡 In progress | Router, clustering, MongoDB, BullMQ, auth, CLI, scaffolder |
+| **2** | Q4 2026 | ⬜ Planned | PostgreSQL (Drizzle), Zod validation, structured logging (`pino`), cron tasks |
+| **3** | Q1 2027 | ⬜ Planned | Plugins, WebSockets, OpenAPI auto-gen, OpenTelemetry, `efc studio` |
+| **4** | 2027+ | ⬜ Planned | Edge/serverless adapter, gRPC, GraphQL |
+
 See [`todo.md`](./todo.md) for the full implementation checklist.
 
-| Phase | Target | Focus |
-|---|---|---|
-| **0** | Now | Design & planning ✅ |
-| **1** | Q3 2026 | Core MVP — router, clustering, auth, DB, tasks, CLI |
-| **2** | Q4 2026 | Beta — PostgreSQL, Zod validation, structured logging, cron tasks |
-| **3** | Q1 2027 | Stable v1.0 — plugins, WebSockets, OpenAPI, OpenTelemetry |
-| **4** | 2027+ | Edge/serverless, gRPC, GraphQL |
+> **Note:** EFC is architecturally incompatible with Vercel's serverless runtime — it relies on Node.js `cluster`, `server.listen()`, and persistent Redis connections. A serverless adapter is planned for Phase 4.
 
 ---
 
 ## Contributing
 
-```bash
-git clone https://github.com/your-org/efc.js.git
-cd efc.js
-npm install
-npm test
-```
+Contributions, issues, and pull requests are welcome!
 
 - **Branches:** `feat/<topic>` · `fix/<topic>` · `docs/<topic>`
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/)
-- **PRs:** must include tests and a changelog entry
+- **PRs:** should include tests, pass CI, and reference an issue where applicable
+
+```bash
+git clone https://github.com/pr4shxnt/efc.js.git
+cd efc.js && npm install
+npm test && npm run lint
+```
 
 ---
 
 ## License
 
-MIT © 2026 EFC Contributors
+[MIT](./LICENSE) © 2026 [pr4shxnt](https://github.com/pr4shxnt)
