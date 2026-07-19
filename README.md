@@ -417,7 +417,8 @@ CPU-bound tasks fan out further into `worker_threads` — the request loop stays
 
 ```ts
 ignite({
-  cluster: true,         // false → single process (auto in dev)
+  // cluster defaults to NODE_ENV === 'production' — only pass it to force one way
+  // regardless of NODE_ENV (e.g. cluster: false to disable clustering even in prod)
   workers: 4,            // default: os.cpus().length
   onWorkerReady: (id) => console.log(`Worker ${id} ready`),
   onWorkerCrash: (id, code) => console.error(`Worker ${id} crashed (${code})`),
@@ -510,15 +511,20 @@ export default config;
 ```
 
 ```ts
-// src/index.ts  ← entry point: spread config, choose cluster mode
+// src/index.ts  ← entry point: spread config, ignite
 import { ignite, gracefulShutdown } from 'express-file-cluster';
 import config from '../efc.config.js';
 
 ignite({
   ...config,
-  cluster: true,   // false in dev (efc start dev forces single-process)
 }).then(gracefulShutdown).catch(console.error);
 ```
+
+> Don't hardcode `cluster: true` here. `ignite()`'s own default (`NODE_ENV === 'production'`)
+> already gives you clustering in prod and a single process in dev — a literal boolean always
+> wins over that default, so `cluster: true` would cluster in dev too. Only pass `cluster`
+> explicitly if you want to *force* it one way regardless of `NODE_ENV` (e.g. `cluster: false`
+> to disable clustering even in production).
 
 `apiDir` and `tasksDir` are **auto-resolved** — EFC probes `src/api`, `src/tasks`, `dist/api`, `dist/tasks` in order. You only need to pass them if your layout differs from the convention.
 
