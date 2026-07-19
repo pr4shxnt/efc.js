@@ -81,7 +81,8 @@ The single call that boots the framework:
 import { ignite, gracefulShutdown } from 'express-file-cluster';
 
 ignite({
-  cluster: true,
+  // cluster defaults to NODE_ENV === 'production' — don't hardcode true here, or
+  // dev mode clusters too (an explicit boolean always wins over that default)
   workers: 2,
   tasks: { backend: 'bullmq' },
 })
@@ -89,7 +90,7 @@ ignite({
   .catch(console.error);
 ```
 
-`ignite()` reads `PORT`, `DATABASE_URL`, `JWT_SECRET`, and `CORS_ORIGINS` from `process.env` automatically — no explicit wiring needed if the env vars are set. `src/api/` and `src/tasks/` are resolved by convention, not passed as options — there is no `apiDir`/`tasksDir` config.
+`ignite()` does **not** read `PORT`, `DATABASE_URL`, `JWT_SECRET`, or `CORS_ORIGINS` from `process.env` automatically — pass them explicitly (see `efc.config.ts` below; `NODE_ENV` is the sole exception). `src/api/` and `src/tasks/` are resolved by convention, not passed as options — there is no `apiDir`/`tasksDir` config.
 
 See [`ignite()` API reference](../api-reference/ignite.md).
 
@@ -130,7 +131,7 @@ export default config;
 import { ignite, gracefulShutdown } from 'express-file-cluster';
 import config from '../efc.config.js';
 
-ignite({ ...config, cluster: true }).then(gracefulShutdown).catch(console.error);
+ignite({ ...config }).then(gracefulShutdown).catch(console.error);
 ```
 
 The scaffolded `tsconfig.json` includes `efc.config.ts` alongside `src/**/*` so this import typechecks without a `rootDir` violation.

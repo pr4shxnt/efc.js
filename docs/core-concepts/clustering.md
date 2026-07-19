@@ -53,7 +53,8 @@ Each worker owns its own database connection pool. There is no shared mutable st
 
 ```ts
 ignite({
-  cluster: true,          // enable/disable (default: true in production)
+  // cluster defaults to NODE_ENV === 'production' — only pass it explicitly to
+  // force one way regardless of NODE_ENV
   workers: 4,             // defaults to os.cpus().length
   onWorkerReady: (id) => console.log(`Worker ${id} ready`),
   onWorkerCrash: (id, code) => console.error(`Worker ${id} crashed (${code})`),
@@ -98,7 +99,7 @@ ignite({ cluster: false });  // single process — same as efc start dev
 ```ts
 import { ignite, gracefulShutdown } from 'express-file-cluster';
 
-ignite({ cluster: true })
+ignite(config)
   .then(gracefulShutdown);
 ```
 

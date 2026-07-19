@@ -65,7 +65,7 @@ Or use a single-CPU container image and let `os.cpus().length` naturally be `1`.
 Always wire `gracefulShutdown` to handle SIGTERM (sent by orchestrators before replacing a pod/dyno):
 
 ```ts
-ignite({ cluster: true })
+ignite(config)
   .then(gracefulShutdown);
 ```
 
