@@ -65,8 +65,16 @@ ignite(config);   // you wire this yourself
 // ❌ No plugins system yet (Phase 3)
 ignite({ plugins: [...] })     // does NOT exist
 
-// ❌ No request context / AsyncLocalStorage provided by EFC
-import { ctx } from 'express-file-cluster'   // does NOT exist
+// ✅ Request context DOES exist now (added 2026-07-19) — every request run through
+// ignite() is wrapped in an AsyncLocalStorage context (packages/core/src/context.ts),
+// and requireAuth populates it with the verified JWT payload:
+import { getCurrentUser } from 'express-file-cluster/auth';
+getCurrentUser()   // Record<string, unknown> | undefined — the auth payload, or
+                   // undefined outside a request / on a route without requireAuth
+
+// ❌ There is no general-purpose ctx object beyond the user payload — no
+// import { ctx } from 'express-file-cluster', and no way to stash arbitrary
+// per-request values yourself. getCurrentUser() is the only thing exposed.
 ```
 
 ---
@@ -143,6 +151,16 @@ ignite({ database: 'postgresql', databaseUrl: process.env.DATABASE_URL })
 // ❌ db.query() is NOT guaranteed to exist
 // db is typed as AnyClient = Record<string, unknown>
 // What methods are available depends entirely on what mongoose.Connection exposes
+
+// ❌ '$increment' is NOT a `default` operator code, and never will be —
+// mongoose resolves `default` synchronously, but an auto-increment needs an
+// async read-modify-write against a counters collection. That functionality
+// DOES exist (added 2026-07-19), just under a different field property:
+{ orderNumber: { type: 'number', sequence: true, required: true } }
+// FieldDefinition.default supports:
+//   '$now' | '$uuid' | '$objectId' | '$timestamp' | '$shortId'
+//   | '$currentUser' | `$currentUser.${string}`
+// (see db/model.ts STATIC_DEFAULT_OPERATORS / resolveDefault)
 ```
 
 ---
