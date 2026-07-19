@@ -1,15 +1,9 @@
 <div align="center">
 
-<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none">
-  <rect width="120" height="120" rx="24" fill="#0f0f0f"/>
-  <rect x="12" y="12" width="96" height="96" rx="18" fill="url(#grad)"/>
-  <text x="60" y="72" font-family="monospace" font-size="38" font-weight="bold" fill="white" text-anchor="middle">efc</text>
-  <defs>
-    <linearGradient id="grad" x1="0" y1="0" x2="96" y2="96" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#8b5cf6"/>
-    </linearGradient>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 32 32" fill="none" aria-label="EFC logo">
+  <rect x="6" y="7" width="20" height="3" rx="1.5" fill="#F0A030"/>
+  <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="#F0A030" opacity="0.85"/>
+  <rect x="6" y="22" width="20" height="3" rx="1.5" fill="#F0A030"/>
 </svg>
 
 # express-file-cluster
