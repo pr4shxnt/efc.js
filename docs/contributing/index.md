@@ -6,8 +6,8 @@
 packages/
   core/              → express-file-cluster  (the framework)
   create-efc-app/    → interactive scaffolder CLI
-usage/               → example app used for manual testing
-client/              → minimal frontend for the example app
+client/              → marketing site (static HTML/JS)
+Skills/efc/          → reference cards for the /efc assistant skill
 ```
 
 ---
@@ -36,18 +36,26 @@ npm run lint
 
 ---
 
-## Running the example app
+## Integration and end-to-end tests
 
-The `usage/` directory is a self-contained EFC application wired against the local `packages/core` build. Use it for end-to-end manual testing.
+Integration tests skip themselves when a service isn't reachable, so `npm test` works with nothing running — but for full coverage start MongoDB (plus a single-node replica set for transactions), Redis and PostgreSQL, and point the tests at them:
+
+| Variable | Default |
+|---|---|
+| `EFC_TEST_MONGO_URL` | `mongodb://127.0.0.1:27017/...` |
+| `EFC_TEST_MONGO_RS_URL` | `mongodb://127.0.0.1:27018/...?replicaSet=rs0&directConnection=true` |
+| `EFC_TEST_REDIS_URL` | `redis://127.0.0.1:6379/15` |
+| `EFC_TEST_PG_URL` | `postgres://postgres@127.0.0.1:5433/efc_test` |
+
+The cluster and CLI tests run the built `dist/`, so `npm run build` first.
+
+The scaffolder end-to-end suite generates real projects (MongoDB + BullMQ, PostgreSQL + pg-boss, and a JavaScript project), installs them against a packed tarball of `packages/core`, then migrates, runs the dev server, builds, boots and exercises auth over HTTP:
 
 ```bash
-cd usage
-cp .env.example .env   # fill in DATABASE_URL, JWT_SECRET, REDIS_URL
-npm install
-npm run dev            # efc start dev
+npm run build
+EFC_E2E=1 npx vitest run --project create-efc-app e2e
+EFC_E2E=1 EFC_E2E_KEEP=1 npx vitest run --project create-efc-app e2e   # keep the generated apps to inspect
 ```
-
-The `client/` directory at the repo root is a minimal HTML/JS frontend that calls the usage app's API.
 
 ---
 
@@ -94,7 +102,7 @@ The framework package published as `express-file-cluster`. Sub-path exports:
 | Import | Source |
 |---|---|
 | `express-file-cluster` | `src/index.ts` — `ignite`, `gracefulShutdown`, `HttpError`, `compose`, `db`, `defineModel` |
-| `express-file-cluster/auth` | `src/auth/index.ts` — `issueToken`, `revokeToken`, `signToken`, `requireAuth` |
+| `express-file-cluster/auth` | `src/auth/index.ts` — `issueToken`, `revokeToken`, `revokeSession`, `revokeAllSessions`, `signToken`, `requireAuth`, `getCurrentUser` |
 | `express-file-cluster/tasks` | `src/tasks/index.ts` — `defineTask`, `enqueue` |
 | `express-file-cluster/cli` | `src/cli/index.ts` — the `efc` binary |
 
@@ -109,7 +117,7 @@ Interactive scaffolder published as `create-efc-app`. Invoked with `npx create-e
 | Phase | Target | Focus |
 |---|---|---|
 | **1** | Done | Core MVP — router, clustering, auth, DB, tasks, CLI |
-| **2** | Now | Beta — PostgreSQL, pg-boss, Zod validation, structured logging, cron tasks |
+| **2** | Done | Beta — PostgreSQL, pg-boss, request validation, structured logging, cron tasks, catch-all routes, migrations, `defineModel` upgrades |
 | **3** | Q1 2027 | Stable v1.0 — plugins, WebSockets, OpenAPI, OpenTelemetry, testing utilities |
 | **4** | 2027+ | Edge/serverless, gRPC, GraphQL |
 

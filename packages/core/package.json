@@ -1,6 +1,6 @@
 {
   "name": "express-file-cluster",
-  "version": "0.3.16",
+  "version": "0.4.0",
   "description": "Enterprise-grade, zero-boilerplate backend framework with file-based routing and multi-core clustering",
   "license": "MIT",
   "type": "module",
@@ -41,31 +41,54 @@
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.6",
     "jose": "^6.2.3",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "pino": "^10.4.0"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.7",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.0",
     "bullmq": "^5.79.1",
+    "drizzle-orm": "^0.45.4",
+    "ioredis": "^5.11.1",
     "mongoose": "^9.7.2",
+    "pg": "^8.23.1",
+    "pg-boss": "^12.37.1",
     "supertest": "^7.2.2",
     "tsup": "^8.2.0",
     "typescript": "^5.5.0",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "bullmq": ">=5.0.0",
+    "drizzle-orm": ">=0.40.0",
     "express": "^4.19.0",
-    "mongoose": "^8.0.0 || ^9.0.0"
+    "mongoose": "^8.0.0 || ^9.0.0",
+    "pg": "^8.11.0",
+    "pg-boss": ">=12.0.0",
+    "ioredis": "^5.0.0"
   },
   "peerDependenciesMeta": {
     "bullmq": {
       "optional": true
     },
     "mongoose": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    },
+    "pg-boss": {
+      "optional": true
+    },
+    "ioredis": {
       "optional": true
     }
   },

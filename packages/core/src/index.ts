@@ -14,9 +14,15 @@ import { configureAuth } from './auth/index.js';
 import { isHttpError } from './errors.js';
 import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
+import { setDbEngine } from './db/engine.js';
+import { connectPostgres } from './db/postgres.js';
 import { runWithContext } from './context.js';
+import { configureLogger, getLogger, requestLogger } from './logger.js';
 import { scanTasks } from './tasks/scanner.js';
 import { initBullMQ, closeBullMQ } from './tasks/bullmq-backend.js';
+import { initPgBoss, closePgBoss } from './tasks/pgboss-backend.js';
+import { configureCache, closeCache } from './cache/index.js';
+import { servePrimaryCache } from './cache/ipc.js';
 import { generateDashboard } from './dashboard.js';
 
 function detectDatabase(url?: string): 'mongodb' | 'postgresql' | undefined {
@@ -71,7 +77,13 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   // secret — unlike PORT/DATABASE_URL/JWT_SECRET/etc. this one is still read directly.
   const clusterEnabled = config.cluster ?? process.env['NODE_ENV'] === 'production';
 
+  configureLogger(config.logging);
+
   if (clusterEnabled && cluster.isPrimary) {
+    // The memory cache lives in the primary so all workers share it (cache/ipc.ts).
+    if (config.cache && config.cache.backend === 'memory') {
+      servePrimaryCache(config.cache.maxEntries ?? 10_000);
+    }
     runMaster({
       workers: workers ?? os.cpus().length,
       ...(onWorkerReady !== undefined && { onWorkerReady }),
@@ -88,6 +100,20 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   app.use((_req, _res, next) => {
     runWithContext({}, next);
   });
+  app.use(requestLogger());
+
+  if (config.requestTimeout) {
+    const ms = config.requestTimeout;
+    app.use((_req, res, next) => {
+      const timer = setTimeout(() => {
+        if (!res.headersSent) res.status(408).json({ error: 'Request Timeout', statusCode: 408 });
+      }, ms);
+      const clear = () => clearTimeout(timer);
+      res.once('finish', clear);
+      res.once('close', clear);
+      next();
+    });
+  }
 
   const corsOption = config.cors ?? true;
   if (corsOption !== false) {
@@ -105,10 +131,19 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
     app.use(mw);
   }
 
-  // Pre-Flight step 1: Connect database
+  // Pre-Flight step 1: Connect database. The engine decides what defineModel compiles to.
+  if (database) setDbEngine(database);
   if (database === 'mongodb' && databaseUrl) {
     const conn = await connectMongo(databaseUrl);
     setDbClient(conn as unknown as Record<string, unknown>);
+  } else if (database === 'postgresql' && databaseUrl) {
+    const pool = await connectPostgres(databaseUrl);
+    setDbClient(pool as unknown as Record<string, unknown>);
+  }
+
+  // Pre-Flight step 1b: Cache (also the session-revocation store requireAuth consults)
+  if (config.cache) {
+    await configureCache(config.cache);
   }
 
   // Pre-Flight step 2: Configure auth
@@ -133,6 +168,21 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
         redisUrl: config.tasks.redisUrl ?? 'redis://localhost:6379',
         concurrency: config.tasks.concurrency ?? 5,
         enqueueTimeout: config.tasks.enqueueTimeout ?? 5000,
+        queue: config.tasks.queue ?? 'efc',
+      });
+    } else if (config.tasks.backend === 'pg-boss') {
+      const connectionString = config.tasks.connectionString ?? databaseUrl;
+      if (!connectionString) {
+        throw new Error(
+          '[EFC] tasks.backend "pg-boss" needs tasks.connectionString or databaseUrl',
+        );
+      }
+      await initPgBoss({
+        connectionString,
+        concurrency: config.tasks.concurrency ?? 5,
+        enqueueTimeout: config.tasks.enqueueTimeout ?? 5000,
+        queue: config.tasks.queue ?? 'efc',
+        ...(config.tasks.schema !== undefined && { schema: config.tasks.schema }),
       });
     }
   }
@@ -156,6 +206,11 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   } else {
     app.use(
       (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+        // e.g. a handler that kept going after requestTimeout already answered 408.
+        if (res.headersSent) {
+          getLogger().warn({ err }, 'Error after the response was sent');
+          return;
+        }
         // isHttpError() covers the common case, but errors can also arrive as plain
         // objects with a numeric statusCode (e.g. thrown across a module boundary, or
         // duck-typed by user code) — fall back to that shape before giving up to 500.
@@ -165,11 +220,19 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
             : null;
 
         if (isHttpError(err)) {
-          res.status(err.statusCode).json({ error: err.message, statusCode: err.statusCode });
+          // ModelValidationError carries per-field issues; surface them like route validation does.
+          const issues = (err as { issues?: unknown }).issues;
+          res.status(err.statusCode).json({
+            error: err.message,
+            statusCode: err.statusCode,
+            ...(issues !== undefined && { issues }),
+          });
         } else if (duckTyped) {
-          res.status(duckTyped.statusCode).json({ error: duckTyped.message, statusCode: duckTyped.statusCode });
+          res
+            .status(duckTyped.statusCode)
+            .json({ error: duckTyped.message, statusCode: duckTyped.statusCode });
         } else {
-          console.error('[EFC] Unhandled error:', err);
+          getLogger().error({ err }, 'Unhandled error');
           res.status(500).json({ error: 'Internal Server Error', statusCode: 500 });
         }
       },
@@ -182,7 +245,7 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
     server.once('listening', () => {
       const wid = (cluster.worker as { id: number } | undefined)?.id ?? 'primary';
       const addr = server.address() as { port: number } | null;
-      console.log(`[EFC] Worker ${wid} listening on :${addr?.port ?? port}`);
+      getLogger().info(`Worker ${wid} listening on :${addr?.port ?? port}`);
       resolve(server);
     });
 
@@ -197,25 +260,25 @@ export function gracefulShutdown(server: http.Server | undefined, timeoutMs = 10
     // forward); the default handler for a repeat would kill it mid-drain.
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`[EFC] ${signal} received — closing server gracefully…`);
+    getLogger().info(`${signal} received — closing server gracefully…`);
     if (server) {
       server.closeIdleConnections();
       server.close(() => {
-        console.log('[EFC] Server closed');
+        getLogger().info('Server closed');
         // Let in-flight task jobs finish before exiting; the timeout below still caps it.
-        closeBullMQ()
-          .catch((err: unknown) => console.error('[EFC] Task backend close failed:', err))
+        Promise.all([closeBullMQ(), closePgBoss(), closeCache()])
+          .catch((err: unknown) => getLogger().error({ err }, 'Task backend close failed'))
           .finally(() => process.exit(0));
       });
       setTimeout(() => {
-        console.error('[EFC] Forced exit after timeout');
+        getLogger().error('Forced exit after timeout');
         process.exit(1);
       }, timeoutMs).unref();
     } else {
       shutdownMaster();
       // Workers get the same budget plus a margin before the primary gives up on them.
       setTimeout(() => {
-        console.error('[EFC] Workers did not exit in time — forcing primary exit');
+        getLogger().error('Workers did not exit in time — forcing primary exit');
         process.exit(1);
       }, timeoutMs + 2_000).unref();
     }
@@ -225,8 +288,13 @@ export function gracefulShutdown(server: http.Server | undefined, timeoutMs = 10
 }
 
 export { HttpError, isHttpError } from './errors.js';
+export { logger, getLogger } from './logger.js';
+export { cache } from './cache/index.js';
+export { cacheResponse } from './cache/response.js';
 export { compose } from './compose.js';
 export { db, setDbClient, getDbClient, defineModel } from './db/index.js';
+export { transaction } from './db/transaction.js';
+export { ModelValidationError } from './db/schema.js';
 export { scanDir } from './router/scan.js';
 export { listTasks } from './tasks/index.js';
 export { workerCount } from './cluster/index.js';
@@ -236,11 +304,26 @@ export type {
   RouteEntry,
   RouteMeta,
   RouteMethodMeta,
+  RouteSchema,
+  LoggingConfig,
+  CacheConfig,
+  RequestSchema,
+  Validator,
+  ValidationIssue,
   TaskOptions,
   TaskDefinition,
   DatabaseEngine,
   AuthStrategy,
   ModelSchema,
+  MigrationContext,
+  SchemaField,
+  Filter,
+  FilterOperators,
+  Update,
+  FindOptions,
+  IndexDefinition,
+  ModelRecord,
+  SortDirection,
   ModelCRUD,
   ModelQueryOptions,
   ModelOptions,
