@@ -12,6 +12,8 @@ The `efc` binary is automatically available after scaffolding. For a manual inst
 npm install --save-dev express-file-cluster
 ```
 
+**Global vs project install.** `create-efc-app` also installs `efc` globally for convenience. Run inside a project, a global `efc` hands every command to the project's own `node_modules/express-file-cluster` — so commands always use the project's version, its database drivers and a single copy of the framework. Outside a project, the global install runs itself.
+
 ---
 
 ## Command overview
