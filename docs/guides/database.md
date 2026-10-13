@@ -66,23 +66,34 @@ Full field reference: [Database API](../api-reference/db.md).
 
 ---
 
-## Creating the schema
+## The schema takes care of itself
 
-Tables (PostgreSQL) and indexes (both engines) are created by `Model.sync()`, run from a migration:
+On both engines you just define the model and use it. The first time a model is used in a process, EFC reconciles its table (PostgreSQL) or collection and indexes (MongoDB) with the definition — the way mongoose has always created collections and indexes for you.
 
-```ts
-// src/migrations/20261010120000_posts.ts
-import { Post } from '../model/Post.js';
+Editing a model later works the same on both engines:
 
-export async function up() { await Post.sync(); }
-export async function down() { await Post.drop(); }
-```
+| You change… | MongoDB | PostgreSQL (what sync does) |
+|---|---|---|
+| Add a field | new documents have it | `ADD COLUMN` |
+| Remove a field | old documents keep it, it's ignored | the column stays (no data loss), it's ignored |
+| Make a field optional / drop `required` | works | relaxes any `NOT NULL` |
+| Add or remove `enum` values | works | rebuilds the enum `CHECK` (existing rows aren't re-checked) |
+| Change a field's `type` | new writes use it | `ALTER COLUMN … TYPE … USING <cast>` — fails clearly if existing data can't convert |
+| Add / remove `unique`, `index`, `indexes` | indexes synced | indexes created / EFC-created ones dropped |
+
+Required fields, enums, bounds and custom validators are enforced by the model on writes, as on MongoDB. Columns and rows are never dropped by sync.
+
+Fields the model doesn't declare behave like mongoose's defaults on both engines: ignored on writes, treated as absent in filters (`{ legacy: null }` and `{ legacy: { $exists: false } }` match), ignored in `sort`/`select`.
+
+**Seeing and controlling it:**
 
 ```bash
-efc db migrate
+efc db sync --dry-run   # show exactly what would change (SQL on PostgreSQL)
+efc db sync             # apply it now
+efc db studio           # browse rows and each table's structure
 ```
 
-Projects from `create-efc-app` ship an init migration for every generated model. See [Migrations & Seeds](./migrations.md).
+Prefer every schema change to go through review? Set `autoSync: false` in `ignite()` and apply changes with `efc db sync` or migrations (`Model.sync()` in `up()`). See [Migrations & Seeds](./migrations.md).
 
 ---
 

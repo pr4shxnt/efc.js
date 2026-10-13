@@ -85,7 +85,8 @@ src/api/docs/[...slug].ts    → /docs/a/b  (req.params.slug = ['a', 'b'])
 
 - Engine = `config.database` ?? `databaseUrl` scheme; models compile on first use (define at import time is fine)
 - MongoDB needs `mongoose`; PostgreSQL needs `pg` + `drizzle-orm` (all optional peers)
-- PostgreSQL tables are created only by `Model.sync()` — run from a migration (`efc db migrate`); scaffolded apps ship `src/migrations/00000000000000_init`
+- Tables (PostgreSQL) / collections + indexes (MongoDB) reconcile automatically on a model's first use (`autoSync`, default true; advisory-locked, one transaction). Sync adds columns, converts types, drops stale NOT NULLs, rebuilds enum CHECKs (NOT VALID), creates/drops EFC-named indexes — never drops columns or rows. `efc db sync [--dry-run]`; `autoSync: false` leaves it to migrations
+- Undeclared fields behave like mongoose on both engines: ignored on writes, treated as absent in filters, ignored in sort/select
 - `update()` / `updateMany()` validate changed fields; failures throw `ModelValidationError` (400), duplicate unique → `HttpError` 409
 - Shared filter subset: `$eq $ne $gt $gte $lt $lte $in $nin $exists $regex $and $or`, dotted paths, array contains; updates: `$set $unset $inc $push $pull`
 - `aggregate()` and TTL indexes are MongoDB-only; MongoDB `transaction()` needs a replica set

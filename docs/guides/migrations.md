@@ -36,10 +36,19 @@ export async function down({ db, engine }: MigrationContext): Promise<void> {
 
 - Files run in **filename order**; the generator's UTC timestamp prefix keeps that chronological.
 - `db` is the native client — a mongoose `Connection` or a node-postgres `Pool` — for anything models don't cover (`db.query('ALTER TABLE …')`).
-- `Model.sync()` creates the table/collection, adds columns for new fields (nullable, never altering existing ones) and builds indexes. It never drops data, so it's safe to call from several migrations.
+- `Model.sync()` reconciles the table/collection with the model (see [the schema takes care of itself](./database.md#the-schema-takes-care-of-itself)). It never drops a column or data, so it's safe to call from several migrations.
 - `Model.drop()` removes the table/collection — for `down()`.
 
-Projects created with `create-efc-app` include `src/migrations/00000000000000_init` that syncs every generated model. Run `efc db migrate` before the first `efc start dev` (required on PostgreSQL, where tables must exist; on MongoDB it builds the unique indexes).
+**Do I need migrations at all?** Not for schema shape: tables and indexes are reconciled automatically on first use. Use migrations for what sync deliberately won't do — renaming or splitting columns, backfilling data, dropping columns — and, if you run with `autoSync: false`, for every schema change. Projects created with `create-efc-app` include `src/migrations/00000000000000_init`, which syncs every generated model; running it is optional.
+
+### `efc db sync`
+
+```bash
+efc db sync --dry-run   # every model in src/model(s)/: what would change (SQL on PostgreSQL)
+efc db sync             # apply
+```
+
+Handy in CI (fail if `--dry-run` reports pending changes) and as the deploy step when `autoSync` is off.
 
 ---
 

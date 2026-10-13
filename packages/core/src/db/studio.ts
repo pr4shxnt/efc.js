@@ -6,9 +6,16 @@ import type { DatabaseEngine } from '../types.js';
 // `efc db studio`: a read-only data browser. Binds to 127.0.0.1 only and never
 // writes — it lists tables/collections and pages through their rows.
 
+interface Structure {
+  /** PostgreSQL: the real columns. MongoDB: fields seen in a sample of documents. */
+  columns: { name: string; type: string; nullable?: boolean }[];
+  indexes: { name: string; definition: string }[];
+}
+
 interface Source {
   collections(): Promise<{ name: string; count: number }[]>;
   rows(name: string, skip: number, limit: number): Promise<{ rows: unknown[]; total: number }>;
+  structure(name: string): Promise<Structure>;
 }
 
 function mongoSource(conn: Connection): Source {
@@ -33,6 +40,34 @@ function mongoSource(conn: Connection): Source {
         col.countDocuments(),
       ]);
       return { rows, total };
+    },
+    async structure(name) {
+      const col = db.collection(name);
+      const sample = await col.find({}).limit(200).toArray();
+      const types = new Map<string, Set<string>>();
+      for (const doc of sample) {
+        for (const [k, v] of Object.entries(doc)) {
+          const t =
+            v === null
+              ? 'null'
+              : Array.isArray(v)
+                ? 'array'
+                : v instanceof Date
+                  ? 'date'
+                  : typeof v === 'object' && v.constructor?.name === 'ObjectId'
+                    ? 'objectId'
+                    : typeof v;
+          (types.get(k) ?? types.set(k, new Set()).get(k)!).add(t);
+        }
+      }
+      const indexes = await col.indexes().catch(() => []);
+      return {
+        columns: [...types].map(([n, t]) => ({ name: n, type: [...t].sort().join(' | ') })),
+        indexes: indexes.map((i) => ({
+          name: String(i.name),
+          definition: `${i.unique ? 'unique ' : ''}${JSON.stringify(i.key)}${i.expireAfterSeconds !== undefined ? ` ttl ${i.expireAfterSeconds}s` : ''}`,
+        })),
+      };
     },
   };
 }
@@ -66,6 +101,24 @@ function pgSource(pool: Pool): Source {
       ]);
       return { rows: rows.rows, total: total.rows[0]!.n };
     },
+    async structure(name) {
+      if (!(await tables()).includes(name))
+        throw Object.assign(new Error('Unknown table'), { status: 404 });
+      const [columns, indexes] = await Promise.all([
+        pool.query<{ name: string; type: string; nullable: boolean }>(
+          `SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type, NOT a.attnotnull AS nullable
+           FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE c.relname = $1 AND n.nspname = 'public' AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
+          [name],
+        ),
+        pool.query<{ name: string; definition: string }>(
+          `SELECT indexname AS name, indexdef AS definition FROM pg_indexes
+           WHERE schemaname = 'public' AND tablename = $1 ORDER BY indexname`,
+          [name],
+        ),
+      ]);
+      return { columns: columns.rows, indexes: indexes.rows };
+    },
   };
 }
 
@@ -91,16 +144,16 @@ td.obj{color:var(--acc);cursor:pointer}td.null{color:var(--dim)}
 </style></head><body>
 <aside><h1>EFC STUDIO <span id="engine"></span></h1><div id="list"></div></aside>
 <main><header><b id="title">Select a table</b><span id="meta"></span><span class="sp"></span>
-<button id="prev" disabled>‹ Prev</button><button id="next" disabled>Next ›</button></header>
+<button id="view" disabled>Structure</button><button id="prev" disabled>‹ Prev</button><button id="next" disabled>Next ›</button></header>
 <div class="wrap" id="grid"><div class="empty">Read-only view of your database.</div></div></main>
 <script>
-const LIMIT=50;let cur=null,skip=0;
+const LIMIT=50;let cur=null,skip=0,mode='rows';
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function api(p){const r=await fetch(p);if(!r.ok)throw new Error((await r.json()).error);return r.json()}
 async function loadList(){const d=await api('/api/collections');document.getElementById('engine').textContent='· '+d.engine;
 const el=document.getElementById('list');el.innerHTML='';
 for(const c of d.collections){const b=document.createElement('button');b.innerHTML=esc(c.name)+'<small>'+c.count+'</small>';
-b.onclick=()=>{cur=c.name;skip=0;[...el.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');loadRows()};el.appendChild(b)}
+b.onclick=()=>{cur=c.name;skip=0;[...el.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');document.getElementById('view').disabled=false;show()};el.appendChild(b)}
 if(!d.collections.length)el.innerHTML='<div class="empty">No tables yet.</div>'}
 async function loadRows(){const d=await api('/api/collections/'+encodeURIComponent(cur)+'?skip='+skip+'&limit='+LIMIT);
 document.getElementById('title').textContent=cur;
@@ -114,6 +167,15 @@ if(typeof v==='object'){const j=JSON.stringify(v);return '<td class="obj" title=
 return '<td title="'+esc(v)+'">'+esc(v)+'</td>'}).join('')+'</tr>'}
 g.innerHTML=h+'</tbody></table>';
 g.querySelectorAll('td.obj').forEach(td=>td.onclick=()=>{td.innerHTML='<pre>'+esc(JSON.stringify(JSON.parse(td.dataset.j),null,2))+'</pre>';td.style.whiteSpace='normal';td.onclick=null})}
+function show(){document.getElementById('view').textContent=mode==='rows'?'Structure':'Rows';return mode==='rows'?loadRows():loadStructure()}
+async function loadStructure(){const d=await api('/api/collections/'+encodeURIComponent(cur)+'/structure');
+document.getElementById('title').textContent=cur;document.getElementById('meta').textContent=d.columns.length+' columns · '+d.indexes.length+' indexes';
+document.getElementById('prev').disabled=true;document.getElementById('next').disabled=true;
+const row=(cells)=>'<tr>'+cells.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>';
+document.getElementById('grid').innerHTML='<table><thead><tr><th>column</th><th>type</th><th>nullable</th></tr></thead><tbody>'+
+d.columns.map(c=>row([c.name,c.type,c.nullable===undefined?'':String(c.nullable)])).join('')+'</tbody></table>'+
+'<table style="margin-top:18px"><thead><tr><th>index</th><th>definition</th></tr></thead><tbody>'+d.indexes.map(i=>row([i.name,i.definition])).join('')+'</tbody></table>'}
+document.getElementById('view').onclick=()=>{mode=mode==='rows'?'structure':'rows';skip=0;show()};
 document.getElementById('prev').onclick=()=>{skip=Math.max(0,skip-LIMIT);loadRows()};
 document.getElementById('next').onclick=()=>{skip+=LIMIT;loadRows()};
 loadList().catch(e=>document.getElementById('grid').innerHTML='<div class="empty">'+esc(e.message)+'</div>');
@@ -148,6 +210,8 @@ export function startStudio(
       if (url.pathname === '/api/collections') {
         return json(res, 200, { engine, collections: await source.collections() });
       }
+      const st = /^\/api\/collections\/([^/]+)\/structure$/.exec(url.pathname);
+      if (st) return json(res, 200, await source.structure(decodeURIComponent(st[1]!)));
       const m = /^\/api\/collections\/([^/]+)$/.exec(url.pathname);
       if (m) {
         const skip = Math.max(0, Number(url.searchParams.get('skip')) || 0);

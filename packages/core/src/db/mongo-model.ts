@@ -8,7 +8,7 @@ import {
   type FieldNode,
   type SchemaTree,
 } from './schema.js';
-import { currentTx } from './engine.js';
+import { currentTx, isAutoSync } from './engine.js';
 import { notInstalled } from './postgres.js';
 
 type AnyRecord = Record<string, unknown>;
@@ -219,6 +219,9 @@ export function mongoModel<T extends object>(
       if (mg.models[name]) return mg.models[name] as MongooseNS.Model<AnyRecord>;
       const schema = new mg.Schema(buildTree(tree, mg) as MongooseNS.SchemaDefinition, {
         timestamps: options.timestamps ?? true,
+        // autoSync: false hands collection and index creation to migrations, on MongoDB too.
+        autoIndex: isAutoSync(),
+        autoCreate: isAutoSync(),
         ...(options.collection !== undefined && { collection: options.collection }),
       });
       for (const idx of options.indexes ?? []) {
@@ -379,12 +382,24 @@ export function mongoModel<T extends object>(
 
     raw: () => model(),
 
-    async sync() {
+    async sync(opts) {
       const M = await model();
-      await M.createCollection().catch((err: { code?: number }) => {
-        if (err?.code !== 48) throw err; // 48 = NamespaceExists
-      });
+      const changes: string[] = [];
+      const exists =
+        (await M.db.db!.listCollections({ name: M.collection.collectionName }).toArray()).length >
+        0;
+      if (!exists) changes.push(`createCollection ${M.collection.collectionName}`);
+      const diff = await M.diffIndexes().catch(() => ({ toDrop: [], toCreate: [] }));
+      for (const idx of diff.toDrop) changes.push(`dropIndex ${String(idx)}`);
+      for (const idx of diff.toCreate) changes.push(`createIndex ${JSON.stringify(idx)}`);
+      if (opts?.dryRun) return changes;
+      if (!exists) {
+        await M.createCollection().catch((err: { code?: number }) => {
+          if (err?.code !== 48) throw err; // 48 = NamespaceExists
+        });
+      }
       await M.syncIndexes();
+      return changes;
     },
 
     async drop() {

@@ -78,6 +78,7 @@ interface EFCConfig {
   cors?: boolean | CorsConfig;      // default true
   requestTimeout?: number;          // ms → 408
   logging?: LoggingConfig | false;
+  autoSync?: boolean;               // default true — reconcile tables/collections + indexes on first use
   cache?: ({ prefix?: string; onRevocationCheckError?: 'reject' | 'allow' /* default reject → 503 */ } & (
           | { backend: 'redis'; url?: string; timeout?: number }
           | { backend: 'memory'; maxEntries?: number } /* lives in the cluster primary; workers use IPC */
@@ -176,7 +177,7 @@ interface ModelCRUD<T> {
   count(filter?: Filter<T>): Promise<number>;
   aggregate<R>(pipeline: object[]): Promise<R[]>;  // MongoDB only — rejects on PostgreSQL
   raw(): Promise<unknown>;                          // mongoose Model / Drizzle pgTable
-  sync(): Promise<void>;                            // create table/collection, add columns, indexes — never drops
+  sync(opts?: { dryRun?: boolean }): Promise<string[]>; // reconcile (auto on first use); returns changes / planned SQL
   drop(): Promise<void>;
 }
 type ModelRecord<T> = T & { id: string };

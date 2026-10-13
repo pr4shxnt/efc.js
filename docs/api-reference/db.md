@@ -126,7 +126,7 @@ interface IndexDefinition {
 }
 ```
 
-Indexes (including `unique`/`index` field options) are created by [`Model.sync()`](#syncmigrations). Text indexes use MongoDB text search or a PostgreSQL GIN `to_tsvector('simple', …)` index; TTL indexes are MongoDB-only and `sync()` rejects them on PostgreSQL.
+Indexes (including `unique`/`index` field options) are created by [`Model.sync()`](#syncmigrations) — automatically on first use unless `autoSync: false`. Text indexes use MongoDB text search or a PostgreSQL GIN `to_tsvector('simple', …)` index; TTL indexes are MongoDB-only and `sync()` rejects them on PostgreSQL.
 
 ---
 
@@ -228,11 +228,17 @@ const rows = await orm.select().from(orders).innerJoin(customers, eq(orders.cust
 ### `sync()` / `drop()` {#syncmigrations}
 
 ```ts
-sync(): Promise<void>   // create collection/table, add missing columns, build indexes — never drops or alters
+sync(options?: { dryRun?: boolean }): Promise<string[]>
 drop(): Promise<void>   // drop the collection/table and its data
 ```
 
-Call them from [migrations](../guides/migrations.md).
+`sync()` reconciles the database with the model and returns the changes it made — with `dryRun`, the changes it *would* make, applying nothing. On PostgreSQL those are SQL statements, run in one transaction under an advisory lock (concurrent syncs from several workers are safe): create the table, add columns, convert changed column types, drop stale `NOT NULL`s, rebuild enum checks, create declared indexes and drop EFC-created ones the model no longer declares. It never drops a column or a row. On MongoDB it creates the collection and syncs indexes.
+
+It runs automatically the first time a model is used in a process (`autoSync`, default on). Call it yourself from [migrations](../guides/migrations.md), or use `efc db sync [--dry-run]` for every model in `src/model(s)/`.
+
+### Undeclared fields
+
+Same on both engines (mongoose's defaults): ignored on `create`/`update`, treated as absent in filters — `{ x: null }`, `{ x: { $exists: false } }`, `{ x: { $ne: … } }` match every record, other conditions match none — and ignored in `sort` and `select`.
 
 ---
 
@@ -242,7 +248,8 @@ Call them from [migrations](../guides/migrations.md).
 |---|---|---|
 | Validation failure (create/update) | `ModelValidationError` | `400` with `issues: [{ path, message }]` |
 | Duplicate value of a `unique` field | `HttpError` | `409` — `"Order with this number already exists"` |
-| Unsupported operator / unknown field (PostgreSQL) | `ModelValidationError` | `400` |
+| Unsupported operator (PostgreSQL) | `ModelValidationError` | `400` |
+| Table missing with `autoSync: false` (PostgreSQL) | `Error` naming the table | `500` |
 
 ```ts
 import { ModelValidationError } from 'express-file-cluster';
