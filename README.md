@@ -300,7 +300,7 @@ await transaction(async () => {        // every model call inside joins the tran
 });
 ```
 
-Invalid writes throw `ModelValidationError` (→ 400 with field `issues`); duplicate unique values → 409. Tables and indexes are created by `Model.sync()` from a migration: `efc db migrate`.
+Invalid writes throw `ModelValidationError` (→ 400 with field `issues`); duplicate unique values → 409. Tables (PostgreSQL) and indexes are created and kept in step with your models automatically on first use — like MongoDB; `efc db sync --dry-run` shows what would change.
 
 ---
 

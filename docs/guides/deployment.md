@@ -46,7 +46,7 @@ Set these in your deployment platform:
 
 ## Migrations
 
-Run pending migrations before the new version starts serving — as a release step on your platform, or in the container command:
+Tables and indexes follow the models automatically (`autoSync`). If you turn that off, run `npx efc db sync --dist` as a release step. Data migrations (renames, backfills) still go through `efc db migrate` — run pending ones before the new version starts serving, as a release step on your platform or in the container command:
 
 ```bash
 npx efc db migrate --dist   # --dist: use compiled dist/src/migrations (no tsx in production)

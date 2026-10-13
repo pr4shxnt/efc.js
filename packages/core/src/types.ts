@@ -91,6 +91,13 @@ export interface EFCConfig {
    * for revoked sessions (`revokeSession`, `revokeAllSessions`).
    */
   cache?: CacheConfig | false;
+  /**
+   * Keep tables/collections and indexes in step with your models automatically, the
+   * first time each model is used in a process — like mongoose does for collections and
+   * indexes. Turn off to manage the schema only through migrations (`Model.sync()`,
+   * `efc db sync`). Default: true.
+   */
+  autoSync?: boolean;
   /** Structured logging (pino). `false` silences framework logs. */
   logging?: LoggingConfig | false;
   /** Request timeout in milliseconds. Requests exceeding this duration will be terminated with 408. */
@@ -379,10 +386,13 @@ export interface ModelCRUD<T extends object> {
    */
   raw(): Promise<unknown>;
   /**
-   * Creates the collection/table, any missing columns, and indexes — never drops or
-   * alters existing data. Call it from a migration (`efc db migrate`).
+   * Reconciles the database with the model: creates the collection/table, adds missing
+   * columns, converts changed column types, relaxes constraints the model dropped and
+   * creates/removes indexes. Never drops a column or data. Runs automatically on first
+   * use unless `autoSync: false`. Returns the changes made — or, with `dryRun`, the
+   * changes it would make (SQL on PostgreSQL, index operations on MongoDB).
    */
-  sync(): Promise<void>;
+  sync(options?: { dryRun?: boolean }): Promise<string[]>;
   /** Drops the collection/table and all its data. For migration `down()` functions. */
   drop(): Promise<void>;
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import mongoose from 'mongoose';
 import { defineModel } from '../../db/model.js';
-import { setDbEngine } from '../../db/engine.js';
+import { setDbEngine, setAutoSync } from '../../db/engine.js';
 import { connectPostgres, closePostgres, getPool } from '../../db/postgres.js';
 import { tableNameFor } from '../../db/pg-model.js';
 import { transaction } from '../../db/transaction.js';
@@ -472,3 +472,173 @@ export const GET = async (_req, res) => {
     }
   });
 });
+
+// "PostgreSQL should feel like MongoDB": no table chores, schema edits never strand
+// writes, undeclared fields behave the same. Same assertions on both engines.
+for (const engine of ['mongodb', 'postgresql'] as const) {
+  describe.skipIf(!available[engine])(`schema ergonomics — ${engine}`, () => {
+    const tag = `${engine === 'mongodb' ? 'm' : 'p'}${Math.random().toString(36).slice(2, 7)}`;
+    const collection = `efc_evolve_${tag}`;
+
+    beforeAll(async () => {
+      setDbEngine(engine);
+      setAutoSync(true);
+      if (engine === 'mongodb') await mongoose.connect(MONGO_URL);
+      else await connectPostgres(PG_URL);
+    });
+
+    afterAll(async () => {
+      setAutoSync(true);
+      if (engine === 'mongodb') {
+        await mongoose.connection.dropDatabase();
+        await mongoose.disconnect();
+      } else {
+        for (const t of [
+          collection,
+          `${collection}_fresh`,
+          `${collection}_race`,
+          `${collection}_off`,
+        ]) {
+          await getPool().query(`DROP TABLE IF EXISTS "${t}"`);
+        }
+        await closePostgres();
+      }
+    });
+
+    it('works on first use — no sync() or migration needed', async () => {
+      const Fresh = defineModel<{ title: string }>(
+        `Fresh${tag}`,
+        { title: { type: 'string', required: true, unique: true } },
+        { collection: `${collection}_fresh` },
+      );
+      const a = await Fresh.create({ title: 'hello' });
+      expect(await Fresh.findById(a.id)).toMatchObject({ title: 'hello' });
+      // The unique index came with it.
+      await expect(Fresh.create({ title: 'hello' })).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('evolving a model never strands writes or rows', async () => {
+      const V1 = defineModel<{ title: string; status: string; score: number; legacy: string }>(
+        `EvolveV1${tag}`,
+        {
+          title: { type: 'string', required: true },
+          status: { type: 'string', enum: ['a', 'b'] },
+          score: { type: 'number', unique: true },
+          legacy: { type: 'string', required: true },
+        },
+        { collection },
+      );
+      const old = await V1.create({ title: 't1', status: 'a', score: 1, legacy: 'x' });
+
+      // Field removed, required loosened, enum extended, type changed, unique dropped, field added.
+      const V2 = defineModel<{ title?: string; status: string; score: string; note: string }>(
+        `EvolveV2${tag}`,
+        {
+          title: { type: 'string' },
+          status: { type: 'string', enum: ['a', 'b', 'c'] },
+          score: { type: 'string' },
+          note: { type: 'string', default: 'new' },
+        },
+        { collection },
+      );
+      if (engine === 'mongodb') await V2.sync(); // drops the unique index mongoose built for V1
+      const created = await V2.create({ status: 'c', score: '7' });
+      expect(created).toMatchObject({ status: 'c', score: '7', note: 'new' });
+      await V2.create({ status: 'a', score: '7' }); // duplicate allowed now
+      const again = await V2.findById(old.id);
+      expect(again?.status).toBe('a');
+      expect(String(again?.score)).toBe('1');
+      await expect(V2.create({ status: 'zzz', score: '1' })).rejects.toBeInstanceOf(
+        ModelValidationError,
+      );
+    });
+
+    it('ignores undeclared fields on writes and treats them as missing in queries', async () => {
+      const Strict = defineModel<{ title: string; meta: { a?: number } }>(
+        `Strict${tag}`,
+        { title: { type: 'string' }, meta: { a: { type: 'number' } } },
+        { collection: `${collection}_strict` },
+      );
+      const s1 = await Strict.create({ title: 'x', bogus: 1 } as never);
+      await Strict.create({ title: 'y' });
+      expect('bogus' in s1).toBe(false);
+      const u = await Strict.update(s1.id, {
+        bogus: 2,
+        'meta.nope': 1,
+        $set: { title: 'x2' },
+      } as never);
+      expect(u?.title).toBe('x2');
+      expect('bogus' in (u as object)).toBe(false);
+
+      expect(await Strict.count({ bogus: 1 } as never)).toBe(0);
+      expect(await Strict.count({ bogus: { $exists: false } } as never)).toBe(2);
+      expect(await Strict.count({ bogus: null } as never)).toBe(2);
+      expect(await Strict.count({ bogus: { $ne: 5 } } as never)).toBe(2);
+      expect(
+        await Strict.find({}, { sort: { bogus: 1 } as never, select: ['title', 'bogus' as never] }),
+      ).toHaveLength(2);
+      if (engine === 'postgresql')
+        await getPool().query(`DROP TABLE IF EXISTS "${collection}_strict"`);
+    });
+
+    it('dry-run sync reports pending changes without applying them', async () => {
+      const Plain = defineModel<{ code: string }>(
+        `DryA${tag}`,
+        { code: { type: 'string' } },
+        { collection: `${collection}_race` },
+      );
+      await Plain.create({ code: 'a' });
+      const Indexed = defineModel<{ code: string }>(
+        `DryB${tag}`,
+        { code: { type: 'string', unique: true } },
+        { collection: `${collection}_race` },
+      );
+      setAutoSync(false);
+      try {
+        const plan = await Indexed.sync({ dryRun: true });
+        expect(plan.join('\n')).toMatch(/code/);
+        expect(await Indexed.sync({ dryRun: true })).toEqual(plan); // nothing was applied
+        await Indexed.sync();
+        expect(await Indexed.sync({ dryRun: true })).toEqual([]);
+      } finally {
+        setAutoSync(true);
+      }
+    });
+
+    it.skipIf(engine !== 'postgresql')(
+      'concurrent first use by several models of one table is safe',
+      async () => {
+        const make = (i: number) =>
+          defineModel<{ n: number }>(
+            `Race${i}${tag}`,
+            { n: { type: 'number', index: true } },
+            { collection: `${collection}_off` },
+          );
+        await Promise.all([1, 2, 3, 4, 5].map((i) => make(i).create({ n: i })));
+        expect(await make(9).count()).toBe(5);
+      },
+    );
+
+    it.skipIf(engine !== 'postgresql')(
+      'autoSync: false leaves the schema to migrations',
+      async () => {
+        await getPool().query(`DROP TABLE IF EXISTS "${collection}_off"`);
+        setAutoSync(false);
+        try {
+          const Off = defineModel<{ n: number }>(
+            `Off${tag}`,
+            { n: { type: 'number' } },
+            { collection: `${collection}_off` },
+          );
+          await expect(Off.create({ n: 1 })).rejects.toThrow(
+            /table "efc_evolve_\w+_off" does not exist — autoSync is off/,
+          );
+          await Off.sync();
+          expect(await Off.create({ n: 1 })).toMatchObject({ n: 1 });
+        } finally {
+          setAutoSync(true);
+        }
+      },
+    );
+  });
+}
