@@ -583,6 +583,12 @@ export const GET = async (_req, res) => {
   res.json(rows[0]);
 };`,
     );
+    fs.writeFileSync(
+      path.join(root, 'src', 'api', 'counters.js'),
+      `import { defineTable } from ${indexModule};
+const Counter = defineTable('IgniteCounter', { hits: { type: 'bigint', default: 9007199254740993n } }, { id: 'bigserial', collection: 'efc_ignite_counters' });
+export const POST = async (_req, res) => res.status(201).json(await Counter.create({ data: {} }));`,
+    );
     const cwd = process.cwd();
     process.chdir(root);
     const server = await ignite({
@@ -601,10 +607,14 @@ export const GET = async (_req, res) => {
       expect(invalid.status).toBe(400);
       expect(invalid.body.issues).toEqual([{ path: 'slug', message: 'is required' }]);
       expect((await request(server!).get('/notes')).body).toEqual({ n: 1 });
+      // defineTable bigints (bigserial id, bigint column) are sent as exact strings.
+      const counter = await request(server!).post('/counters');
+      expect(counter.status).toBe(201);
+      expect(counter.body).toMatchObject({ id: '1', hits: '9007199254740993' });
     } finally {
       server!.closeAllConnections();
       await new Promise((r) => server!.close(r));
-      await getPool().query('DROP TABLE IF EXISTS efc_ignite_notes');
+      await getPool().query('DROP TABLE IF EXISTS efc_ignite_notes, efc_ignite_counters');
       await closePostgres();
       process.chdir(cwd);
       fs.rmSync(root, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { DatabaseEngine, ModelCRUD } from '../types.js';
+import type { DatabaseEngine } from '../types.js';
 
 // Which adapter defineModel() compiles to. Set during Pre-Flight from
 // config.database / the DATABASE_URL scheme; MongoDB until then, which keeps code
@@ -25,19 +25,28 @@ export function isAutoSync(): boolean {
   return autoSync;
 }
 
+/** What every model API (defineModel, defineTable) registers about itself. */
+export interface RegisteredModel {
+  readonly name: string;
+  sync(options?: { dryRun?: boolean }): Promise<string[]>;
+  drop(): Promise<void>;
+  /** Records by id — what `populate` needs from a `ref` target. */
+  findByIds(ids: unknown[]): Promise<Record<string, unknown>[]>;
+}
+
 // Every defined model by name, so `populate` can resolve a `ref` on either engine
 // and `efc db` commands can sync everything that was imported.
-const registry = new Map<string, ModelCRUD<object>>();
+const registry = new Map<string, RegisteredModel>();
 
-export function registerModel(model: ModelCRUD<object>): void {
+export function registerModel(model: RegisteredModel): void {
   registry.set(model.name, model);
 }
 
-export function getRegisteredModel(name: string): ModelCRUD<object> | undefined {
+export function getRegisteredModel(name: string): RegisteredModel | undefined {
   return registry.get(name);
 }
 
-export function registeredModels(): ModelCRUD<object>[] {
+export function registeredModels(): RegisteredModel[] {
   return [...registry.values()];
 }
 

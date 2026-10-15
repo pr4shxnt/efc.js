@@ -154,6 +154,37 @@ Model calls inside join the transaction through `AsyncLocalStorage` — no sessi
 
 ---
 
+## PostgreSQL-native: `defineTable`
+
+Building on PostgreSQL only? `defineTable` gives you Prisma's query vocabulary and SQL types,
+on the same foundation (schema format, validation, auto-sync, `transaction()`, inferred types):
+
+```ts
+import { defineTable } from 'express-file-cluster';
+
+export const Order = defineTable('Order', {
+  number: { type: 'string', required: true, unique: true, maxLength: 20 },
+  status: { type: 'string', enum: ['open', 'paid'], default: 'open', nativeEnum: true },
+  total:  { type: 'decimal', precision: 10, scale: 2, required: true },   // '19.99', exact
+  qty:    { type: 'integer', required: true },
+  tags:   { type: 'array', of: 'string', default: [] },                    // text[]
+}, { id: 'serial', naming: 'snake_case' });
+
+const page = await Order.findMany({
+  where: { status: 'paid', total: { gte: '100' }, tags: { has: 'priority' } },
+  orderBy: { createdAt: 'desc' },
+  take: 20, cursor: { id: lastId }, skip: 1,
+  select: { id: true, number: true, total: true },
+});
+await Order.upsert({ where: { number }, create: { number, total: '0', qty: 1 }, update: { qty: { increment: 1 } } });
+const revenue = await Order.groupBy({ by: ['status'], _sum: { total: true }, orderBy: { _sum: { total: 'desc' } } });
+```
+
+`defineModel` and `defineTable` can share a table, so you can move models over one at a time.
+Full reference: [defineTable API](../api-reference/table.md).
+
+---
+
 ## Beyond the model API
 
 ```ts
