@@ -2,7 +2,7 @@
 
 **express-file-cluster (EFC)** is an opinionated backend framework built on Express. It removes routing ceremony, saturates every CPU core automatically, and ships a production-grade background-task subsystem — all from a single `ignite()` call.
 
-> **Status: v0.4.0 — Beta.** File-based routing (incl. catch-all and optional segments), request validation, clustering, auth, structured logging, MongoDB and PostgreSQL models, BullMQ and pg-boss tasks with cron and dead-letter tooling, and migrations are all implemented.
+> **Status: v0.5.0 — Beta.** File-based routing (incl. catch-all and optional segments), request validation, clustering, auth, structured logging, MongoDB and PostgreSQL models with types inferred from the schema, PostgreSQL-native `defineTable` (Prisma-style queries), BullMQ and pg-boss tasks with cron and dead-letter tooling, and migrations are all implemented.
 
 ---
 
@@ -37,6 +37,7 @@
 | [Authentication](./guides/authentication.md) | JWT strategies, login/logout, `requireAuth` |
 | [RBAC](./guides/rbac.md) | Role-based route protection via the `requireAuth('role')` shorthand |
 | [Database](./guides/database.md) | `defineModel`, queries, transactions, MongoDB vs PostgreSQL |
+| [defineTable](./api-reference/table.md) | PostgreSQL-native models: Prisma-style queries, SQL types, aggregation |
 | [Migrations & Seeds](./guides/migrations.md) | `efc db migrate / rollback / seed / studio` |
 | [Validation](./guides/validation.md) | Route `schema` exports with zod, valibot, arktype |
 | [Logging](./guides/logging.md) | pino, request IDs, `getLogger()` |
@@ -46,6 +47,7 @@
 | [Environment Variables](./guides/environment-variables.md) | Full `.env` reference |
 | [Error Handling](./guides/error-handling.md) | `HttpError`, custom handlers, task failures |
 | [Deployment](./guides/deployment.md) | Build, start, and ship to production |
+| [AI Coding Agents](./guides/ai-agents.md) | Docs bundled in the package, `AGENTS.md`, the `express-file-cluster-mcp` server |
 
 ### Tooling
 

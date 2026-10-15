@@ -3,11 +3,12 @@
 Database migrations, seeds and studio. Works on MongoDB and PostgreSQL — the engine follows the `DATABASE_URL` scheme. Full guide: [Migrations & Seeds](../guides/migrations.md).
 
 ```bash
+efc db sync [--dry-run]        # reconcile tables/collections + indexes with src/model(s)/
 efc db migrate                 # run pending migrations (one new batch)
 efc db rollback [--steps 2]    # revert the last batch(es)
 efc db status                  # applied vs pending
 efc db seed [name]             # run all seeds, or one
-efc db studio [--port 4983]    # read-only browser on 127.0.0.1
+efc db studio [--port 4983]    # read-only browser on 127.0.0.1 (rows + table structure)
 ```
 
 ## Common options

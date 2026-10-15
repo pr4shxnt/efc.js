@@ -163,6 +163,22 @@ export default async function seed() { await Note.createMany([{ title: 'a' }, { 
       expect(efc('status')).toMatch(/• 20260101000000_broken pending/);
     }, 30_000);
 
+    it('efc db sync previews, applies and then reports nothing to do', async () => {
+      fs.mkdirSync(path.join(root, 'src', 'model'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, 'src', 'model', 'Note.js'),
+        `import { defineModel } from 'express-file-cluster';
+export const Note = defineModel('SyncNote', { title: { type: 'string', unique: true } }, { collection: '${table}' });`,
+      );
+      const plan = efc('sync', '--dry-run');
+      expect(plan).toMatch(/SyncNote.*change\(s\)/);
+      expect(plan).toMatch(engine === 'postgresql' ? /CREATE TABLE/ : /createIndex/);
+      expect(plan).toMatch(/pending change\(s\) — run without --dry-run/);
+      expect(efc('sync', '--dry-run')).toEqual(plan); // dry run changed nothing
+      expect(efc('sync')).toMatch(/Applied \d+ change\(s\)/);
+      expect(efc('sync', '--dry-run')).toMatch(/✓ SyncNote in sync[\s\S]*Everything in sync/);
+    }, 60_000);
+
     it('serves a read-only studio', async () => {
       migration(
         '20260101000000_create_notes.js',
@@ -203,6 +219,14 @@ export default async function seed() { await Note.createMany([{ title: 'a' }, { 
           405,
         );
         expect((await fetch(url)).headers.get('content-type')).toMatch(/text\/html/);
+        const structure = (await (
+          await fetch(`${url}/api/collections/${table}/structure`)
+        ).json()) as {
+          columns: { name: string; type: string }[];
+          indexes: { name: string }[];
+        };
+        expect(structure.columns.map((c) => c.name)).toEqual(expect.arrayContaining(['title']));
+        expect(structure.indexes.length).toBeGreaterThan(0);
         // DNS-rebinding guard: a non-loopback Host header is refused.
         const { request: httpRequest } = await import('node:http');
         const rebound = await new Promise<number>((resolve, reject) => {

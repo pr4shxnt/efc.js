@@ -77,7 +77,7 @@
     <section class="hero" id="hero">
       <div class="hero-glow"></div>
       <div class="container">
-        <div class="badge">v0.4.0</div>
+        <div class="badge">v0.5.0</div>
         <h1 class="hero-title">
           Express, but your folder<br />
           <span class="accent">is your router.</span>
@@ -626,6 +626,32 @@
           <em>Change</em><span style="font-weight: 600">log</span>
         </h2>
         <div class="changelog-list">
+          <div class="changelog-item">
+            <div class="changelog-meta">
+              <div class="cl-version">express-file-cluster v0.5.0 / create-efc-app v0.5.0 / express-file-cluster-mcp v0.5.0</div>
+              <div class="cl-date">Oct 15, 2026</div>
+              <div class="cl-tag">DATA LAYER</div>
+            </div>
+            <div class="changelog-content">
+              <h3>Inferred Types, <code>defineTable</code> &amp; an MCP Server</h3>
+              <p>
+                <code>defineModel</code> infers record and input types from the schema — no interfaces
+                to write — and gains <code>upsert</code>, <code>updateOne</code>, <code>deleteOne</code>,
+                <code>exists</code> and <code>distinct</code> on both engines. PostgreSQL tables now
+                sync themselves on first use, like MongoDB collections, and <code>efc db sync</code>
+                previews or applies schema changes.
+              </p>
+              <p>
+                New <code>defineTable</code>: PostgreSQL-native models with Prisma's vocabulary —
+                <code>findMany({ where, orderBy, take, cursor, select })</code>, <code>findUnique</code>,
+                atomic <code>upsert</code>, <code>groupBy</code> and <code>aggregate</code> — and SQL types:
+                <code>integer</code>, <code>bigint</code>, exact <code>decimal</code>, native arrays and enums,
+                serial ids. The docs now ship inside the package, and <code>express-file-cluster-mcp</code>
+                serves them to AI coding agents.
+              </p>
+            </div>
+          </div>
+
           <div class="changelog-item">
             <div class="changelog-meta">
               <div class="cl-version">express-file-cluster v0.4.0 / create-efc-app v0.5.0</div>

@@ -12,5 +12,5 @@ coverage/
 .plan.md
 NEXT.md
 /usage
-mcp/NOTES.md
+packages/mcp/NOTES.md
 memory.md

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import mongoose from 'mongoose';
-import { defineModel } from '../../db/model.js';
-import { setDbEngine } from '../../db/engine.js';
+import { createModel, defineModel } from '../../db/model.js';
+import { setDbEngine, setAutoSync } from '../../db/engine.js';
 import { connectPostgres, closePostgres, getPool } from '../../db/postgres.js';
 import { tableNameFor } from '../../db/pg-model.js';
 import { transaction } from '../../db/transaction.js';
@@ -362,6 +362,145 @@ for (const engine of ['mongodb', 'postgresql'] as const) {
       await Edge.drop();
     });
 
+    describe('portable additions and inferred models', () => {
+      const Item = defineModel(`Item${suffix}`, {
+        sku: { type: 'string', required: true, unique: true },
+        color: { type: 'string', enum: ['red', 'blue', 'green'] },
+        qty: { type: 'number', default: 0, min: 0 },
+        seen: { type: 'date' },
+        tags: { type: 'array', of: 'string' },
+        log: { type: 'array', of: { at: { type: 'date', required: true } } },
+        info: { since: { type: 'date' }, label: { type: 'string' } },
+      });
+
+      beforeAll(async () => {
+        await Item.sync();
+        await Item.createMany([
+          { sku: 'a', color: 'red', qty: 1, seen: new Date('2024-01-02T00:00:00Z') },
+          { sku: 'b', color: 'blue', qty: 2, seen: new Date('2024-01-01T00:00:00Z') },
+          { sku: 'c', color: 'red', qty: 3, seen: new Date('2024-01-02T00:00:00Z') },
+          { sku: 'd', tags: ['x'] },
+        ]);
+      });
+      afterAll(() => Item.drop());
+
+      it('exists() reports whether anything matches', async () => {
+        expect(await Item.exists({ color: 'red' })).toBe(true);
+        expect(await Item.exists({ color: 'green' })).toBe(false);
+        expect(await Item.exists({ qty: { $gt: 2 } })).toBe(true);
+        expect(await Item.exists({ nope: 1 } as never)).toBe(false); // undeclared → absent
+      });
+
+      it('distinct() returns sorted non-null scalar values', async () => {
+        expect(await Item.distinct('color')).toEqual(['blue', 'red']);
+        expect(await Item.distinct('qty', { color: 'red' })).toEqual([1, 3]);
+        const seen = await Item.distinct('seen');
+        expect(seen.map((d) => d instanceof Date && d.toISOString())).toEqual([
+          '2024-01-01T00:00:00.000Z',
+          '2024-01-02T00:00:00.000Z',
+        ]);
+        const ids = await Item.distinct('id', { color: 'red' });
+        expect(ids).toHaveLength(2);
+        expect(ids.every((id) => typeof id === 'string')).toBe(true);
+        expect(await Item.distinct('nope' as never)).toEqual([]);
+        await expect(Item.distinct('tags' as never)).rejects.toThrow(/only scalar fields/);
+      });
+
+      it('updateOne() changes exactly one matching record and returns it', async () => {
+        const r = await Item.updateOne({ color: 'red' }, { $inc: { qty: 10 } });
+        expect(r?.color).toBe('red');
+        expect([11, 13]).toContain(r?.qty);
+        expect(await Item.count({ qty: { $gte: 10 } })).toBe(1);
+        expect(await Item.updateOne({ color: 'green' }, { qty: 1 })).toBeNull();
+        await expect(Item.updateOne({ sku: 'b' }, { qty: -1 })).rejects.toBeInstanceOf(
+          ModelValidationError,
+        );
+        await expect(
+          Item.updateOne({ sku: 'b' }, { color: 'pink' } as never),
+        ).rejects.toBeInstanceOf(ModelValidationError);
+      });
+
+      it('deleteOne() removes one matching record and returns it', async () => {
+        const before = await Item.count();
+        const gone = await Item.deleteOne({ sku: 'd' });
+        expect(gone?.sku).toBe('d');
+        expect(gone?.tags).toEqual(['x']);
+        expect(await Item.deleteOne({ sku: 'd' })).toBeNull();
+        expect(await Item.count()).toBe(before - 1);
+      });
+
+      it('upsert() creates, then updates, and survives concurrent calls on a unique field', async () => {
+        const created = await Item.upsert({ sku: 'u' }, { sku: 'u', qty: 5 }, { $inc: { qty: 1 } });
+        expect(created.qty).toBe(5);
+        const updated = await Item.upsert({ sku: 'u' }, { sku: 'u', qty: 5 }, { $inc: { qty: 1 } });
+        expect(updated.id).toBe(created.id);
+        expect(updated.qty).toBe(6);
+        await expect(
+          Item.upsert({ sku: 'v' }, { sku: 'v', qty: -5 }, { qty: 1 }),
+        ).rejects.toBeInstanceOf(ModelValidationError);
+
+        const racers = await Promise.all(
+          Array.from({ length: 6 }, () =>
+            Item.upsert({ sku: 'race' }, { sku: 'race', qty: 0 }, { $inc: { qty: 1 } }),
+          ),
+        );
+        expect(new Set(racers.map((r) => r.id)).size).toBe(1);
+        expect(await Item.count({ sku: 'race' })).toBe(1);
+        expect((await Item.findOne({ sku: 'race' }))?.qty).toBe(5); // 1 create + 5 updates
+      });
+
+      it.skipIf(engine === 'mongodb' && !mongoTx)(
+        'upsert / updateOne / deleteOne join transactions',
+        async () => {
+          await expect(
+            transaction(async () => {
+              await Item.upsert({ sku: 'tx' }, { sku: 'tx', qty: 1 }, { qty: 2 });
+              await Item.updateOne({ sku: 'a' }, { qty: 99 });
+              await Item.deleteOne({ sku: 'b' });
+              expect(await Item.exists({ sku: 'tx' })).toBe(true);
+              throw new Error('rollback');
+            }),
+          ).rejects.toThrow('rollback');
+          expect(await Item.exists({ sku: 'tx' })).toBe(false);
+          expect(await Item.exists({ qty: 99 })).toBe(false);
+          expect(await Item.exists({ sku: 'b' })).toBe(true);
+        },
+      );
+
+      it('returns dates nested in objects and arrays as Date on both engines', async () => {
+        const r = await Item.create({
+          sku: 'dates',
+          log: [{ at: '2024-03-01T10:00:00Z' }],
+          info: { since: new Date('2023-05-06T00:00:00Z'), label: 'x' },
+        });
+        for (const rec of [r, await Item.findById(r.id), await Item.findOne({ sku: 'dates' })]) {
+          expect(rec?.log?.[0]?.at).toBeInstanceOf(Date);
+          expect(rec?.log?.[0]?.at.toISOString()).toBe('2024-03-01T10:00:00.000Z');
+          expect(rec?.info?.since).toBeInstanceOf(Date);
+          expect(rec?.info?.label).toBe('x');
+        }
+      });
+
+      it('engine-native models refuse to run on the other engine', async () => {
+        const other = engine === 'mongodb' ? 'postgresql' : 'mongodb';
+        const Native = createModel(
+          `Native${suffix}`,
+          { x: { type: 'string' } },
+          {},
+          {
+            engine: other,
+            api: other === 'postgresql' ? 'defineTable' : 'defineCollection',
+            kind: other === 'postgresql' ? 'table' : 'collection',
+          },
+        );
+        await expect(Native.find()).rejects.toThrow(
+          other === 'postgresql'
+            ? /Native\w+ is a PostgreSQL table \(defineTable\) but the app is connected to MongoDB/
+            : /Native\w+ is a MongoDB collection \(defineCollection\) but the app is connected to PostgreSQL/,
+        );
+      });
+    });
+
     it('drop() removes the collection/table and is safe to repeat', async () => {
       const Temp = defineModel<{ x: string }>(`Temp${suffix}`, { x: { type: 'string' } });
       await Temp.sync();
@@ -444,6 +583,12 @@ export const GET = async (_req, res) => {
   res.json(rows[0]);
 };`,
     );
+    fs.writeFileSync(
+      path.join(root, 'src', 'api', 'counters.js'),
+      `import { defineTable } from ${indexModule};
+const Counter = defineTable('IgniteCounter', { hits: { type: 'bigint', default: 9007199254740993n } }, { id: 'bigserial', collection: 'efc_ignite_counters' });
+export const POST = async (_req, res) => res.status(201).json(await Counter.create({ data: {} }));`,
+    );
     const cwd = process.cwd();
     process.chdir(root);
     const server = await ignite({
@@ -462,13 +607,202 @@ export const GET = async (_req, res) => {
       expect(invalid.status).toBe(400);
       expect(invalid.body.issues).toEqual([{ path: 'slug', message: 'is required' }]);
       expect((await request(server!).get('/notes')).body).toEqual({ n: 1 });
+      // defineTable bigints (bigserial id, bigint column) are sent as exact strings.
+      const counter = await request(server!).post('/counters');
+      expect(counter.status).toBe(201);
+      expect(counter.body).toMatchObject({ id: '1', hits: '9007199254740993' });
     } finally {
       server!.closeAllConnections();
       await new Promise((r) => server!.close(r));
-      await getPool().query('DROP TABLE IF EXISTS efc_ignite_notes');
+      await getPool().query('DROP TABLE IF EXISTS efc_ignite_notes, efc_ignite_counters');
       await closePostgres();
       process.chdir(cwd);
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });
+
+// "PostgreSQL should feel like MongoDB": no table chores, schema edits never strand
+// writes, undeclared fields behave the same. Same assertions on both engines.
+for (const engine of ['mongodb', 'postgresql'] as const) {
+  describe.skipIf(!available[engine])(`schema ergonomics — ${engine}`, () => {
+    const tag = `${engine === 'mongodb' ? 'm' : 'p'}${Math.random().toString(36).slice(2, 7)}`;
+    const collection = `efc_evolve_${tag}`;
+
+    beforeAll(async () => {
+      setDbEngine(engine);
+      setAutoSync(true);
+      if (engine === 'mongodb') await mongoose.connect(MONGO_URL);
+      else await connectPostgres(PG_URL);
+    });
+
+    afterAll(async () => {
+      setAutoSync(true);
+      if (engine === 'mongodb') {
+        await mongoose.connection.dropDatabase();
+        await mongoose.disconnect();
+      } else {
+        for (const t of [
+          collection,
+          `${collection}_fresh`,
+          `${collection}_race`,
+          `${collection}_off`,
+        ]) {
+          await getPool().query(`DROP TABLE IF EXISTS "${t}"`);
+        }
+        await closePostgres();
+      }
+    });
+
+    it.skipIf(engine !== 'mongodb')(
+      'a unique index that cannot be built (existing duplicates) does not break the model',
+      async () => {
+        const coll = `${collection}_dupes`;
+        await mongoose.connection.collection(coll).insertMany([{ code: 'x' }, { code: 'x' }]);
+        const Dupes = defineModel(
+          `Dupes${tag}`,
+          { code: { type: 'string', unique: true } },
+          { collection: coll },
+        );
+        expect(await Dupes.count({ code: 'x' })).toBe(2);
+        expect((await Dupes.create({ code: 'y' })).code).toBe('y');
+      },
+    );
+
+    it('works on first use — no sync() or migration needed', async () => {
+      const Fresh = defineModel<{ title: string }>(
+        `Fresh${tag}`,
+        { title: { type: 'string', required: true, unique: true } },
+        { collection: `${collection}_fresh` },
+      );
+      const a = await Fresh.create({ title: 'hello' });
+      expect(await Fresh.findById(a.id)).toMatchObject({ title: 'hello' });
+      // The unique index came with it — on MongoDB too, first use waits for the index build.
+      await expect(Fresh.create({ title: 'hello' })).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('evolving a model never strands writes or rows', async () => {
+      const V1 = defineModel<{ title: string; status: string; score: number; legacy: string }>(
+        `EvolveV1${tag}`,
+        {
+          title: { type: 'string', required: true },
+          status: { type: 'string', enum: ['a', 'b'] },
+          score: { type: 'number', unique: true },
+          legacy: { type: 'string', required: true },
+        },
+        { collection },
+      );
+      const old = await V1.create({ title: 't1', status: 'a', score: 1, legacy: 'x' });
+
+      // Field removed, required loosened, enum extended, type changed, unique dropped, field added.
+      const V2 = defineModel<{ title?: string; status: string; score: string; note: string }>(
+        `EvolveV2${tag}`,
+        {
+          title: { type: 'string' },
+          status: { type: 'string', enum: ['a', 'b', 'c'] },
+          score: { type: 'string' },
+          note: { type: 'string', default: 'new' },
+        },
+        { collection },
+      );
+      if (engine === 'mongodb') await V2.sync(); // drops the unique index mongoose built for V1
+      const created = await V2.create({ status: 'c', score: '7' });
+      expect(created).toMatchObject({ status: 'c', score: '7', note: 'new' });
+      await V2.create({ status: 'a', score: '7' }); // duplicate allowed now
+      const again = await V2.findById(old.id);
+      expect(again?.status).toBe('a');
+      expect(String(again?.score)).toBe('1');
+      await expect(V2.create({ status: 'zzz', score: '1' })).rejects.toBeInstanceOf(
+        ModelValidationError,
+      );
+    });
+
+    it('ignores undeclared fields on writes and treats them as missing in queries', async () => {
+      const Strict = defineModel<{ title: string; meta: { a?: number } }>(
+        `Strict${tag}`,
+        { title: { type: 'string' }, meta: { a: { type: 'number' } } },
+        { collection: `${collection}_strict` },
+      );
+      const s1 = await Strict.create({ title: 'x', bogus: 1 } as never);
+      await Strict.create({ title: 'y' });
+      expect('bogus' in s1).toBe(false);
+      const u = await Strict.update(s1.id, {
+        bogus: 2,
+        'meta.nope': 1,
+        $set: { title: 'x2' },
+      } as never);
+      expect(u?.title).toBe('x2');
+      expect('bogus' in (u as object)).toBe(false);
+
+      expect(await Strict.count({ bogus: 1 } as never)).toBe(0);
+      expect(await Strict.count({ bogus: { $exists: false } } as never)).toBe(2);
+      expect(await Strict.count({ bogus: null } as never)).toBe(2);
+      expect(await Strict.count({ bogus: { $ne: 5 } } as never)).toBe(2);
+      expect(
+        await Strict.find({}, { sort: { bogus: 1 } as never, select: ['title', 'bogus' as never] }),
+      ).toHaveLength(2);
+      if (engine === 'postgresql')
+        await getPool().query(`DROP TABLE IF EXISTS "${collection}_strict"`);
+    });
+
+    it('dry-run sync reports pending changes without applying them', async () => {
+      const Plain = defineModel<{ code: string }>(
+        `DryA${tag}`,
+        { code: { type: 'string' } },
+        { collection: `${collection}_race` },
+      );
+      await Plain.create({ code: 'a' });
+      const Indexed = defineModel<{ code: string }>(
+        `DryB${tag}`,
+        { code: { type: 'string', unique: true } },
+        { collection: `${collection}_race` },
+      );
+      setAutoSync(false);
+      try {
+        const plan = await Indexed.sync({ dryRun: true });
+        expect(plan.join('\n')).toMatch(/code/);
+        expect(await Indexed.sync({ dryRun: true })).toEqual(plan); // nothing was applied
+        await Indexed.sync();
+        expect(await Indexed.sync({ dryRun: true })).toEqual([]);
+      } finally {
+        setAutoSync(true);
+      }
+    });
+
+    it.skipIf(engine !== 'postgresql')(
+      'concurrent first use by several models of one table is safe',
+      async () => {
+        const make = (i: number) =>
+          defineModel<{ n: number }>(
+            `Race${i}${tag}`,
+            { n: { type: 'number', index: true } },
+            { collection: `${collection}_off` },
+          );
+        await Promise.all([1, 2, 3, 4, 5].map((i) => make(i).create({ n: i })));
+        expect(await make(9).count()).toBe(5);
+      },
+    );
+
+    it.skipIf(engine !== 'postgresql')(
+      'autoSync: false leaves the schema to migrations',
+      async () => {
+        await getPool().query(`DROP TABLE IF EXISTS "${collection}_off"`);
+        setAutoSync(false);
+        try {
+          const Off = defineModel<{ n: number }>(
+            `Off${tag}`,
+            { n: { type: 'number' } },
+            { collection: `${collection}_off` },
+          );
+          await expect(Off.create({ n: 1 })).rejects.toThrow(
+            /table "efc_evolve_\w+_off" does not exist — autoSync is off/,
+          );
+          await Off.sync();
+          expect(await Off.create({ n: 1 })).toMatchObject({ n: 1 });
+        } finally {
+          setAutoSync(true);
+        }
+      },
+    );
+  });
+}
