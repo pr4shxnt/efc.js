@@ -1,5 +1,5 @@
 import type * as MongooseNS from 'mongoose';
-import type { FindOptions, ModelCRUD, ModelOptions, ModelQueryOptions } from '../types.js';
+import type { Filter, FindOptions, ModelCRUD, ModelOptions, ModelQueryOptions } from '../types.js';
 import { HttpError } from '../errors.js';
 import {
   ModelValidationError,
@@ -10,9 +10,13 @@ import {
 } from './schema.js';
 import { currentTx, isAutoSync } from './engine.js';
 import { notInstalled } from './postgres.js';
+import { getLogger } from '../logger.js';
 
 type AnyRecord = Record<string, unknown>;
-export type EngineModel<T extends object> = Omit<ModelCRUD<T>, 'name'>;
+/** What each engine adapter implements; `defineModel` adds `name`, `upsert` and the `distinct` rules. */
+export type EngineModel<T extends object> = Omit<ModelCRUD<T>, 'name' | 'upsert' | 'distinct'> & {
+  distinct(field: string, filter?: Filter<T>): Promise<unknown[]>;
+};
 
 let mongoosePromise: Promise<typeof MongooseNS> | undefined;
 
@@ -215,7 +219,7 @@ export function mongoModel<T extends object>(
   let compiled: Promise<MongooseNS.Model<AnyRecord>> | undefined;
 
   const model = (): Promise<MongooseNS.Model<AnyRecord>> =>
-    (compiled ??= loadMongoose().then((mg) => {
+    (compiled ??= loadMongoose().then(async (mg) => {
       if (mg.models[name]) return mg.models[name] as MongooseNS.Model<AnyRecord>;
       const schema = new mg.Schema(buildTree(tree, mg) as MongooseNS.SchemaDefinition, {
         timestamps: options.timestamps ?? true,
@@ -244,7 +248,20 @@ export function mongoModel<T extends object>(
           }
         });
       }
-      return mg.model<AnyRecord>(name, schema);
+      const M = mg.model<AnyRecord>(name, schema);
+      if (isAutoSync()) {
+        // Like PostgreSQL's first-use sync: queries wait until the collection and its
+        // indexes exist, so a unique index is enforced from the very first write. An index
+        // that can't be built (e.g. duplicates already stored) is logged, not fatal — the
+        // model keeps working as it did before, without that index.
+        await M.init().catch((err: unknown) => {
+          getLogger().warn(
+            { model: name, err: (err as Error).message },
+            `${name}: could not build its indexes — fix the data, then run efc db sync`,
+          );
+        });
+      }
+      return M;
     }));
 
   const session = (): { session?: MongooseNS.ClientSession } => {
@@ -315,6 +332,26 @@ export function mongoModel<T extends object>(
         return normalise(doc!.toObject()) as Rec;
       }),
 
+    exists: (filter) =>
+      guard(async () => {
+        const M = await model();
+        return (
+          (await M.exists(mapFilter(filter as AnyRecord)).session(session().session ?? null)) !==
+          null
+        );
+      }),
+
+    distinct: (field, filter) =>
+      guard(async () => {
+        const mg = await loadMongoose();
+        const M = await model();
+        const values: unknown[] = await M.distinct(
+          field === 'id' ? '_id' : field,
+          mapFilter(filter as AnyRecord),
+        ).session(session().session ?? null);
+        return values.map((v) => (v instanceof mg.Types.ObjectId ? String(v) : v));
+      }),
+
     createMany: (data) =>
       guard(async () => {
         const M = await model();
@@ -338,6 +375,17 @@ export function mongoModel<T extends object>(
       }
     },
 
+    updateOne: (filter, data) =>
+      guard(async () => {
+        const M = await model();
+        const doc = await M.findOneAndUpdate(mapFilter(filter as AnyRecord), data as AnyRecord, {
+          returnDocument: 'after',
+          runValidators: true,
+          ...session(),
+        }).lean();
+        return doc ? (normalise(doc) as Rec) : null;
+      }),
+
     updateMany: (filter, data) =>
       guard(async () => {
         const M = await model();
@@ -357,6 +405,13 @@ export function mongoModel<T extends object>(
         translateError(name, err);
       }
     },
+
+    deleteOne: (filter) =>
+      guard(async () => {
+        const M = await model();
+        const doc = await M.findOneAndDelete(mapFilter(filter as AnyRecord), session()).lean();
+        return doc ? (normalise(doc) as Rec) : null;
+      }),
 
     deleteMany: (filter) =>
       guard(async () => {

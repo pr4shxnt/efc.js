@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import mongoose from 'mongoose';
-import { defineModel } from '../../db/model.js';
+import { createModel, defineModel } from '../../db/model.js';
 import { setDbEngine, setAutoSync } from '../../db/engine.js';
 import { connectPostgres, closePostgres, getPool } from '../../db/postgres.js';
 import { tableNameFor } from '../../db/pg-model.js';
@@ -362,6 +362,145 @@ for (const engine of ['mongodb', 'postgresql'] as const) {
       await Edge.drop();
     });
 
+    describe('portable additions and inferred models', () => {
+      const Item = defineModel(`Item${suffix}`, {
+        sku: { type: 'string', required: true, unique: true },
+        color: { type: 'string', enum: ['red', 'blue', 'green'] },
+        qty: { type: 'number', default: 0, min: 0 },
+        seen: { type: 'date' },
+        tags: { type: 'array', of: 'string' },
+        log: { type: 'array', of: { at: { type: 'date', required: true } } },
+        info: { since: { type: 'date' }, label: { type: 'string' } },
+      });
+
+      beforeAll(async () => {
+        await Item.sync();
+        await Item.createMany([
+          { sku: 'a', color: 'red', qty: 1, seen: new Date('2024-01-02T00:00:00Z') },
+          { sku: 'b', color: 'blue', qty: 2, seen: new Date('2024-01-01T00:00:00Z') },
+          { sku: 'c', color: 'red', qty: 3, seen: new Date('2024-01-02T00:00:00Z') },
+          { sku: 'd', tags: ['x'] },
+        ]);
+      });
+      afterAll(() => Item.drop());
+
+      it('exists() reports whether anything matches', async () => {
+        expect(await Item.exists({ color: 'red' })).toBe(true);
+        expect(await Item.exists({ color: 'green' })).toBe(false);
+        expect(await Item.exists({ qty: { $gt: 2 } })).toBe(true);
+        expect(await Item.exists({ nope: 1 } as never)).toBe(false); // undeclared → absent
+      });
+
+      it('distinct() returns sorted non-null scalar values', async () => {
+        expect(await Item.distinct('color')).toEqual(['blue', 'red']);
+        expect(await Item.distinct('qty', { color: 'red' })).toEqual([1, 3]);
+        const seen = await Item.distinct('seen');
+        expect(seen.map((d) => d instanceof Date && d.toISOString())).toEqual([
+          '2024-01-01T00:00:00.000Z',
+          '2024-01-02T00:00:00.000Z',
+        ]);
+        const ids = await Item.distinct('id', { color: 'red' });
+        expect(ids).toHaveLength(2);
+        expect(ids.every((id) => typeof id === 'string')).toBe(true);
+        expect(await Item.distinct('nope' as never)).toEqual([]);
+        await expect(Item.distinct('tags' as never)).rejects.toThrow(/only scalar fields/);
+      });
+
+      it('updateOne() changes exactly one matching record and returns it', async () => {
+        const r = await Item.updateOne({ color: 'red' }, { $inc: { qty: 10 } });
+        expect(r?.color).toBe('red');
+        expect([11, 13]).toContain(r?.qty);
+        expect(await Item.count({ qty: { $gte: 10 } })).toBe(1);
+        expect(await Item.updateOne({ color: 'green' }, { qty: 1 })).toBeNull();
+        await expect(Item.updateOne({ sku: 'b' }, { qty: -1 })).rejects.toBeInstanceOf(
+          ModelValidationError,
+        );
+        await expect(
+          Item.updateOne({ sku: 'b' }, { color: 'pink' } as never),
+        ).rejects.toBeInstanceOf(ModelValidationError);
+      });
+
+      it('deleteOne() removes one matching record and returns it', async () => {
+        const before = await Item.count();
+        const gone = await Item.deleteOne({ sku: 'd' });
+        expect(gone?.sku).toBe('d');
+        expect(gone?.tags).toEqual(['x']);
+        expect(await Item.deleteOne({ sku: 'd' })).toBeNull();
+        expect(await Item.count()).toBe(before - 1);
+      });
+
+      it('upsert() creates, then updates, and survives concurrent calls on a unique field', async () => {
+        const created = await Item.upsert({ sku: 'u' }, { sku: 'u', qty: 5 }, { $inc: { qty: 1 } });
+        expect(created.qty).toBe(5);
+        const updated = await Item.upsert({ sku: 'u' }, { sku: 'u', qty: 5 }, { $inc: { qty: 1 } });
+        expect(updated.id).toBe(created.id);
+        expect(updated.qty).toBe(6);
+        await expect(
+          Item.upsert({ sku: 'v' }, { sku: 'v', qty: -5 }, { qty: 1 }),
+        ).rejects.toBeInstanceOf(ModelValidationError);
+
+        const racers = await Promise.all(
+          Array.from({ length: 6 }, () =>
+            Item.upsert({ sku: 'race' }, { sku: 'race', qty: 0 }, { $inc: { qty: 1 } }),
+          ),
+        );
+        expect(new Set(racers.map((r) => r.id)).size).toBe(1);
+        expect(await Item.count({ sku: 'race' })).toBe(1);
+        expect((await Item.findOne({ sku: 'race' }))?.qty).toBe(5); // 1 create + 5 updates
+      });
+
+      it.skipIf(engine === 'mongodb' && !mongoTx)(
+        'upsert / updateOne / deleteOne join transactions',
+        async () => {
+          await expect(
+            transaction(async () => {
+              await Item.upsert({ sku: 'tx' }, { sku: 'tx', qty: 1 }, { qty: 2 });
+              await Item.updateOne({ sku: 'a' }, { qty: 99 });
+              await Item.deleteOne({ sku: 'b' });
+              expect(await Item.exists({ sku: 'tx' })).toBe(true);
+              throw new Error('rollback');
+            }),
+          ).rejects.toThrow('rollback');
+          expect(await Item.exists({ sku: 'tx' })).toBe(false);
+          expect(await Item.exists({ qty: 99 })).toBe(false);
+          expect(await Item.exists({ sku: 'b' })).toBe(true);
+        },
+      );
+
+      it('returns dates nested in objects and arrays as Date on both engines', async () => {
+        const r = await Item.create({
+          sku: 'dates',
+          log: [{ at: '2024-03-01T10:00:00Z' }],
+          info: { since: new Date('2023-05-06T00:00:00Z'), label: 'x' },
+        });
+        for (const rec of [r, await Item.findById(r.id), await Item.findOne({ sku: 'dates' })]) {
+          expect(rec?.log?.[0]?.at).toBeInstanceOf(Date);
+          expect(rec?.log?.[0]?.at.toISOString()).toBe('2024-03-01T10:00:00.000Z');
+          expect(rec?.info?.since).toBeInstanceOf(Date);
+          expect(rec?.info?.label).toBe('x');
+        }
+      });
+
+      it('engine-native models refuse to run on the other engine', async () => {
+        const other = engine === 'mongodb' ? 'postgresql' : 'mongodb';
+        const Native = createModel(
+          `Native${suffix}`,
+          { x: { type: 'string' } },
+          {},
+          {
+            engine: other,
+            api: other === 'postgresql' ? 'defineTable' : 'defineCollection',
+            kind: other === 'postgresql' ? 'table' : 'collection',
+          },
+        );
+        await expect(Native.find()).rejects.toThrow(
+          other === 'postgresql'
+            ? /Native\w+ is a PostgreSQL table \(defineTable\) but the app is connected to MongoDB/
+            : /Native\w+ is a MongoDB collection \(defineCollection\) but the app is connected to PostgreSQL/,
+        );
+      });
+    });
+
     it('drop() removes the collection/table and is safe to repeat', async () => {
       const Temp = defineModel<{ x: string }>(`Temp${suffix}`, { x: { type: 'string' } });
       await Temp.sync();
@@ -505,6 +644,21 @@ for (const engine of ['mongodb', 'postgresql'] as const) {
       }
     });
 
+    it.skipIf(engine !== 'mongodb')(
+      'a unique index that cannot be built (existing duplicates) does not break the model',
+      async () => {
+        const coll = `${collection}_dupes`;
+        await mongoose.connection.collection(coll).insertMany([{ code: 'x' }, { code: 'x' }]);
+        const Dupes = defineModel(
+          `Dupes${tag}`,
+          { code: { type: 'string', unique: true } },
+          { collection: coll },
+        );
+        expect(await Dupes.count({ code: 'x' })).toBe(2);
+        expect((await Dupes.create({ code: 'y' })).code).toBe('y');
+      },
+    );
+
     it('works on first use — no sync() or migration needed', async () => {
       const Fresh = defineModel<{ title: string }>(
         `Fresh${tag}`,
@@ -513,7 +667,7 @@ for (const engine of ['mongodb', 'postgresql'] as const) {
       );
       const a = await Fresh.create({ title: 'hello' });
       expect(await Fresh.findById(a.id)).toMatchObject({ title: 'hello' });
-      // The unique index came with it.
+      // The unique index came with it — on MongoDB too, first use waits for the index build.
       await expect(Fresh.create({ title: 'hello' })).rejects.toMatchObject({ statusCode: 409 });
     });
 

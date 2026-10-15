@@ -1,0 +1,6 @@
+{
+  // Type-level tests (src/__tests__/types/*.test-d.ts) under the repo's strictest settings.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "rootDir": "./src", "composite": false, "declaration": false, "declarationMap": false },
+  "include": ["src/__tests__/types/**/*"]
+}

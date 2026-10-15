@@ -2,6 +2,7 @@
 
 ```ts
 import { defineModel, transaction, db, ModelValidationError } from 'express-file-cluster';
+import type { InferRecord, InferCreate } from 'express-file-cluster';
 ```
 
 `defineModel` gives one model API on **MongoDB** (mongoose) and **PostgreSQL** (Drizzle). The model compiles for whichever engine Pre-Flight connected — `database` in `ignite()`, or the `DATABASE_URL` scheme — the first time it is used, so models can be defined at import time. One conformance test suite runs every feature below against both engines.
@@ -11,7 +12,8 @@ import { defineModel, transaction, db, ModelValidationError } from 'express-file
 ## `defineModel(name, schema, options?)`
 
 ```ts
-function defineModel<T extends object>(name: string, schema: ModelSchema, options?: ModelOptions): ModelCRUD<T>
+function defineModel(name: string, schema: ModelSchema, options?: ModelOptions): ModelCRUD<Record, CreateInput>
+// record and create-input types are inferred from the schema literal
 ```
 
 | Parameter | Description |
@@ -21,18 +23,9 @@ function defineModel<T extends object>(name: string, schema: ModelSchema, option
 | `options` | Timestamps, indexes, collection/table name. |
 
 ```ts
-import { defineModel } from 'express-file-cluster';
+import { defineModel, type InferRecord } from 'express-file-cluster';
 
-interface Order {
-  number: number;
-  status: 'pending' | 'paid' | 'shipped';
-  customer: string;
-  items: { sku: string; qty: number }[];
-  shipping: { city: string; zip?: string };
-  tags: string[];
-}
-
-export const Order = defineModel<Order>(
+export const Order = defineModel(
   'Order',
   {
     number:   { type: 'number', sequence: true },
@@ -44,7 +37,41 @@ export const Order = defineModel<Order>(
   },
   { indexes: [{ fields: { customer: 1, createdAt: -1 } }] },
 );
+
+export type Order = InferRecord<typeof Order>;
+// {
+//   id: string; number: number; status: 'pending' | 'paid' | 'shipped'; customer: string;
+//   tags: string[]; items?: { sku: string; qty?: number }[];
+//   shipping?: { city: string; zip?: string }; createdAt: Date; updatedAt: Date;
+// }
 ```
+
+### Inferred types
+
+No interface to write or keep in step: `defineModel` reads the schema literal.
+
+| Schema | Record type (`InferRecord<typeof M>`) | `create()` input (`InferCreate<typeof M>`) |
+|---|---|---|
+| `'string'` / `'number'` / `'boolean'` | `string` / `number` / `boolean` | same |
+| `'date'` | `Date` (also inside embedded objects/arrays, on both engines) | `Date \| string \| number` |
+| `'objectId'` | `string` | `string` |
+| `enum: [...]` | union of the literals | same |
+| `{ type: 'array', of }`, `[schema]` | `X[]` | `X[]` |
+| nested schema / `{ type: 'object', fields }` | object, inferred recursively | same, with create rules |
+| `{ type: 'object' }` / `{ type: 'array' }` without `of`/`fields` | `unknown` / `unknown[]` | same |
+| `required`, `default` or `sequence` | non-optional | mandatory only if `required` without `default`/`sequence` |
+| anything else | optional (`?`) | optional |
+
+Timestamps follow `options.timestamps` (`createdAt`/`updatedAt: Date`, renamed or left out). Filters, updates, `distinct()` fields and return values are all typed from the record; an undeclared field or a value outside an `enum` is a compile error.
+
+The explicit form still works and keeps the v0.4 behaviour (`create()` takes `Partial<T>`):
+
+```ts
+interface Legacy { title: string; pages?: number }
+const Book = defineModel<Legacy>('Book', { title: { type: 'string' }, pages: { type: 'number' } });
+```
+
+A schema stored in a variable annotated as `ModelSchema` has nothing to infer from — declare it inline (or `as const satisfies ModelSchema`) to get the types.
 
 ---
 
@@ -141,7 +168,11 @@ find(filter?: Filter<T>, options?: FindOptions): Promise<ModelRecord<T>[]>
 findOne(filter: Filter<T>, options?: ModelQueryOptions): Promise<ModelRecord<T> | null>
 findById(id: string, options?: ModelQueryOptions): Promise<ModelRecord<T> | null>
 count(filter?: Filter<T>): Promise<number>
+exists(filter: Filter<T>): Promise<boolean>
+distinct(field: ScalarKeys<T>, filter?: Filter<T>): Promise<T[field][]>
 ```
+
+`distinct()` returns the non-null values of a scalar field (or `id`, `createdAt`, …) among matching records, de-duplicated and sorted ascending. Array and object fields are rejected — the two engines disagree on what "distinct" means for them.
 
 ```ts
 interface FindOptions {
@@ -181,12 +212,25 @@ This subset behaves identically on both engines and is typed (`Filter<T>`) — n
 ### Writing
 
 ```ts
-create(data: Partial<T>): Promise<ModelRecord<T>>
-createMany(data: Partial<T>[]): Promise<ModelRecord<T>[]>
+create(data: CreateInput): Promise<ModelRecord<T>>
+createMany(data: CreateInput[]): Promise<ModelRecord<T>[]>
 update(id: string, data: Update<T>): Promise<ModelRecord<T> | null>       // returns the updated record
+updateOne(filter: Filter<T>, data: Update<T>): Promise<ModelRecord<T> | null>
 updateMany(filter: Filter<T>, data: Update<T>): Promise<number>          // records modified
+upsert(filter: Filter<T>, create: CreateInput, update: Update<T>): Promise<ModelRecord<T>>
 delete(id: string): Promise<void>
+deleteOne(filter: Filter<T>): Promise<ModelRecord<T> | null>             // returns the deleted record
 deleteMany(filter: Filter<T>): Promise<number>                           // records deleted
+```
+
+- `updateOne` / `deleteOne` act on the first matching record in **one statement** (`findOneAndUpdate` / `UPDATE … WHERE id = (SELECT … LIMIT 1 FOR UPDATE)`) and return it, or `null` if nothing matched. Which record is "first" is unspecified when several match.
+- `upsert` applies `update` to the first match, or creates `create` if there is none, and returns the record. `create` is used as given — `filter` fields are not copied into it. Put a `unique` index on the filtered field(s) to make concurrent upserts safe: a duplicate on create (409) is retried once as an update.
+
+```ts
+await Order.upsert({ number: 42 }, { number: 42, customer }, { $set: { status: 'paid' } });
+const next = await Order.updateOne({ status: 'pending' }, { status: 'paid' });
+const statuses = await Order.distinct('status', { customer });   // ('pending' | 'paid' | 'shipped')[]
+if (await Order.exists({ customer, status: 'pending' })) { /* … */ }
 ```
 
 `Update<T>` is plain fields (shorthand for `$set`) and/or operators:

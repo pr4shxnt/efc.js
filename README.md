@@ -222,22 +222,18 @@ Declare a typed model once. EFC compiles it to a mongoose model on MongoDB or a 
 
 ```ts
 // src/model/User.ts
-import { defineModel } from 'express-file-cluster';
+import { defineModel, type InferRecord } from 'express-file-cluster';
 
-interface UserDocument {
-  name: string;
-  email: string;
-  role: 'admin' | 'user';
-  verifyToken: string;
-  createdAt?: Date;
-}
-
-export const User = defineModel<UserDocument>('User', {
+export const User = defineModel('User', {
   name:        { type: 'string', required: true },
   email:       { type: 'string', required: true, unique: true },
   role:        { type: 'string', enum: ['admin', 'user'], default: 'user' },
   verifyToken: { type: 'string', default: '$uuid' },   // fresh UUID per document
 });
+
+// Types come from the schema — no interface to write:
+export type User = InferRecord<typeof User>;
+// { id: string; name: string; email: string; role: 'admin' | 'user'; verifyToken: string; createdAt: Date; ... }
 ```
 
 ### Schema default operator codes
@@ -257,7 +253,7 @@ Instead of a literal or a raw function, pass a sentinel string — EFC resolves 
 ### Auto-increment (`sequence`)
 
 ```ts
-export const Order = defineModel<OrderDocument>('Order', {
+export const Order = defineModel('Order', {
   orderNumber: { type: 'number', sequence: true, required: true },
   // sequence: 'global.orders' — explicit key to share a counter across models
 });
@@ -269,12 +265,12 @@ export const Order = defineModel<OrderDocument>('Order', {
 
 ```ts
 // Disable Mongoose's automatic createdAt/updatedAt
-export const Role = defineModel<RoleDocument>('Role', schema, {
+export const Role = defineModel('Role', schema, {
   timestamps: false,
 });
 
 // Or rename them
-export const Audit = defineModel<AuditDocument>('Audit', schema, {
+export const Audit = defineModel('Audit', schema, {
   timestamps: { createdAt: 'created_at', updatedAt: false },
 });
 ```
@@ -293,6 +289,9 @@ await User.create({ name: 'Alice', email: 'a@b.com' });   // validated
 await User.update(id, { $inc: { logins: 1 }, $push: { tags: 'vip' } }); // validated too
 await User.updateMany({ active: false }, { $set: { archived: true } }); // → count
 await User.deleteMany({ archived: true });                // → count
+await User.upsert({ email }, { name, email }, { $set: { name } }); // insert or update
+await User.updateOne({ role: 'user' }, { role: 'admin' }); // first match → record | null
+await User.exists({ email });  await User.distinct('role'); // boolean · sorted values
 
 await transaction(async () => {        // every model call inside joins the transaction
   await Order.create({ total: 40 });

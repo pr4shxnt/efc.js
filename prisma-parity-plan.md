@@ -130,6 +130,16 @@ engine-native.
 
 **Exit criteria:** no hand-written interfaces needed in the scaffolded apps; v0.4 apps compile unchanged.
 
+**Status: done (branch `feat/m1-inferred-types`).** Notes from building it:
+- One `defineModel` signature, no overloads: an explicit `T` keeps v0.4 typing exactly; otherwise a
+  `const` schema parameter is inferred. A schema widened to `ModelSchema` falls back to v0.4's loose type.
+- The engine guard is internal plumbing (`createModel(..., { engine, api, kind })`) until
+  `defineTable` / `defineCollection` exist; tested on both engines.
+- `upsert` = one-statement `updateOne`, else `create`; a 409 on create is retried once as an update
+  (outside transactions — a failed insert aborts a PostgreSQL transaction).
+- Found while typing: PostgreSQL returned dates nested in jsonb as ISO strings (MongoDB: `Date`);
+  records now revive them from the schema on both engines.
+
 ---
 
 ## M2 — `defineTable`: PostgreSQL-native model & queries

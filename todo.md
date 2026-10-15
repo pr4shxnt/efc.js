@@ -257,6 +257,8 @@ Found by actually running each exit criterion end to end, not by reading code:
 ## What to Build Next — Phase 3 (Priority Order)
 
 0. **Data layer that competes with Prisma** — [`prisma-parity-plan.md`](./prisma-parity-plan.md): one shared foundation (inferred types, validation, auto-sync) under three APIs — portable `defineModel` (today's), PostgreSQL-native `defineTable` (Prisma-style queries, real relations/joins, SQL types) and MongoDB-native `defineCollection` (typed pipelines, `$lookup`, geo/text, bulkWrite, change streams); no cross-engine emulation. Milestones M1–M7.
+   - [x] **M1** — inferred types (`InferRecord` / `InferCreate`, scaffolds without interfaces), engine-guard plumbing for the native APIs, portable `upsert` / `updateOne` / `deleteOne` / `exists` / `distinct`; nested dates revived on PostgreSQL
+   - [ ] M2 `defineTable` SQL types + Prisma-style queries · [ ] M3 relations · [ ] M4 schema lifecycle · [ ] M5 `defineCollection` · [ ] M6 tooling · [ ] M7 docs
 
 1. **`efc/testing` — `createTestApp()`** — the integration tests here hand-roll tmp projects + `ignite()`; ship that as a supported helper
 2. **OpenAPI generation** — `schema` exports are Standard Schema validators; derive request schemas (+ `meta`) into an OpenAPI document
