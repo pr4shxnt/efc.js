@@ -41,26 +41,21 @@ Each worker process connects once during Pre-Flight, before routes mount — no 
 
 ```ts
 // src/model/Post.ts
-import { defineModel } from 'express-file-cluster';
+import { defineModel, type InferRecord } from 'express-file-cluster';
 
-export interface Post {
-  title: string;
-  slug: string;
-  status: 'draft' | 'published';
-  author: string;
-  seo: { description?: string; keywords: string[] };
-  revisions: { body: string; at: Date }[];
-}
-
-export const Post = defineModel<Post>('Post', {
+export const Post = defineModel('Post', {
   title:     { type: 'string', required: true, minLength: 3, maxLength: 120 },
   slug:      { type: 'string', required: true, unique: true, match: /^[a-z0-9-]+$/ },
-  status:    { type: 'string', enum: ['draft', 'published'], default: 'draft', index: true },
+  status:    { type: 'string', enum: ['draft', 'published', 'archived'], default: 'draft', index: true },
   author:    { type: 'objectId', ref: 'User', required: true, default: '$currentUser.id' },
   seo:       { description: { type: 'string', maxLength: 160 }, keywords: { type: 'array', of: 'string' } },
   revisions: [{ body: { type: 'string', required: true }, at: { type: 'date', default: '$now' } }],
 });
+
+export type Post = InferRecord<typeof Post>;
 ```
+
+The types come from the schema — no interface to write. `Post.create()` requires `title` and `slug` (required, no default), `status` is `'draft' | 'published' | 'archived'`, and every record has `id`, `createdAt` and `updatedAt`. A typo in a field name or an enum value is a compile error.
 
 Full field reference: [Database API](../api-reference/db.md).
 
@@ -125,6 +120,16 @@ await Post.update(post.id, { $push: { revisions: { body: 'v2' } }, $set: { 'seo.
 
 const archived = await Post.updateMany({ status: 'draft', createdAt: { $lt: cutoff } }, { $set: { status: 'archived' } });
 const removed = await Post.deleteMany({ status: 'archived' });
+
+// One record by filter, in one statement
+const claimed = await Post.updateOne({ status: 'draft' }, { status: 'published' });
+await Post.deleteOne({ slug: 'hello' });
+
+// Insert-or-update (put a unique index on the filtered field)
+await Post.upsert({ slug: 'about' }, { title: 'About', slug: 'about' }, { $set: { title: 'About' } });
+
+if (await Post.exists({ slug })) throw new HttpError(409, 'Slug taken');
+const statuses = await Post.distinct('status');   // ('draft' | 'published' | 'archived')[]
 ```
 
 Every write is validated — including updates. Invalid data throws `ModelValidationError`, which the global error handler turns into a **400** with field `issues`; a duplicate `unique` value becomes a **409**. Route handlers usually don't need to catch either.

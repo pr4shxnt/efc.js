@@ -142,22 +142,18 @@ Declare a typed model with a schema. EFC compiles it to a Mongoose model and wra
 
 ```ts
 // src/model/User.ts
-import { defineModel } from 'express-file-cluster';
+import { defineModel, type InferRecord } from 'express-file-cluster';
 
-interface UserDocument {
-  name: string;
-  email: string;
-  role: 'admin' | 'user';
-  verifyToken: string;
-  createdAt?: Date;
-}
-
-export const User = defineModel<UserDocument>('User', {
+export const User = defineModel('User', {
   name:        { type: 'string', required: true },
   email:       { type: 'string', required: true, unique: true },
   role:        { type: 'string', enum: ['admin', 'user'], default: 'user' },
   verifyToken: { type: 'string', default: '$uuid' },   // fresh UUID per document
 });
+
+// Types come from the schema — no interface to write:
+export type User = InferRecord<typeof User>;
+// { id: string; name: string; email: string; role: 'admin' | 'user'; verifyToken: string; createdAt: Date; ... }
 ```
 
 ### Schema default operator codes
@@ -179,7 +175,7 @@ Any other value is used as-is — only these exact strings are special-cased.
 ### Auto-increment (`sequence`)
 
 ```ts
-export const Order = defineModel<OrderDocument>('Order', {
+export const Order = defineModel('Order', {
   orderNumber: { type: 'number', sequence: true, required: true },
   // sequence: 'global.orders' — explicit key to share a counter across models
 });
@@ -191,12 +187,12 @@ export const Order = defineModel<OrderDocument>('Order', {
 
 ```ts
 // Disable Mongoose's automatic createdAt/updatedAt (default: on)
-export const Role = defineModel<RoleDocument>('Role', schema, {
+export const Role = defineModel('Role', schema, {
   timestamps: false,
 });
 
 // Or rename them
-export const Audit = defineModel<AuditDocument>('Audit', schema, {
+export const Audit = defineModel('Audit', schema, {
   timestamps: { createdAt: 'created_at', updatedAt: false },
 });
 ```
@@ -215,6 +211,11 @@ await User.updateMany(filter, update);           // → count
 await User.delete(id);
 await User.deleteMany(filter);                   // → count
 await User.count(filter);
+await User.exists(filter);                       // → boolean
+await User.distinct('role', filter);             // → sorted distinct values
+await User.updateOne(filter, update);            // first match, one statement → record | null
+await User.deleteOne(filter);                    // → deleted record | null
+await User.upsert(filter, create, update);       // update the match, or create
 await transaction(async () => { /* model calls here share one transaction */ });
 ```
 
