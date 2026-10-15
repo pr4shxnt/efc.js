@@ -12,10 +12,14 @@ import { Migrator, runSeeds } from '../db/migrator.js';
 import { startStudio } from '../db/studio.js';
 import { configureLogger } from '../logger.js';
 import path from 'node:path';
+import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
+import { registeredModels, setAutoSync } from '../db/engine.js';
 
 interface RunnerOptions {
   root: string;
   databaseUrl?: string;
+  dryRun?: boolean;
   steps?: number;
   seed?: string;
   port?: number;
@@ -69,6 +73,47 @@ async function main(): Promise<void> {
           done.length
             ? pc.green(`\n  Rolled back ${done.length} migration(s)\n`)
             : pc.green('  Nothing to roll back'),
+        );
+        break;
+      }
+      case 'sync': {
+        // Every model lives in src/model(s)/ by convention; importing the files registers them.
+        const files: string[] = [];
+        const walk = (dir: string) => {
+          if (!fs.existsSync(dir)) return;
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const p = path.join(dir, entry.name);
+            if (entry.isDirectory()) walk(p);
+            else if (/\.(ts|js|mts|mjs)$/.test(entry.name) && !entry.name.endsWith('.d.ts'))
+              files.push(p);
+          }
+        };
+        walk(path.join(opts.root, 'model'));
+        walk(path.join(opts.root, 'models'));
+        setAutoSync(false); // report/apply only what this command decides
+        for (const f of files.sort()) await import(pathToFileURL(f).href);
+        const models = registeredModels();
+        if (models.length === 0) {
+          console.log(
+            pc.yellow(`  No models found in ${path.relative(process.cwd(), opts.root)}/model(s)/`),
+          );
+          break;
+        }
+        let total = 0;
+        for (const model of models) {
+          const changes = await model.sync({ dryRun: Boolean(opts.dryRun) });
+          total += changes.length;
+          console.log(
+            `  ${changes.length ? pc.cyan('●') : pc.green('✓')} ${model.name} ${pc.dim(changes.length ? `${changes.length} change(s)` : 'in sync')}`,
+          );
+          for (const c of changes) console.log(pc.dim(`      ${c.replace(/\n\s*/g, ' ')}`));
+        }
+        console.log(
+          total === 0
+            ? pc.green('\n  Everything in sync\n')
+            : opts.dryRun
+              ? pc.yellow(`\n  ${total} pending change(s) — run without --dry-run to apply\n`)
+              : pc.green(`\n  Applied ${total} change(s)\n`),
         );
         break;
       }

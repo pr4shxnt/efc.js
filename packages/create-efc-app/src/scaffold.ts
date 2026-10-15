@@ -281,7 +281,7 @@ The docs for the exact installed version ship inside the package, under \`${D}/\
 3. \`${D}/index.md\`, then the page for your task:
    - routes & URL params — \`core-concepts/file-based-routing.md\`, \`skills/routing-rules.md\`
    - request validation — \`guides/validation.md\`
-   - models & queries — \`guides/database.md\`, \`api-reference/db.md\`
+   - models & queries — \`guides/database.md\`, \`api-reference/db.md\`${opts.database === 'postgresql' ? ', `api-reference/table.md` (PostgreSQL-native `defineTable`)' : ''}
    - migrations — \`guides/migrations.md\`
    - auth & roles — \`guides/authentication.md\`, \`guides/rbac.md\`
    - background tasks — \`core-concepts/background-tasks.md\`
@@ -453,43 +453,8 @@ export default defineTask(async (payload) => {
 
 async function writeUserModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
 
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface UserDocument {
-  name: string;
-  email: string;
-  password: string;
-  role: string;
-  avatar?: string;
-  isVerified: boolean;
-  isActive: boolean;
-  verifyToken?: string;
-  resetToken?: string;
-  resetTokenExpiry?: Date;
-  refreshToken?: string;
-  refreshTokenExpiry?: Date;
-}
-
-export const User = defineModel<UserDocument>('User', {
-  name:               { type: 'string',  required: true },
-  email:              { type: 'string',  required: true, unique: true },
-  password:           { type: 'string',  required: true },
-  role:               { type: 'string',  required: true, default: 'user' },
-  avatar:             { type: 'string' },
-  isVerified:         { type: 'boolean', default: false },
-  isActive:           { type: 'boolean', default: true },
-  verifyToken:        { type: 'string' },
-  resetToken:         { type: 'string' },
-  resetTokenExpiry:   { type: 'date' },
-  refreshToken:       { type: 'string' },
-  refreshTokenExpiry: { type: 'date' },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const User = defineModel('User', {
   name:               { type: 'string',  required: true },
@@ -512,46 +477,15 @@ export const User = defineModel('User', {
 
 async function writeAdminModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
 
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface AdminDocument {
-  name: string;
-  email: string;
-  password: string;
-  role: string;
-  permissions: string[];
-  isActive: boolean;
-  resetToken?: string;
-  resetTokenExpiry?: Date;
-  refreshToken?: string;
-  refreshTokenExpiry?: Date;
-}
-
-export const Admin = defineModel<AdminDocument>('Admin', {
-  name:               { type: 'string',  required: true },
-  email:              { type: 'string',  required: true, unique: true },
-  password:           { type: 'string',  required: true },
-  role:               { type: 'string',  required: true, default: 'admin' },
-  permissions:        { type: 'array',   default: [] },
-  isActive:           { type: 'boolean', default: true },
-  resetToken:         { type: 'string' },
-  resetTokenExpiry:   { type: 'date' },
-  refreshToken:       { type: 'string' },
-  refreshTokenExpiry: { type: 'date' },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Admin = defineModel('Admin', {
   name:               { type: 'string',  required: true },
   email:              { type: 'string',  required: true, unique: true },
   password:           { type: 'string',  required: true },
   role:               { type: 'string',  required: true, default: 'admin' },
-  permissions:        { type: 'array',   default: [] },
+  permissions:        { type: 'array',   of: 'string', default: [] },
   isActive:           { type: 'boolean', default: true },
   resetToken:         { type: 'string' },
   resetTokenExpiry:   { type: 'date' },
@@ -1105,30 +1039,7 @@ function mkMeta(opts: ScaffoldOptions, methods: Record<string, MethodMetaSpec>):
 
 async function writeSessionModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface SessionDocument {
-  userId: string;
-  token: string;
-  ip: string;
-  userAgent: string;
-  expiresAt: Date;
-  isActive: boolean;
-}
-
-export const Session = defineModel<SessionDocument>('Session', {
-  userId:    { type: 'string',  required: true },
-  token:     { type: 'string',  required: true, unique: true },
-  ip:        { type: 'string',  required: true },
-  userAgent: { type: 'string',  required: true },
-  expiresAt: { type: 'date',    required: true },
-  isActive:  { type: 'boolean', default: true },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Session = defineModel('Session', {
   userId:    { type: 'string',  required: true },
@@ -1144,30 +1055,7 @@ export const Session = defineModel('Session', {
 
 async function writeNotificationModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface NotificationDocument {
-  userId: string;
-  title: string;
-  message: string;
-  type: string;
-  isRead: boolean;
-  link?: string;
-}
-
-export const Notification = defineModel<NotificationDocument>('Notification', {
-  userId:  { type: 'string',  required: true },
-  title:   { type: 'string',  required: true },
-  message: { type: 'string',  required: true },
-  type:    { type: 'string',  required: true, default: 'info' },
-  isRead:  { type: 'boolean', default: false },
-  link:    { type: 'string' },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Notification = defineModel('Notification', {
   userId:  { type: 'string',  required: true },
@@ -1183,32 +1071,7 @@ export const Notification = defineModel('Notification', {
 
 async function writeFileModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface FileDocument {
-  userId: string;
-  filename: string;
-  originalName: string;
-  mimeType: string;
-  size: number;
-  url: string;
-  isPublic: boolean;
-}
-
-export const File = defineModel<FileDocument>('File', {
-  userId:       { type: 'string',  required: true },
-  filename:     { type: 'string',  required: true },
-  originalName: { type: 'string',  required: true },
-  mimeType:     { type: 'string',  required: true },
-  size:         { type: 'number',  required: true },
-  url:          { type: 'string',  required: true },
-  isPublic:     { type: 'boolean', default: false },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const File = defineModel('File', {
   userId:       { type: 'string',  required: true },
@@ -1225,30 +1088,7 @@ export const File = defineModel('File', {
 
 async function writeSupportTicketModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface SupportTicketDocument {
-  userId: string;
-  subject: string;
-  message: string;
-  status: string;
-  priority: string;
-  assignedTo?: string;
-}
-
-export const SupportTicket = defineModel<SupportTicketDocument>('SupportTicket', {
-  userId:     { type: 'string', required: true },
-  subject:    { type: 'string', required: true },
-  message:    { type: 'string', required: true },
-  status:     { type: 'string', required: true, default: 'open' },
-  priority:   { type: 'string', required: true, default: 'normal' },
-  assignedTo: { type: 'string' },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const SupportTicket = defineModel('SupportTicket', {
   userId:     { type: 'string', required: true },
@@ -1264,30 +1104,7 @@ export const SupportTicket = defineModel('SupportTicket', {
 
 async function writeAuditLogModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface AuditLogDocument {
-  adminId: string;
-  action: string;
-  entity: string;
-  entityId: string;
-  metadata?: Record<string, unknown>;
-  ip: string;
-}
-
-export const AuditLog = defineModel<AuditLogDocument>('AuditLog', {
-  adminId:  { type: 'string', required: true },
-  action:   { type: 'string', required: true },
-  entity:   { type: 'string', required: true },
-  entityId: { type: 'string', required: true },
-  metadata: { type: 'object' },
-  ip:       { type: 'string', required: true },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const AuditLog = defineModel('AuditLog', {
   adminId:  { type: 'string', required: true },
@@ -1303,30 +1120,7 @@ export const AuditLog = defineModel('AuditLog', {
 
 async function writeSubscriptionModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface SubscriptionDocument {
-  userId: string;
-  planId: string;
-  status: string;
-  startDate: Date;
-  endDate: Date;
-  cancelledAt?: Date;
-}
-
-export const Subscription = defineModel<SubscriptionDocument>('Subscription', {
-  userId:      { type: 'string', required: true },
-  planId:      { type: 'string', required: true },
-  status:      { type: 'string', required: true, default: 'active' },
-  startDate:   { type: 'date',   required: true },
-  endDate:     { type: 'date',   required: true },
-  cancelledAt: { type: 'date' },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Subscription = defineModel('Subscription', {
   userId:      { type: 'string', required: true },
@@ -1342,37 +1136,14 @@ export const Subscription = defineModel('Subscription', {
 
 async function writePlanModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface PlanDocument {
-  name: string;
-  description: string;
-  price: number;
-  interval: string;
-  features: string[];
-  isActive: boolean;
-}
-
-export const Plan = defineModel<PlanDocument>('Plan', {
-  name:        { type: 'string',  required: true },
-  description: { type: 'string',  required: true },
-  price:       { type: 'number',  required: true },
-  interval:    { type: 'string',  required: true, default: 'monthly' },
-  features:    { type: 'array',   default: [] },
-  isActive:    { type: 'boolean', default: true },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Plan = defineModel('Plan', {
   name:        { type: 'string',  required: true },
   description: { type: 'string',  required: true },
   price:       { type: 'number',  required: true },
   interval:    { type: 'string',  required: true, default: 'monthly' },
-  features:    { type: 'array',   default: [] },
+  features:    { type: 'array',   of: 'string', default: [] },
   isActive:    { type: 'boolean', default: true },
 });
 `;
@@ -1381,30 +1152,7 @@ export const Plan = defineModel('Plan', {
 
 async function writeInvoiceModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface InvoiceDocument {
-  userId: string;
-  subscriptionId: string;
-  amount: number;
-  currency: string;
-  status: string;
-  paidAt?: Date;
-}
-
-export const Invoice = defineModel<InvoiceDocument>('Invoice', {
-  userId:         { type: 'string', required: true },
-  subscriptionId: { type: 'string', required: true },
-  amount:         { type: 'number', required: true },
-  currency:       { type: 'string', required: true, default: 'USD' },
-  status:         { type: 'string', required: true, default: 'pending' },
-  paidAt:         { type: 'date' },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Invoice = defineModel('Invoice', {
   userId:         { type: 'string', required: true },
@@ -1420,30 +1168,7 @@ export const Invoice = defineModel('Invoice', {
 
 async function writeApiKeyModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface ApiKeyDocument {
-  userId: string;
-  name: string;
-  key: string;
-  lastUsed?: Date;
-  expiresAt?: Date;
-  isActive: boolean;
-}
-
-export const ApiKey = defineModel<ApiKeyDocument>('ApiKey', {
-  userId:   { type: 'string',  required: true },
-  name:     { type: 'string',  required: true },
-  key:      { type: 'string',  required: true, unique: true },
-  lastUsed: { type: 'date' },
-  expiresAt:{ type: 'date' },
-  isActive: { type: 'boolean', default: true },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const ApiKey = defineModel('ApiKey', {
   userId:    { type: 'string',  required: true },
@@ -1459,29 +1184,12 @@ export const ApiKey = defineModel('ApiKey', {
 
 async function writeRoleModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface RoleDocument {
-  name: string;
-  description: string;
-  permissions: string[];
-}
-
-export const Role = defineModel<RoleDocument>('Role', {
-  name:        { type: 'string', required: true, unique: true },
-  description: { type: 'string', required: true },
-  permissions: { type: 'array',  default: [] },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Role = defineModel('Role', {
   name:        { type: 'string', required: true, unique: true },
   description: { type: 'string', required: true },
-  permissions: { type: 'array',  default: [] },
+  permissions: { type: 'array',  of: 'string', default: [] },
 });
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Role.${ext}`), content);
@@ -1489,28 +1197,7 @@ export const Role = defineModel('Role', {
 
 async function writeFAQModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface FAQDocument {
-  question: string;
-  answer: string;
-  category: string;
-  order: number;
-  isPublished: boolean;
-}
-
-export const FAQ = defineModel<FAQDocument>('FAQ', {
-  question:    { type: 'string',  required: true },
-  answer:      { type: 'string',  required: true },
-  category:    { type: 'string',  required: true, default: 'general' },
-  order:       { type: 'number',  default: 0 },
-  isPublished: { type: 'boolean', default: false },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const FAQ = defineModel('FAQ', {
   question:    { type: 'string',  required: true },
@@ -1525,34 +1212,7 @@ export const FAQ = defineModel('FAQ', {
 
 async function writeBlogModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface BlogDocument {
-  title: string;
-  slug: string;
-  content: string;
-  authorId: string;
-  category: string;
-  tags: string[];
-  status: string;
-  publishedAt?: Date;
-}
-
-export const Blog = defineModel<BlogDocument>('Blog', {
-  title:       { type: 'string', required: true },
-  slug:        { type: 'string', required: true, unique: true },
-  content:     { type: 'string', required: true },
-  authorId:    { type: 'string', required: true },
-  category:    { type: 'string', required: true, default: 'general' },
-  tags:        { type: 'array',  default: [] },
-  status:      { type: 'string', required: true, default: 'draft' },
-  publishedAt: { type: 'date' },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Blog = defineModel('Blog', {
   title:       { type: 'string', required: true },
@@ -1560,7 +1220,7 @@ export const Blog = defineModel('Blog', {
   content:     { type: 'string', required: true },
   authorId:    { type: 'string', required: true },
   category:    { type: 'string', required: true, default: 'general' },
-  tags:        { type: 'array',  default: [] },
+  tags:        { type: 'array',  of: 'string', default: [] },
   status:      { type: 'string', required: true, default: 'draft' },
   publishedAt: { type: 'date' },
 });
@@ -1570,26 +1230,7 @@ export const Blog = defineModel('Blog', {
 
 async function writeCategoryModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface CategoryDocument {
-  name: string;
-  slug: string;
-  description?: string;
-  parentId?: string;
-}
-
-export const Category = defineModel<CategoryDocument>('Category', {
-  name:        { type: 'string', required: true },
-  slug:        { type: 'string', required: true, unique: true },
-  description: { type: 'string' },
-  parentId:    { type: 'string' },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Category = defineModel('Category', {
   name:        { type: 'string', required: true },
@@ -1603,32 +1244,7 @@ export const Category = defineModel('Category', {
 
 async function writeCouponModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const ts = opts.language === 'typescript';
-  const content =
-    ts
-        ? `import { defineModel } from 'express-file-cluster';
-
-export interface CouponDocument {
-  code: string;
-  type: string;
-  value: number;
-  maxUses: number;
-  usedCount: number;
-  expiresAt?: Date;
-  isActive: boolean;
-}
-
-export const Coupon = defineModel<CouponDocument>('Coupon', {
-  code:      { type: 'string',  required: true, unique: true },
-  type:      { type: 'string',  required: true, default: 'percent' },
-  value:     { type: 'number',  required: true },
-  maxUses:   { type: 'number',  default: 0 },
-  usedCount: { type: 'number',  default: 0 },
-  expiresAt: { type: 'date' },
-  isActive:  { type: 'boolean', default: true },
-});
-`
-        : `import { defineModel } from 'express-file-cluster';
+  const content = `import { defineModel } from 'express-file-cluster';
 
 export const Coupon = defineModel('Coupon', {
   code:      { type: 'string',  required: true, unique: true },

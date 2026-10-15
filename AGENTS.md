@@ -25,6 +25,7 @@ Before changing or generating any code, read in this order:
 | Request validation (`export const schema`) | `docs/guides/validation.md` |
 | `ignite()` options, boot order | `docs/api-reference/ignite.md`, `Skills/efc/pre-flight.md` |
 | Models, queries, transactions (MongoDB / PostgreSQL) | `docs/guides/database.md`, `docs/api-reference/db.md` |
+| PostgreSQL-native models (`defineTable`, Prisma-style) | `docs/api-reference/table.md` |
 | Migrations, seeds, `efc db` | `docs/guides/migrations.md`, `docs/cli/db.md` |
 | Auth, roles, sessions | `docs/guides/authentication.md`, `docs/api-reference/auth.md`, `docs/guides/rbac.md`, `Skills/efc/auth-internals.md` |
 | Background tasks, cron, dead letters | `docs/core-concepts/background-tasks.md`, `docs/api-reference/tasks.md`, `Skills/efc/tasks-internals.md` |

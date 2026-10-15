@@ -230,22 +230,18 @@ Declare a typed model once. EFC compiles it to a mongoose model on MongoDB or a 
 
 ```ts
 // src/model/User.ts
-import { defineModel } from 'express-file-cluster';
+import { defineModel, type InferRecord } from 'express-file-cluster';
 
-interface UserDocument {
-  name: string;
-  email: string;
-  role: 'admin' | 'user';
-  verifyToken: string;
-  createdAt?: Date;
-}
-
-export const User = defineModel<UserDocument>('User', {
+export const User = defineModel('User', {
   name:        { type: 'string', required: true },
   email:       { type: 'string', required: true, unique: true },
   role:        { type: 'string', enum: ['admin', 'user'], default: 'user' },
   verifyToken: { type: 'string', default: '$uuid' },   // fresh UUID per document
 });
+
+// Types come from the schema — no interface to write:
+export type User = InferRecord<typeof User>;
+// { id: string; name: string; email: string; role: 'admin' | 'user'; verifyToken: string; createdAt: Date; ... }
 ```
 
 ### Schema default operator codes
@@ -265,7 +261,7 @@ Instead of a literal or a raw function, pass a sentinel string — EFC resolves 
 ### Auto-increment (`sequence`)
 
 ```ts
-export const Order = defineModel<OrderDocument>('Order', {
+export const Order = defineModel('Order', {
   orderNumber: { type: 'number', sequence: true, required: true },
   // sequence: 'global.orders' — explicit key to share a counter across models
 });
@@ -277,12 +273,12 @@ export const Order = defineModel<OrderDocument>('Order', {
 
 ```ts
 // Disable Mongoose's automatic createdAt/updatedAt
-export const Role = defineModel<RoleDocument>('Role', schema, {
+export const Role = defineModel('Role', schema, {
   timestamps: false,
 });
 
 // Or rename them
-export const Audit = defineModel<AuditDocument>('Audit', schema, {
+export const Audit = defineModel('Audit', schema, {
   timestamps: { createdAt: 'created_at', updatedAt: false },
 });
 ```
@@ -301,6 +297,9 @@ await User.create({ name: 'Alice', email: 'a@b.com' });   // validated
 await User.update(id, { $inc: { logins: 1 }, $push: { tags: 'vip' } }); // validated too
 await User.updateMany({ active: false }, { $set: { archived: true } }); // → count
 await User.deleteMany({ archived: true });                // → count
+await User.upsert({ email }, { name, email }, { $set: { name } }); // insert or update
+await User.updateOne({ role: 'user' }, { role: 'admin' }); // first match → record | null
+await User.exists({ email });  await User.distinct('role'); // boolean · sorted values
 
 await transaction(async () => {        // every model call inside joins the transaction
   await Order.create({ total: 40 });
@@ -308,7 +307,28 @@ await transaction(async () => {        // every model call inside joins the tran
 });
 ```
 
-Invalid writes throw `ModelValidationError` (→ 400 with field `issues`); duplicate unique values → 409. Tables and indexes are created by `Model.sync()` from a migration: `efc db migrate`.
+Invalid writes throw `ModelValidationError` (→ 400 with field `issues`); duplicate unique values → 409. Tables (PostgreSQL) and indexes are created and kept in step with your models automatically on first use — like MongoDB; `efc db sync --dry-run` shows what would change.
+
+### PostgreSQL-native: `defineTable()`
+
+On PostgreSQL, `defineTable` gives you Prisma's query API and SQL types on the same foundation:
+
+```ts
+import { defineTable } from 'express-file-cluster';
+
+export const Order = defineTable('Order', {
+  number: { type: 'string', required: true, unique: true, maxLength: 20 },  // varchar(20)
+  total:  { type: 'decimal', precision: 10, scale: 2, required: true },     // '19.99', exact
+  qty:    { type: 'integer', required: true },
+  tags:   { type: 'array', of: 'string', default: [] },                      // text[]
+}, { id: 'serial' });
+
+await Order.findMany({ where: { total: { gte: '100' }, tags: { has: 'vip' } }, orderBy: { createdAt: 'desc' }, take: 20 });
+await Order.upsert({ where: { number }, create: { number, total: '0', qty: 1 }, update: { qty: { increment: 1 } } });
+await Order.groupBy({ by: ['qty'], _sum: { total: true } });
+```
+
+See [defineTable](docs/api-reference/table.md).
 
 ---
 
