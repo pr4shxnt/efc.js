@@ -71,8 +71,7 @@ After confirmation it:
 
 ```bash
 cd my-api
-npm run db:migrate   # create tables / indexes (needed on PostgreSQL before first boot)
-npm run dev
+npm run dev          # tables / indexes are created on first use — no migration needed
 # 12:00:01 INFO  [primary] Worker primary listening on :3000
 ```
 

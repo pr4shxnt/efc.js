@@ -263,14 +263,13 @@ async function main(): Promise<void> {
     );
   }
 
-  // The generated init migration creates the tables (PostgreSQL) / indexes (MongoDB).
-  const hasMigrations = opts.userPortal || opts.adminPortal;
+  // Tables (PostgreSQL) and collections/indexes (MongoDB) are created on first use, so
+  // there's nothing to set up before the first run; migrations are there when wanted.
   p.outro(
     pc.green(`\nYour project is ready!\n\n`) +
       pc.dim(`  cd ${projectName as string}\n`) +
-      (hasMigrations ? pc.dim(`  efc db migrate\n`) : '') +
       pc.dim(`  efc start dev\n`) +
-      pc.dim(`\n  (or: ${hasMigrations ? 'npm run db:migrate && ' : ''}npm run dev)\n`),
+      pc.dim(`\n  (or: npm run dev)\n`),
   );
 }
 

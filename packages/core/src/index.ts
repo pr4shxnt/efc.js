@@ -14,7 +14,7 @@ import { configureAuth } from './auth/index.js';
 import { isHttpError } from './errors.js';
 import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
-import { setDbEngine } from './db/engine.js';
+import { setDbEngine, setAutoSync } from './db/engine.js';
 import { connectPostgres } from './db/postgres.js';
 import { runWithContext } from './context.js';
 import { configureLogger, getLogger, requestLogger } from './logger.js';
@@ -133,6 +133,7 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
 
   // Pre-Flight step 1: Connect database. The engine decides what defineModel compiles to.
   if (database) setDbEngine(database);
+  setAutoSync(config.autoSync ?? true);
   if (database === 'mongodb' && databaseUrl) {
     const conn = await connectMongo(databaseUrl);
     setDbClient(conn as unknown as Record<string, unknown>);
