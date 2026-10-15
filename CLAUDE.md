@@ -86,6 +86,8 @@ src/api/docs/[...slug].ts    → /docs/a/b  (req.params.slug = ['a', 'b'])
 - Engine = `config.database` ?? `databaseUrl` scheme; models compile on first use (define at import time is fine)
 - MongoDB needs `mongoose`; PostgreSQL needs `pg` + `drizzle-orm` (all optional peers)
 - Tables (PostgreSQL) / collections + indexes (MongoDB) reconcile automatically on a model's first use (`autoSync`, default true; advisory-locked, one transaction). Sync adds columns, converts types, drops stale NOT NULLs, rebuilds enum CHECKs (NOT VALID), creates/drops EFC-named indexes — never drops columns or rows. `efc db sync [--dry-run]`; `autoSync: false` leaves it to migrations
+- Types are inferred from the schema literal (`InferRecord<typeof M>`, `InferCreate<typeof M>`) — don't write interfaces; `defineModel<T>()` still works (v0.4 behaviour, `create()` takes `Partial<T>`)
+- Portable extras on both engines: `exists`, `distinct` (scalar fields only, sorted, non-null), `updateOne`/`deleteOne` (first match, one statement, return the record), `upsert(filter, create, update)` (filter not merged into create; 409 on create retried once)
 - Undeclared fields behave like mongoose on both engines: ignored on writes, treated as absent in filters, ignored in sort/select
 - `update()` / `updateMany()` validate changed fields; failures throw `ModelValidationError` (400), duplicate unique → `HttpError` 409
 - Shared filter subset: `$eq $ne $gt $gte $lt $lte $in $nin $exists $regex $and $or`, dotted paths, array contains; updates: `$set $unset $inc $push $pull`
@@ -115,6 +117,7 @@ src/api/docs/[...slug].ts    → /docs/a/b  (req.params.slug = ['a', 'b'])
 - OpenAPI generation, OpenTelemetry
 - `efc lint`, `efc deploy` commands
 - Schema-diff migration generation (`efc db generate`) — migrations are hand-written; `sync()` only adds
+- `defineTable` (PostgreSQL-native, Prisma-style) and `defineCollection` (MongoDB-native) — planned in `prisma-parity-plan.md` (M2/M5); only `defineModel` exists
 
 Do not suggest or generate code for these features.
 

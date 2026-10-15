@@ -46,8 +46,11 @@ function itemNode(of: FieldDefinition['of'], parent: FieldDefinition): FieldNode
   return { kind: 'object', fields: normalizeSchema(of), def: { type: 'object' } };
 }
 
+const isTuple = (field: SchemaField): field is [ModelSchema] | readonly [ModelSchema] =>
+  Array.isArray(field);
+
 function normalizeField(field: SchemaField): FieldNode {
-  if (Array.isArray(field)) {
+  if (isTuple(field)) {
     const inner = field[0];
     return {
       kind: 'array',
