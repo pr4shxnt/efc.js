@@ -15,8 +15,9 @@ import {
   type FieldNode,
   type SchemaTree,
 } from './schema.js';
-import { currentTx, getRegisteredModel } from './engine.js';
-import { getOrm } from './postgres.js';
+import { currentTx, getRegisteredModel, isAutoSync } from './engine.js';
+import { getOrm, getPool } from './postgres.js';
+import { getLogger } from '../logger.js';
 import type { EngineModel } from './mongo-model.js';
 
 type AnyRecord = Record<string, unknown>;
@@ -121,6 +122,28 @@ export function pgModel<T extends object>(
       return { t: pgCore.pgTable(table, cols), sql };
     }));
 
+  // Like MongoDB creating collections and indexes on first use: the first query through
+  // this model reconciles its table (unless autoSync is off). Memoised per process; a
+  // failure is retried on the next use instead of being cached.
+  let synced: Promise<void> | undefined;
+  const ready = async () => {
+    const compiled = await compile();
+    if (isAutoSync()) {
+      synced ??= reconcile(false).then(
+        (changes) => {
+          if (changes.length)
+            getLogger().info({ table, changes: changes.length }, `Synced table ${table}`);
+        },
+        (err: unknown) => {
+          synced = undefined;
+          throw err;
+        },
+      );
+      await synced;
+    }
+    return compiled;
+  };
+
   const client = () => {
     const tx = currentTx();
     return tx?.engine === 'postgresql' ? tx.tx : getOrm();
@@ -139,8 +162,40 @@ export function pgModel<T extends object>(
       ? new Date(value as string)
       : value;
 
+  // A field the model doesn't declare behaves like a field absent from every document
+  // (mongoose's strictQuery: false): equality with null / $exists: false / $ne match,
+  // everything else doesn't.
+  function missingField(sql: any, cond: unknown): any {
+    const ops =
+      cond !== null &&
+      typeof cond === 'object' &&
+      !Array.isArray(cond) &&
+      !(cond instanceof Date) &&
+      !(cond instanceof RegExp)
+        ? (cond as AnyRecord)
+        : { $eq: cond };
+    const matches = Object.entries(ops).every(([op, v]) => {
+      switch (op) {
+        case '$eq':
+          return v === null;
+        case '$ne':
+          return v !== null;
+        case '$exists':
+          return v === false;
+        case '$in':
+          return (v as unknown[]).includes(null);
+        case '$nin':
+          return !(v as unknown[]).includes(null);
+        default:
+          return false;
+      }
+    });
+    return matches ? sql`true` : sql`false`;
+  }
+
   function condition(sql: any, t: any, path: string, cond: unknown): any {
     const [field, ...rest] = path.split('.');
+    if (!columns.has(field!)) return missingField(sql, cond);
     const col = columnFor(t, field!);
     const kind = columns.get(field!);
     const isOps =
@@ -291,16 +346,16 @@ export function pgModel<T extends object>(
         ? ({ ...node, def: { ...node.def, required: false } } as FieldNode)
         : node;
     }
-    for (const key of Object.keys(data)) {
-      if (!columns.has(key) && !key.includes('.'))
-        issues.push({ path: key, message: 'unknown field' });
-    }
     await validateTree(checkTree, data, issues, partial);
     if (issues.length) throw new ModelValidationError(name, issues);
   };
 
+  // Undeclared fields are dropped silently on every write (mongoose's strict mode).
+  const known = (data: AnyRecord): AnyRecord =>
+    Object.fromEntries(Object.entries(data).filter(([k]) => columns.has(k.split('.')[0]!)));
+
   const prepareInsert = async (input: AnyRecord): Promise<AnyRecord> => {
-    const { id, ...rest } = input;
+    const { id, ...rest } = known(input);
     const data = applyDefaults(tree, rest, randomUUID);
     await validate(data, false);
     const now = new Date();
@@ -341,7 +396,7 @@ export function pgModel<T extends object>(
   const selection = (t: any, select: string[] | undefined) => {
     if (!select) return undefined;
     const out: AnyRecord = { id: t.id };
-    for (const f of select) out[f] = columnFor(t, f);
+    for (const f of select) if (columns.has(f)) out[f] = columnFor(t, f);
     return out;
   };
 
@@ -349,19 +404,21 @@ export function pgModel<T extends object>(
     filter: AnyRecord | undefined,
     opts: FindOptions | undefined,
   ): Promise<AnyRecord[]> {
-    const { t, sql } = await compile();
+    const { t, sql } = await ready();
     const sel = selection(t, opts?.select);
     let query = (sel ? client().select(sel) : client().select()).from(t);
     const w = where(sql, t, filter);
     if (w) query = query.where(w);
     if (opts?.sort) {
-      const order = Object.entries(opts.sort).map(([f, dir]) => {
-        const col = columnFor(t, f);
-        return dir === -1 || dir === 'desc'
-          ? sql`${col} desc nulls last`
-          : sql`${col} asc nulls first`;
-      });
-      query = query.orderBy(...order);
+      const order = Object.entries(opts.sort)
+        .filter(([f]) => columns.has(f))
+        .map(([f, dir]) => {
+          const col = columnFor(t, f);
+          return dir === -1 || dir === 'desc'
+            ? sql`${col} desc nulls last`
+            : sql`${col} asc nulls first`;
+        });
+      if (order.length) query = query.orderBy(...order);
     }
     if (opts?.limit !== undefined) query = query.limit(opts.limit);
     if (opts?.skip !== undefined) query = query.offset(opts.skip);
@@ -371,8 +428,24 @@ export function pgModel<T extends object>(
 
   // ── updates ────────────────────────────────────────────────────────────────
 
-  async function buildSet(update: AnyRecord): Promise<AnyRecord> {
+  // Drops undeclared fields from an update, at the top level and inside operators —
+  // including dotted paths the nested schema doesn't have (mongoose's strict mode).
+  const strictUpdate = (update: AnyRecord): AnyRecord => {
+    const declared = (path: string) =>
+      columns.has(path.split('.')[0]!) &&
+      (!path.includes('.') || nodeAt(tree, path.split('.')) !== undefined);
+    const out: AnyRecord = {};
+    for (const [k, v] of Object.entries(update)) {
+      if (k.startsWith('$') && v !== null && typeof v === 'object') {
+        out[k] = Object.fromEntries(Object.entries(v as AnyRecord).filter(([p]) => declared(p)));
+      } else if (k.startsWith('$') || declared(k)) out[k] = v;
+    }
+    return out;
+  };
+
+  async function buildSet(input: AnyRecord): Promise<AnyRecord> {
     const { t, sql } = await compile();
+    const update = strictUpdate(input);
     const ops = update as Record<string, AnyRecord | undefined>;
     for (const op of Object.keys(update).filter((k) => k.startsWith('$'))) {
       if (!['$set', '$unset', '$inc', '$push', '$pull'].includes(op)) {
@@ -489,6 +562,11 @@ export function pgModel<T extends object>(
       const e =
         (err as { cause?: { code?: string; detail?: string; column?: string } }).cause ??
         (err as { code?: string; detail?: string });
+      if (e?.code === '42P01') {
+        throw new Error(
+          `[EFC] ${name}: table "${table}" does not exist — autoSync is off, so create it with a migration (Model.sync() / efc db sync)`,
+        );
+      }
       if (e?.code === '23505') {
         const field = /\(([^)]+)\)=/.exec(e.detail ?? '')?.[1] ?? 'field';
         throw new HttpError(409, `${name} with this ${field.replace(/"/g, '')} already exists`);
@@ -502,6 +580,228 @@ export function pgModel<T extends object>(
       throw err;
     }
   };
+
+  // ── schema reconciliation ────────────────────────────────────────────────────
+  // Brings the table in line with the model the way MongoDB "just works" when a schema
+  // changes: create what's missing, convert changed column types, relax constraints the
+  // model no longer asks for, rebuild enum checks, drop indexes EFC created that the
+  // model no longer declares. Never drops a column or a row. Validation (required,
+  // enum, ...) stays in the model, as on MongoDB — the database only keeps types,
+  // uniqueness and enum checks, so editing a model can't strand existing rows.
+
+  const FORMATTED: Record<ColumnKind, string> = {
+    text: 'text',
+    double: 'double precision',
+    bigint: 'bigint',
+    boolean: 'boolean',
+    timestamptz: 'timestamp with time zone',
+    uuid: 'uuid',
+    jsonb: 'jsonb',
+  };
+
+  // USING expression converting an existing column to the model's type.
+  const castExpr = (col: string, from: string, to: ColumnKind): string => {
+    const c = q(col);
+    if (to === 'jsonb') return `to_jsonb(${c})`;
+    const scalar = from === 'jsonb' ? `(${c} #>> '{}')` : c;
+    if (to === 'bigint') return `round(${scalar}::numeric)::bigint`;
+    return `${scalar}::${SQL_TYPE[to]}`;
+  };
+
+  const enumCheck = (key: string) => `${table}_${key}_enum`;
+  const managedIndexName = /_(key|idx)$/;
+
+  function desiredIndexes(): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const [key, node] of Object.entries(tree)) {
+      if (node.def.unique) {
+        out.set(
+          `${table}_${key}_key`,
+          `CREATE UNIQUE INDEX ${q(`${table}_${key}_key`)} ON ${q(table)} (${q(key)})`,
+        );
+      } else if (node.def.index) {
+        out.set(
+          `${table}_${key}_idx`,
+          `CREATE INDEX ${q(`${table}_${key}_idx`)} ON ${q(table)} (${q(key)})`,
+        );
+      }
+    }
+    for (const idx of options.indexes ?? []) {
+      const fields = Object.entries(idx.fields);
+      if (idx.expireAfterSeconds !== undefined) {
+        throw new Error(`[EFC] ${name}: TTL indexes (expireAfterSeconds) are MongoDB-only`);
+      }
+      const idxName =
+        idx.name ?? `${table}_${fields.map(([f]) => f).join('_')}_${idx.unique ? 'key' : 'idx'}`;
+      if (fields.some(([, d]) => d === 'text')) {
+        const doc = fields.map(([f]) => `coalesce(${q(f)}::text, '')`).join(` || ' ' || `);
+        out.set(
+          idxName,
+          `CREATE INDEX ${q(idxName)} ON ${q(table)} USING gin (to_tsvector('simple', ${doc}))`,
+        );
+      } else {
+        const cols = fields.map(([f, d]) => `${q(f)} ${d === -1 ? 'DESC' : 'ASC'}`).join(', ');
+        out.set(
+          idxName,
+          `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idxName)} ON ${q(table)} (${cols})`,
+        );
+      }
+    }
+    return out;
+  }
+
+  async function reconcile(dryRun: boolean): Promise<string[]> {
+    const pool = getPool();
+    const conn = await pool.connect();
+    try {
+      await conn.query('BEGIN');
+      // Serialises concurrent syncs of this table (every cluster worker runs one on boot).
+      await conn.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`efc_sync:${table}`]);
+
+      const existing = new Map<string, { type: string; nullable: boolean }>(
+        (
+          await conn.query<{ name: string; type: string; nullable: boolean }>(
+            `SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type, NOT a.attnotnull AS nullable
+             FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relname = $1 AND n.nspname = current_schema() AND a.attnum > 0 AND NOT a.attisdropped`,
+            [table],
+          )
+        ).rows.map((r) => [r.name, { type: r.type, nullable: r.nullable }]),
+      );
+      const checks = new Map<string, string>(
+        (
+          await conn.query<{ name: string; def: string }>(
+            `SELECT con.conname AS name, pg_get_constraintdef(con.oid) AS def
+             FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relname = $1 AND n.nspname = current_schema() AND con.contype = 'c'`,
+            [table],
+          )
+        ).rows.map((r) => [r.name, r.def]),
+      );
+      const indexes = new Set(
+        (
+          await conn.query<{ name: string }>(
+            `SELECT indexname AS name FROM pg_indexes WHERE tablename = $1 AND schemaname = current_schema()`,
+            [table],
+          )
+        ).rows.map((r) => r.name),
+      );
+
+      const plan: string[] = [];
+      for (const { key } of sequences) {
+        const seq = sequenceName(key);
+        const found = await conn.query(
+          'SELECT 1 FROM pg_class WHERE relkind = $1 AND relname = $2',
+          ['S', seq],
+        );
+        if (found.rowCount === 0) plan.push(`CREATE SEQUENCE IF NOT EXISTS ${q(seq)}`);
+      }
+
+      const columnSql = (key: string, kind: ColumnKind) => {
+        const seq = sequenceKeys.get(key);
+        return `${q(key)} ${SQL_TYPE[kind]}${seq ? ` DEFAULT nextval('${sequenceName(seq)}')` : ''}`;
+      };
+
+      if (existing.size === 0) {
+        const defs = [...columns].map(([key, kind]) =>
+          key === 'id'
+            ? `${q('id')} uuid PRIMARY KEY DEFAULT gen_random_uuid()`
+            : columnSql(key, kind),
+        );
+        plan.push(`CREATE TABLE IF NOT EXISTS ${q(table)} (\n  ${defs.join(',\n  ')}\n)`);
+      } else {
+        for (const [key, kind] of columns) {
+          const col = existing.get(key);
+          if (!col) {
+            plan.push(`ALTER TABLE ${q(table)} ADD COLUMN ${columnSql(key, kind)}`);
+          } else if (key !== 'id' && col.type !== FORMATTED[kind]) {
+            plan.push(
+              `ALTER TABLE ${q(table)} ALTER COLUMN ${q(key)} TYPE ${SQL_TYPE[kind]} USING ${castExpr(key, col.type, kind)}`,
+            );
+          }
+        }
+        // NOT NULL is the model's job (validation), as on MongoDB: relax any left over from
+        // an older model or an earlier EFC version, so dropping/loosening a field never
+        // breaks inserts. Columns the model no longer declares are kept, just optional.
+        for (const [key, col] of existing) {
+          if (key !== 'id' && !col.nullable) {
+            plan.push(`ALTER TABLE ${q(table)} ALTER COLUMN ${q(key)} DROP NOT NULL`);
+          }
+        }
+      }
+
+      // Enum checks: one managed constraint per enum field, rebuilt when the values change.
+      // NOT VALID: like MongoDB, existing rows aren't re-validated against a new enum.
+      const wantedChecks = new Map<string, string>();
+      for (const [key, node] of Object.entries(tree)) {
+        if (node.kind === 'scalar' && node.def.enum) {
+          wantedChecks.set(
+            enumCheck(key),
+            `CHECK (${q(key)} IN (${node.def.enum.map(literal).join(', ')}))`,
+          );
+        }
+      }
+      for (const [con, def] of checks) {
+        const legacy = con.endsWith('_check') && con.startsWith(`${table}_`); // inline CHECKs from older EFC
+        if (
+          (con.endsWith('_enum') && con.startsWith(`${table}_`) && !wantedChecks.has(con)) ||
+          legacy
+        ) {
+          plan.push(`ALTER TABLE ${q(table)} DROP CONSTRAINT ${q(con)}`);
+          checks.delete(con);
+        } else if (wantedChecks.has(con)) {
+          const want = wantedChecks.get(con)!;
+          // pg_get_constraintdef normalises the text; compare the value lists only.
+          const values = (d: string) =>
+            [...d.matchAll(/'((?:[^']|'')*)'|(-?\d+(?:\.\d+)?)/g)]
+              .map((m) => m[1] ?? m[2])
+              .sort()
+              .join('|');
+          if (values(def) !== values(want)) {
+            plan.push(`ALTER TABLE ${q(table)} DROP CONSTRAINT ${q(con)}`);
+            checks.delete(con);
+          }
+        }
+      }
+      for (const [con, def] of wantedChecks) {
+        if (!checks.has(con))
+          plan.push(`ALTER TABLE ${q(table)} ADD CONSTRAINT ${q(con)} ${def} NOT VALID`);
+      }
+
+      // Indexes: create declared ones, drop EFC-named ones the model no longer declares.
+      const wantedIndexes = desiredIndexes();
+      for (const idx of indexes) {
+        if (
+          idx !== `${table}_pkey` &&
+          idx.startsWith(`${table}_`) &&
+          managedIndexName.test(idx) &&
+          !wantedIndexes.has(idx)
+        ) {
+          plan.push(`DROP INDEX ${q(idx)}`);
+        }
+      }
+      for (const [idx, create] of wantedIndexes) if (!indexes.has(idx)) plan.push(create);
+
+      if (!dryRun) {
+        for (const stmt of plan) {
+          try {
+            await conn.query(stmt);
+          } catch (err) {
+            throw new Error(
+              `[EFC] ${name}: syncing table "${table}" failed on: ${stmt}\n  ${(err as Error).message}`,
+            );
+          }
+        }
+      }
+      await conn.query(dryRun ? 'ROLLBACK' : 'COMMIT');
+      return plan;
+    } catch (err) {
+      await conn.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   type Rec = T & { id: string };
@@ -524,7 +824,7 @@ export function pgModel<T extends object>(
 
     create: (data) =>
       guard(async () => {
-        const { t } = await compile();
+        const { t } = await ready();
         const row = await prepareInsert(data as AnyRecord);
         const [inserted] = await client().insert(t).values(row).returning();
         return fromRow(inserted) as Rec;
@@ -533,7 +833,7 @@ export function pgModel<T extends object>(
     createMany: (data) =>
       guard(async () => {
         if (data.length === 0) return [];
-        const { t } = await compile();
+        const { t } = await ready();
         const rows = await Promise.all(data.map((d) => prepareInsert(d as AnyRecord)));
         return ((await client().insert(t).values(rows).returning()) as AnyRecord[]).map(
           fromRow,
@@ -543,7 +843,7 @@ export function pgModel<T extends object>(
     update: (id, data) =>
       guard(async () => {
         if (!UUID_RE.test(id)) return null;
-        const { t, sql } = await compile();
+        const { t, sql } = await ready();
         const set = await buildSet(data as AnyRecord);
         const [row] = await client()
           .update(t)
@@ -555,7 +855,7 @@ export function pgModel<T extends object>(
 
     updateMany: (filter, data) =>
       guard(async () => {
-        const { t, sql } = await compile();
+        const { t, sql } = await ready();
         const set = await buildSet(data as AnyRecord);
         let query = client().update(t).set(set);
         const w = where(sql, t, filter as AnyRecord);
@@ -566,7 +866,7 @@ export function pgModel<T extends object>(
     delete: (id) =>
       guard(async () => {
         if (!UUID_RE.test(id)) return;
-        const { t, sql } = await compile();
+        const { t, sql } = await ready();
         await client()
           .delete(t)
           .where(sql`${t.id} = ${id}`);
@@ -574,7 +874,7 @@ export function pgModel<T extends object>(
 
     deleteMany: (filter) =>
       guard(async () => {
-        const { t, sql } = await compile();
+        const { t, sql } = await ready();
         let query = client().delete(t);
         const w = where(sql, t, filter as AnyRecord);
         if (w) query = query.where(w);
@@ -583,7 +883,7 @@ export function pgModel<T extends object>(
 
     count: (filter) =>
       guard(async () => {
-        const { t, sql } = await compile();
+        const { t, sql } = await ready();
         let query = client()
           .select({ n: sql`count(*)::int` })
           .from(t);
@@ -603,65 +903,7 @@ export function pgModel<T extends object>(
 
     raw: async () => (await compile()).t,
 
-    async sync() {
-      const statements: string[] = [];
-      for (const { key } of sequences)
-        statements.push(`CREATE SEQUENCE IF NOT EXISTS ${q(sequenceName(key))}`);
-
-      const defs: string[] = [];
-      for (const [key, kind] of columns) {
-        const node = tree[key];
-        let def = `${q(key)} ${SQL_TYPE[kind]}`;
-        if (key === 'id') def += ' PRIMARY KEY DEFAULT gen_random_uuid()';
-        if (node?.def.sequence)
-          def += ` DEFAULT nextval('${sequenceName(sequenceKeys.get(key)!)}')`;
-        if (node?.def.required && node.kind !== 'object' && !node.def.sequence) def += ' NOT NULL';
-        if (node?.def.enum && node.kind === 'scalar')
-          def += ` CHECK (${q(key)} IN (${node.def.enum.map(literal).join(', ')}))`;
-        defs.push(def);
-      }
-      statements.push(`CREATE TABLE IF NOT EXISTS ${q(table)} (\n  ${defs.join(',\n  ')}\n)`);
-      // Columns added to the model after the table exists: added nullable, never altered.
-      for (const [key, kind] of columns) {
-        if (key === 'id') continue;
-        const seq = sequenceKeys.get(key);
-        statements.push(
-          `ALTER TABLE ${q(table)} ADD COLUMN IF NOT EXISTS ${q(key)} ${SQL_TYPE[kind]}${seq ? ` DEFAULT nextval('${sequenceName(seq)}')` : ''}`,
-        );
-      }
-      for (const [key, node] of Object.entries(tree)) {
-        if (node.def.unique)
-          statements.push(
-            `CREATE UNIQUE INDEX IF NOT EXISTS ${q(`${table}_${key}_key`)} ON ${q(table)} (${q(key)})`,
-          );
-        else if (node.def.index)
-          statements.push(
-            `CREATE INDEX IF NOT EXISTS ${q(`${table}_${key}_idx`)} ON ${q(table)} (${q(key)})`,
-          );
-      }
-      for (const idx of options.indexes ?? []) {
-        const fields = Object.entries(idx.fields);
-        const idxName =
-          idx.name ?? `${table}_${fields.map(([f]) => f).join('_')}_${idx.unique ? 'key' : 'idx'}`;
-        if (idx.expireAfterSeconds !== undefined) {
-          throw new Error(`[EFC] ${name}: TTL indexes (expireAfterSeconds) are MongoDB-only`);
-        }
-        if (fields.some(([, d]) => d === 'text')) {
-          const doc = fields.map(([f]) => `coalesce(${q(f)}::text, '')`).join(` || ' ' || `);
-          statements.push(
-            `CREATE INDEX IF NOT EXISTS ${q(idxName)} ON ${q(table)} USING gin (to_tsvector('simple', ${doc}))`,
-          );
-        } else {
-          const cols = fields.map(([f, d]) => `${q(f)} ${d === -1 ? 'DESC' : 'ASC'}`).join(', ');
-          statements.push(
-            `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX IF NOT EXISTS ${q(idxName)} ON ${q(table)} (${cols})`,
-          );
-        }
-      }
-
-      const { sql } = await compile();
-      for (const stmt of statements) await client().execute(sql.raw(stmt));
-    },
+    sync: (opts?: { dryRun?: boolean }) => reconcile(opts?.dryRun ?? false),
 
     async drop() {
       const { sql } = await compile();

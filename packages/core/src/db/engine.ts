@@ -14,6 +14,17 @@ export function getDbEngine(): DatabaseEngine {
   return engine ?? 'mongodb';
 }
 
+// Whether models reconcile their table/collection on first use (EFCConfig.autoSync).
+let autoSync = true;
+
+export function setAutoSync(value: boolean): void {
+  autoSync = value;
+}
+
+export function isAutoSync(): boolean {
+  return autoSync;
+}
+
 // Every defined model by name, so `populate` can resolve a `ref` on either engine
 // and `efc db` commands can sync everything that was imported.
 const registry = new Map<string, ModelCRUD<object>>();

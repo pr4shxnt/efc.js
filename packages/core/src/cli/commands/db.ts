@@ -69,6 +69,16 @@ export function dbCommand(): Command {
       run('rollback', { ...opts, steps });
     });
 
+  common(
+    cmd
+      .command('sync')
+      .description('Bring tables/collections and indexes in line with the models in src/model(s)'),
+  )
+    .option('--dry-run', 'print the changes (SQL on PostgreSQL) without applying them')
+    .action((opts: { databaseUrl?: string; dist?: boolean; dryRun?: boolean }) =>
+      run('sync', opts),
+    );
+
   common(cmd.command('status').description('List applied and pending migrations')).action(
     (opts: { databaseUrl?: string; dist?: boolean }) => run('status', opts),
   );

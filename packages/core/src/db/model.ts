@@ -36,7 +36,7 @@ export function defineModel<T extends object>(
     count: (filter) => impl().count(filter),
     aggregate: (pipeline) => impl().aggregate(pipeline),
     raw: () => impl().raw(),
-    sync: () => impl().sync(),
+    sync: (opts) => impl().sync(opts),
     drop: () => impl().drop(),
   };
   registerModel(model as unknown as ModelCRUD<object>);

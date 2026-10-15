@@ -218,7 +218,7 @@ await User.count(filter);
 await transaction(async () => { /* model calls here share one transaction */ });
 ```
 
-The engine follows `DATABASE_URL` (`mongodb://` → mongoose, `postgres://` → Drizzle; install `mongoose` or `pg drizzle-orm`). Tables and indexes come from `Model.sync()` in a migration — `efc db migrate`. MongoDB-only extras: `aggregate()`, TTL indexes. `Model.raw()` returns the native mongoose model / Drizzle table.
+The engine follows `DATABASE_URL` (`mongodb://` → mongoose, `postgres://` → Drizzle; install `mongoose` or `pg drizzle-orm`). Tables and indexes are created and kept in step with the models automatically on first use (`autoSync`); `efc db sync --dry-run` shows pending changes. MongoDB-only extras: `aggregate()`, TTL indexes. `Model.raw()` returns the native mongoose model / Drizzle table.
 
 ---
 
