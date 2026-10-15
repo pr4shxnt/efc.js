@@ -35,6 +35,7 @@ uplinks: { npmjs: { url: https://registry.npmjs.org/ } }
 packages:
   'express-file-cluster': { access: \$all, publish: \$authenticated }
   'create-efc-app': { access: \$all, publish: \$authenticated }
+  'express-file-cluster-mcp': { access: \$all, publish: \$authenticated }
   '**': { access: \$all, publish: \$authenticated, proxy: npmjs }
 listen: 127.0.0.1:4873
 log: { type: file, path: $S/verdaccio.log, level: warn }
@@ -53,7 +54,7 @@ unset TOKEN
 
 echo "== build + publish"
 (cd "$ROOT" && npm run build > "$S/build.log" 2>&1)
-for pkg in core create-efc-app; do
+for pkg in core create-efc-app mcp; do
   if ! npm_config_userconfig="$S/npmrc" npm publish "$ROOT/packages/$pkg" --registry "$REG" > "$S/publish-$pkg.log" 2>&1; then
     tail -20 "$S/publish-$pkg.log"; exit 1
   fi
@@ -80,6 +81,17 @@ for spec in "mongo-app ts mongodb bullmq" "pg-app ts postgresql pg-boss" "js-app
   echo "ok   npx create-efc-app@$CEA_VERSION"
   bash "$HERE/journey.sh" "$S" "$S/apps/$1" $url
 done
+# The MCP server, the way an agent's client starts it: `npx -y express-file-cluster-mcp`.
+echo; echo "################ express-file-cluster-mcp"
+MCP_VERSION=$(node -p "require('$ROOT/packages/mcp/package.json').version")
+mkdir -p "$S/mcp-client"
+cp "$HERE/mcp-check.mjs" "$S/mcp-client/"
+export npm_config_userconfig="$S/npmrc" npm_config_cache="$S/cache" npm_config_prefix="$S/global"
+if ! (cd "$S/mcp-client" && npm init -y > /dev/null && npm install --no-audit --no-fund @modelcontextprotocol/sdk > "$S/mcp-install.log" 2>&1 &&
+  node mcp-check.mjs "express-file-cluster-mcp@$MCP_VERSION" "$(node -p "require('$ROOT/packages/core/package.json').version")"); then
+  echo "FAIL npx express-file-cluster-mcp"; exit 1
+fi
+
 kill -- "-$VERDACCIO" 2>/dev/null || true
 rm -rf "$S"
 echo; echo "Release rehearsal passed."

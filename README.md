@@ -90,6 +90,14 @@ npm install express-file-cluster
 
 > **Requires:** Node.js ≥ 20 · TypeScript 5.x (optional but recommended)
 
+**Using an AI coding agent?** The docs ship inside the package (`node_modules/express-file-cluster/dist/docs/`), scaffolded apps include an `AGENTS.md` pointing there, and an MCP server serves the same docs with search and scaffolding tools:
+
+```bash
+claude mcp add efc -- npx -y express-file-cluster-mcp
+```
+
+See [AI Coding Agents](docs/guides/ai-agents.md).
+
 ---
 
 ## Project Structure

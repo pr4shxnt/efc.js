@@ -26,6 +26,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 ```
 packages/core/src/       ← framework source (express-file-cluster)
 packages/create-efc-app/ ← npx create-efc-app scaffolder
+packages/mcp/            ← express-file-cluster-mcp (MCP server serving the docs)
 docs/                    ← documentation
 client/                  ← marketing site (static)
 Skills/efc/              ← dense reference cards (/efc skill)
@@ -137,6 +138,7 @@ Do not suggest or generate code for these features.
 - `efc.config.ts` is informational; `src/index.ts` is the actual runtime entrypoint
 - `efc build prod` transpiles `src/**` unbundled → `dist/src/**` (entry `dist/src/index.js`); routes/tasks must exist as files in `dist/` because they're discovered by filesystem scan
 - New runtime packages imported by core must be `dependencies` or (optional) `peerDependencies` — tsup bundles devDependency-only imports into `dist`, which breaks CJS packages at runtime
+- `npm run build` bundles `docs/` + `Skills/efc/` into `dist/docs` of `express-file-cluster` and `express-file-cluster-mcp` (`scripts/bundle-docs.mjs`) — docs changes ship with the next release; scaffolded apps get an `AGENTS.md` pointing at them. `AGENTS.md` at the repo root is the cross-agent version of these rules
 - Integration tests that need a database self-skip when it's unreachable; CI provides MongoDB (+ replica set), Redis and PostgreSQL. Locally: Mongo `27017` (+ replset `27018`), Redis `6379`, Postgres via `EFC_TEST_PG_URL`
 
 ---
