@@ -1,82 +1,160 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type {
   DefaultOperator,
-  FieldDefinition,
   ModelSchema,
   ModelOptions,
-  PrimitiveFieldType,
-  SchemaField,
+  TableFieldDefinition,
+  TableSchema,
+  TableSchemaField,
 } from '../types.js';
 import { getCurrentUser } from '../context.js';
 import { HttpError } from '../errors.js';
 
 // ── Normalised schema tree ───────────────────────────────────────────────────
 // The three accepted field syntaxes (FieldDefinition, nested-schema shorthand,
-// [schema] tuple) collapse into one tree that both engine adapters walk.
+// [schema] tuple) collapse into one tree that the engine adapters walk. The tree
+// covers defineTable's SQL types too; defineModel schemas just never contain them.
 
-export type ScalarType = Exclude<PrimitiveFieldType, 'object'>;
+export type ScalarType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'objectId'
+  | 'integer'
+  | 'bigint'
+  | 'decimal'
+  | 'uuid';
+
+/** Every field definition the tree holds (a superset of the portable `FieldDefinition`). */
+export type AnyFieldDefinition = TableFieldDefinition;
 
 export type FieldNode =
-  | { kind: 'scalar'; type: ScalarType; def: FieldDefinition }
-  | { kind: 'json'; def: FieldDefinition } // untyped object / untyped array
-  | { kind: 'object'; fields: SchemaTree; def: FieldDefinition }
-  | { kind: 'array'; item: FieldNode; def: FieldDefinition };
+  | { kind: 'scalar'; type: ScalarType; def: AnyFieldDefinition }
+  | { kind: 'json'; def: AnyFieldDefinition } // untyped object / untyped array / json
+  | { kind: 'object'; fields: SchemaTree; def: AnyFieldDefinition }
+  | { kind: 'array'; item: FieldNode; def: AnyFieldDefinition };
 
 export type SchemaTree = Record<string, FieldNode>;
 
-const FIELD_TYPES = new Set(['string', 'number', 'boolean', 'date', 'object', 'objectId', 'array']);
+/** Which model API a schema belongs to — it decides the field types allowed. */
+export type SchemaMode = 'model' | 'table';
 
-export function isFieldDefinition(value: unknown): value is FieldDefinition {
-  return (
-    value != null &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    typeof (value as { type?: unknown }).type === 'string' &&
-    FIELD_TYPES.has((value as { type: string }).type)
-  );
+const MODEL_TYPES = new Set(['string', 'number', 'boolean', 'date', 'object', 'objectId', 'array']);
+const TABLE_ONLY_TYPES = new Set(['integer', 'bigint', 'decimal', 'uuid', 'json']);
+const TABLE_ONLY_OPTIONS = ['precision', 'scale', 'nativeEnum', 'column'] as const;
+
+export function isFieldDefinition(value: unknown): value is AnyFieldDefinition {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const type = (value as { type?: unknown }).type;
+  return typeof type === 'string' && (MODEL_TYPES.has(type) || TABLE_ONLY_TYPES.has(type));
 }
 
-function itemNode(of: FieldDefinition['of'], parent: FieldDefinition): FieldNode {
-  if (of === undefined) return { kind: 'json', def: {} as FieldDefinition };
-  if (typeof of === 'string') {
-    if (of === 'object') return { kind: 'json', def: {} as FieldDefinition };
-    const def: FieldDefinition = { type: of, ...(parent.ref !== undefined && { ref: parent.ref }) };
-    return { kind: 'scalar', type: of, def };
+const untyped = (): FieldNode => ({ kind: 'json', def: { type: 'object' } });
+
+class SchemaBuilder {
+  constructor(
+    private readonly model: string,
+    private readonly mode: SchemaMode,
+  ) {}
+
+  private fail(path: string, message: string): never {
+    throw new Error(`[EFC] ${this.model}.${path}: ${message}`);
   }
-  return { kind: 'object', fields: normalizeSchema(of), def: { type: 'object' } };
+
+  private checkType(type: string, path: string) {
+    if (this.mode === 'model' && TABLE_ONLY_TYPES.has(type)) {
+      this.fail(path, `type '${type}' is PostgreSQL-only — use defineTable, or a portable type`);
+    }
+  }
+
+  private checkDefinition(def: AnyFieldDefinition, path: string, topLevel: boolean) {
+    this.checkType(def.type, path);
+    if (this.mode === 'model') {
+      for (const opt of TABLE_ONLY_OPTIONS) {
+        if (def[opt] !== undefined) this.fail(path, `'${opt}' is a defineTable option`);
+      }
+      return;
+    }
+    if ((def.precision !== undefined || def.scale !== undefined) && def.type !== 'decimal') {
+      this.fail(path, `'precision' / 'scale' only apply to decimal fields`);
+    }
+    if (def.scale !== undefined && def.precision === undefined) {
+      this.fail(path, `'scale' needs 'precision'`);
+    }
+    if (def.nativeEnum && !(def.enum && def.enum.every((v) => typeof v === 'string'))) {
+      this.fail(path, `'nativeEnum' needs a string 'enum'`);
+    }
+    if (def.column !== undefined && !topLevel) {
+      this.fail(path, `'column' only applies to top-level fields`);
+    }
+  }
+
+  private item(of: AnyFieldDefinition['of'], parent: AnyFieldDefinition, path: string): FieldNode {
+    if (of === undefined) return untyped();
+    if (typeof of === 'string') {
+      this.checkType(of, path);
+      if (of === 'object' || of === 'json') return untyped();
+      const def: AnyFieldDefinition = {
+        type: of,
+        ...(parent.ref !== undefined && { ref: parent.ref }),
+      };
+      return { kind: 'scalar', type: of, def };
+    }
+    return { kind: 'object', fields: this.tree(of, `${path}.$`), def: { type: 'object' } };
+  }
+
+  field(field: TableSchemaField, path: string, topLevel: boolean): FieldNode {
+    if (Array.isArray(field)) {
+      const inner = (field as readonly TableSchema[])[0];
+      return {
+        kind: 'array',
+        item: inner
+          ? { kind: 'object', fields: this.tree(inner, `${path}.$`), def: { type: 'object' } }
+          : untyped(),
+        def: { type: 'array' },
+      };
+    }
+    if (!isFieldDefinition(field)) {
+      const type = (field as { type?: unknown }).type;
+      if (typeof type === 'string') this.fail(path, `unknown field type '${type}'`);
+      return {
+        kind: 'object',
+        fields: this.tree(field as TableSchema, path),
+        def: { type: 'object' },
+      };
+    }
+    const def = field;
+    this.checkDefinition(def, path, topLevel);
+    if (def.type === 'array') return { kind: 'array', item: this.item(def.of, def, path), def };
+    if (def.type === 'object') {
+      return def.fields
+        ? { kind: 'object', fields: this.tree(def.fields, path), def }
+        : { kind: 'json', def };
+    }
+    if (def.type === 'json') return { kind: 'json', def };
+    return { kind: 'scalar', type: def.type, def };
+  }
+
+  tree(schema: TableSchema, prefix = ''): SchemaTree {
+    const out: SchemaTree = {};
+    for (const [key, field] of Object.entries(schema)) {
+      out[key] = this.field(field, prefix ? `${prefix}.${key}` : key, prefix === '');
+    }
+    return out;
+  }
 }
 
-const isTuple = (field: SchemaField): field is [ModelSchema] | readonly [ModelSchema] =>
-  Array.isArray(field);
-
-function normalizeField(field: SchemaField): FieldNode {
-  if (isTuple(field)) {
-    const inner = field[0];
-    return {
-      kind: 'array',
-      item: inner
-        ? { kind: 'object', fields: normalizeSchema(inner), def: { type: 'object' } }
-        : { kind: 'json', def: {} as FieldDefinition },
-      def: { type: 'array' },
-    };
-  }
-  if (!isFieldDefinition(field)) {
-    return { kind: 'object', fields: normalizeSchema(field), def: { type: 'object' } };
-  }
-  const def = field;
-  if (def.type === 'array') return { kind: 'array', item: itemNode(def.of, def), def };
-  if (def.type === 'object') {
-    return def.fields
-      ? { kind: 'object', fields: normalizeSchema(def.fields), def }
-      : { kind: 'json', def };
-  }
-  return { kind: 'scalar', type: def.type, def };
-}
-
-export function normalizeSchema(schema: ModelSchema): SchemaTree {
-  const out: SchemaTree = {};
-  for (const [key, field] of Object.entries(schema)) out[key] = normalizeField(field);
-  return out;
+/**
+ * Normalises a schema. `model` mode (defineModel) rejects the PostgreSQL-only types and
+ * options with an `[EFC]` error naming the field; `table` mode (defineTable) accepts them.
+ */
+export function normalizeSchema(
+  schema: ModelSchema | TableSchema,
+  mode: SchemaMode = 'model',
+  model = 'Model',
+): SchemaTree {
+  return new SchemaBuilder(model, mode).tree(schema as TableSchema);
 }
 
 export function timestampFields(options: ModelOptions): { createdAt?: string; updatedAt?: string } {
@@ -181,12 +259,53 @@ export class ModelValidationError extends HttpError {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function typeError(type: ScalarType, value: unknown): string | null {
+const INT4 = 2 ** 31;
+const INT8_MIN = -(2n ** 63n);
+const INT8_MAX = 2n ** 63n - 1n;
+const DECIMAL_RE = /^[+-]?(\d+(\.\d*)?|\.\d+)$/;
+
+/** Digits before / after the point of a decimal string or number. */
+function decimalDigits(value: string | number): { int: number; frac: number } {
+  const str = typeof value === 'number' ? String(value) : value;
+  const [i = '', f = ''] = str.replace(/^[+-]/, '').split('.');
+  return { int: i.replace(/^0+/, '').length, frac: f.replace(/0+$/, '').length };
+}
+
+function typeError(type: ScalarType, def: AnyFieldDefinition, value: unknown): string | null {
   switch (type) {
     case 'string':
       return typeof value === 'string' ? null : 'must be a string';
     case 'number':
       return typeof value === 'number' && Number.isFinite(value) ? null : 'must be a number';
+    case 'integer':
+      return typeof value === 'number' && Number.isInteger(value) && value >= -INT4 && value < INT4
+        ? null
+        : 'must be a 32-bit integer';
+    case 'bigint': {
+      const big =
+        typeof value === 'bigint'
+          ? value
+          : typeof value === 'number' && Number.isSafeInteger(value)
+            ? BigInt(value)
+            : undefined;
+      return big !== undefined && big >= INT8_MIN && big <= INT8_MAX
+        ? null
+        : 'must be a 64-bit integer (bigint)';
+    }
+    case 'decimal': {
+      const ok =
+        (typeof value === 'number' && Number.isFinite(value)) ||
+        (typeof value === 'string' && DECIMAL_RE.test(value));
+      if (!ok) return 'must be a decimal number or numeric string';
+      if (def.precision !== undefined) {
+        const scale = def.scale ?? 0;
+        const { int, frac } = decimalDigits(value as string | number);
+        if (frac > scale) return `must have at most ${scale} decimal places`;
+        if (int > def.precision - scale)
+          return `must have at most ${def.precision - scale} digits before the decimal point`;
+      }
+      return null;
+    }
     case 'boolean':
       return typeof value === 'boolean' ? null : 'must be a boolean';
     case 'date':
@@ -195,11 +314,31 @@ function typeError(type: ScalarType, value: unknown): string | null {
         : 'must be a date';
     case 'objectId':
       return typeof value === 'string' && UUID_RE.test(value) ? null : 'must be a valid id';
+    case 'uuid':
+      return typeof value === 'string' && UUID_RE.test(value) ? null : 'must be a UUID';
   }
 }
 
+type Bound = number | bigint | string | Date;
+
+/** < 0 / 0 / > 0 comparing a (type-checked) value with a min/max bound. */
+function compareBound(def: AnyFieldDefinition, value: unknown, bound: Bound): number {
+  if (def.type === 'bigint') {
+    const a = BigInt(value as bigint | number);
+    const b = BigInt(bound instanceof Date ? bound.getTime() : bound);
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+  const num = (v: unknown) =>
+    v instanceof Date
+      ? v.getTime()
+      : def.type === 'date'
+        ? new Date(v as string | number).getTime()
+        : Number(v);
+  return num(value) - num(bound);
+}
+
 async function checkRules(
-  def: FieldDefinition,
+  def: AnyFieldDefinition,
   value: unknown,
   path: string,
   issues: FieldIssue[],
@@ -207,20 +346,19 @@ async function checkRules(
   if (def.enum && !def.enum.includes(value as string | number)) {
     issues.push({ path, message: `must be one of: ${def.enum.join(', ')}` });
   }
-  if (typeof value === 'number' || value instanceof Date || def.type === 'date') {
-    const n =
-      value instanceof Date
-        ? value.getTime()
-        : def.type === 'date'
-          ? new Date(value as string).getTime()
-          : (value as number);
-    const bound = (b: number | Date) => (b instanceof Date ? b.getTime() : b);
-    if (def.min !== undefined && n < bound(def.min))
+  const ordered =
+    typeof value === 'number' ||
+    typeof value === 'bigint' ||
+    value instanceof Date ||
+    def.type === 'date' ||
+    (def.type === 'decimal' && typeof value === 'string');
+  if (ordered) {
+    if (def.min !== undefined && compareBound(def, value, def.min) < 0)
       issues.push({ path, message: `must be >= ${String(def.min)}` });
-    if (def.max !== undefined && n > bound(def.max))
+    if (def.max !== undefined && compareBound(def, value, def.max) > 0)
       issues.push({ path, message: `must be <= ${String(def.max)}` });
   }
-  if (typeof value === 'string') {
+  if (typeof value === 'string' && def.type !== 'decimal') {
     if (def.minLength !== undefined && value.length < def.minLength)
       issues.push({ path, message: `must be at least ${def.minLength} characters` });
     if (def.maxLength !== undefined && value.length > def.maxLength)
@@ -250,7 +388,7 @@ async function validateNode(
   }
   switch (node.kind) {
     case 'scalar': {
-      const err = typeError(node.type, value);
+      const err = typeError(node.type, node.def, value);
       if (err) {
         issues.push({ path, message: err });
         return;

@@ -7,6 +7,25 @@ import cluster from 'node:cluster';
 import os from 'node:os';
 import path from 'node:path';
 import type { EFCConfig, MountedRoute } from './types.js';
+export type {
+  TableModel,
+  TableRecord,
+  TableCreateInput,
+  TableWhere,
+  TableWhereUnique,
+  TableUpdateData,
+  TableOrderBy,
+  TableSelect,
+  TableFindManyArgs,
+  TableAggregateArgs,
+  TableGroupByArgs,
+  TableAggregateResult,
+  ScalarFilter,
+  StringFilter,
+  ListFilter,
+  JsonFilter,
+  InferTableRecord,
+} from './table-types.js';
 import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
 import { runMaster, shutdownMaster } from './cluster/index.js';
@@ -93,6 +112,11 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   }
 
   const app = express();
+  // defineTable returns `bigint` for bigint columns and bigserial ids, which JSON.stringify
+  // rejects; send them as strings (exact — a JS number would lose precision past 2^53).
+  app.set('json replacer', (_key: string, value: unknown) =>
+    typeof value === 'bigint' ? value.toString() : value,
+  );
 
   // Wraps every request in its own AsyncLocalStorage context, first thing, so
   // requireAuth (below) and any downstream code — including a `$currentUser`
@@ -293,7 +317,7 @@ export { logger, getLogger } from './logger.js';
 export { cache } from './cache/index.js';
 export { cacheResponse } from './cache/response.js';
 export { compose } from './compose.js';
-export { db, setDbClient, getDbClient, defineModel } from './db/index.js';
+export { db, setDbClient, getDbClient, defineModel, defineTable } from './db/index.js';
 export { transaction } from './db/transaction.js';
 export { ModelValidationError } from './db/schema.js';
 export { scanDir } from './router/scan.js';
@@ -316,6 +340,10 @@ export type {
   DatabaseEngine,
   AuthStrategy,
   ModelSchema,
+  TableSchema,
+  TableSchemaField,
+  TableFieldDefinition,
+  TableOptions,
   MigrationContext,
   SchemaField,
   Filter,

@@ -278,6 +278,55 @@ export interface FieldDefinition {
  *   documents: `items: [{ sku: { type: 'string' } }]`
  */
 export type SchemaField = FieldDefinition | ModelSchema | [ModelSchema] | readonly [ModelSchema];
+
+// ── defineTable (PostgreSQL-native) schema ───────────────────────────────────
+
+/** Field types `defineTable` accepts: the portable ones plus SQL-native types. */
+export type TablePrimitiveFieldType =
+  | PrimitiveFieldType
+  /** `integer` (int4) — a JS `number`, whole and 32-bit. */
+  | 'integer'
+  /** `bigint` (int8) — a JS `bigint`. */
+  | 'bigint'
+  /** `numeric(precision, scale)` — exact; values are decimal `string`s. */
+  | 'decimal'
+  /** `uuid` — a `string`. */
+  | 'uuid'
+  /** `jsonb` — any JSON value, unvalidated. */
+  | 'json';
+
+export interface TableFieldDefinition extends Omit<
+  FieldDefinition,
+  'type' | 'of' | 'fields' | 'min' | 'max'
+> {
+  type: TablePrimitiveFieldType | 'array';
+  /** Inclusive bounds; `bigint`/`decimal` fields also take `bigint` / decimal strings. */
+  min?: number | bigint | string | Date;
+  max?: number | bigint | string | Date;
+  /** `decimal` only: total significant digits (`numeric(precision, scale)`). */
+  precision?: number;
+  /** `decimal` only: digits after the decimal point. */
+  scale?: number;
+  /** A string `enum` stored as a PostgreSQL `ENUM` type instead of a `CHECK` constraint. */
+  nativeEnum?: boolean;
+  /** The column name, when it differs from the field name (top-level fields only). */
+  column?: string;
+  /**
+   * Item type for `array` fields. A scalar type becomes a native PostgreSQL array
+   * (`text[]`, `integer[]`, …); a nested schema is stored as `jsonb`.
+   */
+  of?: TablePrimitiveFieldType | TableSchema;
+  fields?: TableSchema;
+}
+
+export type TableSchemaField =
+  | TableFieldDefinition
+  | TableSchema
+  | [TableSchema]
+  | readonly [TableSchema];
+export interface TableSchema {
+  [field: string]: TableSchemaField;
+}
 export interface ModelSchema {
   [field: string]: SchemaField;
 }
@@ -318,6 +367,21 @@ export interface ModelOptions {
   indexes?: IndexDefinition[];
   /** Collection (MongoDB) or table (PostgreSQL) name. Default: mongoose's pluralised lowercase name. */
   collection?: string;
+}
+
+/** `defineTable` options: everything in `ModelOptions`, plus PostgreSQL-native keys and naming. */
+export interface TableOptions extends ModelOptions {
+  /**
+   * Primary key: `'uuid'` (default, `gen_random_uuid()`), `'serial'` (an `integer` identity —
+   * ids are `number`s) or `'bigserial'` (a `bigint` identity — ids are `bigint`s).
+   */
+  id?: 'uuid' | 'serial' | 'bigserial';
+  /**
+   * `'snake_case'` maps field names to snake_case columns (`createdAt` → `created_at`) and
+   * the table name (`OrderItem` → `order_items`); records keep the field names. A field's
+   * `column` overrides it. Default: columns are named like the fields.
+   */
+  naming?: 'snake_case';
 }
 
 /** Comparison operators accepted in filters (the MongoDB query subset both engines support). */
@@ -365,7 +429,7 @@ export type ModelRecord<T> = T & { id: string };
 
 /** Fields of `T` that hold a single scalar value — the fields `distinct()` accepts. */
 export type ScalarKeys<T> = {
-  [K in keyof T]-?: NonNullable<T[K]> extends string | number | boolean | Date ? K : never;
+  [K in keyof T]-?: NonNullable<T[K]> extends string | number | bigint | boolean | Date ? K : never;
 }[keyof T] &
   string &
   keyof T;
@@ -432,28 +496,34 @@ export interface ModelCRUD<T extends object, TCreate = Partial<T>> {
 // `defineModel('User', { ... })` derives its record and create-input types from the
 // schema literal, so no interface has to be written (or kept in step) by hand.
 
-type Simplify<T> = { [K in keyof T]: T[K] } & {};
+export type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
-type PrimitiveValue<P> = P extends 'string'
-  ? string
-  : P extends 'number'
+type PrimitiveValue<P> = P extends 'string' | 'objectId' | 'uuid' | 'decimal'
+  ? string // decimal: exact, as a string
+  : P extends 'number' | 'integer'
     ? number
-    : P extends 'boolean'
-      ? boolean
-      : P extends 'date'
-        ? Date
-        : P extends 'objectId'
-          ? string
-          : unknown; // 'object' without `fields`: any JSON value
+    : P extends 'bigint'
+      ? bigint
+      : P extends 'boolean'
+        ? boolean
+        : P extends 'date'
+          ? Date
+          : unknown; // 'object' without `fields`, 'json': any JSON value
 
-/** What a date field accepts on writes: anything that parses as a date. */
-type InputValue<V> = V extends Date ? Date | string | number : V;
+/** What a field accepts on writes: dates parse from strings, numbers widen exact types. */
+type InputPrimitive<P> = P extends 'date'
+  ? Date | string | number
+  : P extends 'bigint'
+    ? bigint | number
+    : P extends 'decimal'
+      ? string | number
+      : PrimitiveValue<P>;
 
 /** `I` = input mode (create data) instead of record mode. */
 type InferDefinition<F, I extends boolean> = F extends { type: 'array' }
   ? F extends { of: infer O }
-    ? O extends PrimitiveFieldType
-      ? (I extends true ? InputValue<PrimitiveValue<O>> : PrimitiveValue<O>)[]
+    ? O extends TablePrimitiveFieldType
+      ? (I extends true ? InputPrimitive<O> : PrimitiveValue<O>)[]
       : InferObject<O, I>[]
     : unknown[]
   : F extends { type: 'object' }
@@ -464,13 +534,13 @@ type InferDefinition<F, I extends boolean> = F extends { type: 'array' }
       ? E
       : F extends { type: infer P }
         ? I extends true
-          ? InputValue<PrimitiveValue<P>>
+          ? InputPrimitive<P>
           : PrimitiveValue<P>
         : never;
 
 type InferField<F, I extends boolean> = F extends readonly [infer S]
   ? InferObject<S, I>[]
-  : F extends { type: PrimitiveFieldType | 'array' }
+  : F extends { type: TablePrimitiveFieldType | 'array' }
     ? InferDefinition<F, I>
     : InferObject<F, I>;
 
@@ -536,11 +606,18 @@ export type InferredModel<T extends object, S, O> = [T] extends [never]
  * The record type of a model, `id` included:
  * `type UserRecord = InferRecord<typeof User>`.
  */
-export type InferRecord<M> =
-  M extends ModelCRUD<infer T, unknown> ? Simplify<ModelRecord<T>> : never;
+export type InferRecord<M> = M extends { $types?: { record: infer R } }
+  ? R
+  : M extends ModelCRUD<infer T, unknown>
+    ? Simplify<ModelRecord<T>>
+    : never;
 
 /** The data a model's `create()` accepts: `type NewUser = InferCreate<typeof User>`. */
-export type InferCreate<M> = M extends { create(data: infer C): unknown } ? C : never;
+export type InferCreate<M> = M extends { $types?: { create: infer C } }
+  ? C
+  : M extends { create(data: infer C): unknown }
+    ? C
+    : never;
 
 /** Passed to migration `up`/`down` functions and seed functions. */
 export interface MigrationContext {

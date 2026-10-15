@@ -275,6 +275,27 @@ Task options:
 
 Backends: `tasks: { backend: 'bullmq', redisUrl }` or `tasks: { backend: 'pg-boss' }` (jobs in your PostgreSQL). `enqueue()` rejects after `tasks.enqueueTimeout` (default 5 s) instead of hanging when the backend is down. Dead letters: `efc tasks failed | retry | purge`.
 
+### PostgreSQL-native: `defineTable()`
+
+On PostgreSQL, `defineTable` gives you Prisma's query API and SQL types on the same foundation:
+
+```ts
+import { defineTable } from 'express-file-cluster';
+
+export const Order = defineTable('Order', {
+  number: { type: 'string', required: true, unique: true, maxLength: 20 },  // varchar(20)
+  total:  { type: 'decimal', precision: 10, scale: 2, required: true },     // '19.99', exact
+  qty:    { type: 'integer', required: true },
+  tags:   { type: 'array', of: 'string', default: [] },                      // text[]
+}, { id: 'serial' });
+
+await Order.findMany({ where: { total: { gte: '100' }, tags: { has: 'vip' } }, orderBy: { createdAt: 'desc' }, take: 20 });
+await Order.upsert({ where: { number }, create: { number, total: '0', qty: 1 }, update: { qty: { increment: 1 } } });
+await Order.groupBy({ by: ['qty'], _sum: { total: true } });
+```
+
+See [defineTable](https://github.com/siggold/express-file-cluster/blob/main/docs/api-reference/table.md).
+
 ---
 
 ## Authentication

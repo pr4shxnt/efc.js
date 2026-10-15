@@ -32,9 +32,27 @@ function compose(...handlers: RequestHandler[]): RequestHandler
 //   const User = defineModel('User', {...}); type User = InferRecord<typeof User>;
 // Explicit defineModel<T>(...) still works (v0.4 behaviour: create() takes Partial<T>).
 function defineModel(name: string, schema: ModelSchema, options?: ModelOptions): ModelCRUD<Record, CreateInput>
-type InferRecord<typeof Model>  // record incl. id + timestamps per options
+type InferRecord<typeof Model>  // record incl. id + timestamps per options (defineModel and defineTable)
 type InferCreate<typeof Model>  // create() input: required w/o default/sequence mandatory; dates accept string|number
 async function transaction<T>(fn: () => Promise<T>): Promise<T> // model calls inside join automatically
+// PostgreSQL-native (Prisma vocabulary + SQL types); MongoDB → [EFC] error at first use
+function defineTable(name: string, schema: TableSchema, options?: TableOptions): TableModel<S, O>
+//   types: + 'integer' (number) 'bigint' (bigint) 'decimal' {precision, scale} (string, exact) 'uuid' 'json'
+//          'string'+maxLength → varchar(n); { type:'array', of: scalar } → native array; enum + nativeEnum → PG ENUM
+//   options: id: 'uuid' | 'serial' (number ids) | 'bigserial' (bigint ids); naming: 'snake_case'; field `column`
+//   findMany({ where, orderBy, take (neg = backwards), skip, cursor (unique where, inclusive), distinct, select | omit })
+//   findFirst / findFirstOrThrow / findUnique({ where: unique }) / findUniqueOrThrow → 404 HttpError
+//   count({ where, select?: { _all, field } }) · aggregate({ _count, _sum, _avg, _min, _max, where, ...page })
+//   groupBy({ by, where, having: { f: { _sum: { gt } } }, orderBy: { _sum: { f: 'desc' } }, take, skip })
+//   create({ data }) · createMany({ data, skipDuplicates }) → { count } · createManyAndReturn
+//   update({ where: unique, data }) 404 if missing · updateMany → { count } · updateManyAndReturn
+//   upsert({ where: unique, create, update }) = one INSERT … ON CONFLICT · delete({ where: unique }) · deleteMany → { count }
+//   where: value | null | equals not in notIn lt lte gt gte · strings: contains startsWith endsWith mode:'insensitive'
+//          arrays: has hasEvery hasSome isEmpty · jsonb: { path: [...], equals | string_contains | array_contains | gt… }
+//          AND / OR / NOT · undefined ignored · undeclared fields match nothing
+//   data ops: { increment | decrement | multiply | divide } (numbers), { push } (arrays), { set }, null unsets
+//   unique where: id | unique field | all fields of a unique index. No relations/include yet (M3).
+
 class ModelValidationError extends HttpError { issues: { path: string; message: string }[] } // status 400
 
 // Native client from Pre-Flight: mongoose Connection (MongoDB) or pg Pool (PostgreSQL)

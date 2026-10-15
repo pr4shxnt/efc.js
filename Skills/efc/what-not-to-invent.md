@@ -35,9 +35,12 @@ defineRoute()
 defineMiddleware()
 defineModel()          // ← WAIT — this DOES exist, from main path
 createModel()          // ← does NOT exist (it's defineModel, not createModel)
-defineTable()          // ← NOT YET — planned (PostgreSQL-native API, prisma-parity-plan M2)
+defineTable()          // ← EXISTS (PostgreSQL-only, Prisma-style) — see api-surface.md
 defineCollection()     // ← NOT YET — planned (MongoDB-native API, prisma-parity-plan M5)
-Model.findMany() / findUnique() / groupBy()   // ← Prisma vocabulary; NOT on defineModel
+Model.findMany() / findUnique() / groupBy()   // ← only on defineTable, NOT on defineModel
+Table.find() / findById() / $gt / $inc        // ← defineModel vocabulary, NOT on defineTable
+Table.findMany({ include })                   // ← relations/include NOT YET (M3)
+defineModel(..., { type: 'integer' | 'bigint' | 'decimal' | 'uuid' | 'json' })  // ← defineTable-only types
 Model.updateOne(f, u, { upsert: true })       // ← no options arg; use Model.upsert(filter, create, update)
 getModel()             // ← does NOT exist as a public export
 useDatabase()

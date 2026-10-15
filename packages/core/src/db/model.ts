@@ -55,7 +55,7 @@ export function createModel<T extends object, C = Partial<T>>(
   options: ModelOptions,
   native?: NativeEngine,
 ): ModelCRUD<T, C> {
-  const tree = normalizeSchema(schema);
+  const tree = normalizeSchema(schema, 'model', name);
   let engineModel: EngineModel<T> | undefined;
   const impl = (): EngineModel<T> => {
     if (engineModel) return engineModel;
@@ -128,6 +128,11 @@ export function createModel<T extends object, C = Partial<T>>(
     sync: (opts) => call((m) => m.sync(opts)),
     drop: () => call((m) => m.drop()),
   };
-  registerModel(model as unknown as ModelCRUD<object>);
+  registerModel({
+    name,
+    sync: model.sync,
+    drop: model.drop,
+    findByIds: (ids) => model.find({ id: { $in: ids as string[] } } as never),
+  });
   return model;
 }

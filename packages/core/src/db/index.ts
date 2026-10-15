@@ -36,3 +36,4 @@ export const db: AnyClient = new Proxy({} as AnyClient, {
 export { connectMongo } from './mongo.js';
 export { connectPostgres } from './postgres.js';
 export { defineModel } from './model.js';
+export { defineTable } from './table-model.js';
