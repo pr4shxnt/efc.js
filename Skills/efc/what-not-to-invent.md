@@ -35,6 +35,13 @@ defineRoute()
 defineMiddleware()
 defineModel()          // ← WAIT — this DOES exist, from main path
 createModel()          // ← does NOT exist (it's defineModel, not createModel)
+defineTable()          // ← EXISTS (PostgreSQL-only, Prisma-style) — see api-surface.md
+defineCollection()     // ← NOT YET — planned (MongoDB-native API, prisma-parity-plan M5)
+Model.findMany() / findUnique() / groupBy()   // ← only on defineTable, NOT on defineModel
+Table.find() / findById() / $gt / $inc        // ← defineModel vocabulary, NOT on defineTable
+Table.findMany({ include })                   // ← relations/include NOT YET (M3)
+defineModel(..., { type: 'integer' | 'bigint' | 'decimal' | 'uuid' | 'json' })  // ← defineTable-only types
+Model.updateOne(f, u, { upsert: true })       // ← no options arg; use Model.upsert(filter, create, update)
 getModel()             // ← does NOT exist as a public export
 useDatabase()
 connectDatabase()
@@ -140,11 +147,12 @@ Implemented commands: `start dev|prod`, `build prod`, `run tests`, `generate rou
 ```ts
 // ✅ PostgreSQL DOES exist (Drizzle) — same defineModel API. ids are UUIDs there.
 // ✅ transaction(fn) DOES exist (main path). MongoDB needs a replica set.
-// ✅ Migrations DO exist (efc db migrate) — but defineModel does NOT create PostgreSQL
-//    tables on its own: call Model.sync() from a migration. Using a model whose table
-//    doesn't exist fails with 'relation "<table>" does not exist'.
-// ❌ No automatic schema diffing / ALTER of existing columns — sync() only ADDS missing
-//    columns (nullable) and indexes; renames/type changes need hand-written db.query().
+// ✅ Tables are created and reconciled automatically on first use (autoSync, default on):
+//    add column, change type (with cast), drop stale NOT NULL, rebuild enum CHECK,
+//    create/drop EFC-named indexes. `efc db sync --dry-run` prints the SQL.
+// ❌ Sync never DROPS or RENAMES columns and never deletes rows — renames, splits and
+//    backfills need a hand-written migration (db.query()).
+// ❌ No `efc db generate` that writes migration files from model diffs.
 // ❌ No joins in the model API — populate does a second query; for SQL joins use
 //    Drizzle via Model.raw() or db.query().
 // ❌ aggregate() is MongoDB-only (rejects on PostgreSQL).
@@ -238,5 +246,6 @@ const conn = db.model('User')  // throws: db not ready
 // ❌ Passing apiDir at all — it is not an option; src/api is found by convention
 // (dev: src/api via tsx; prod: dist/src/api, emitted by `efc build prod`)
 
-// ❌ Forgetting `efc db migrate` on PostgreSQL before first boot — tables don't exist yet
+// ❌ With autoSync: false, using a model before `efc db sync` / a migration created its table
+//    → "[EFC] <Model>: table "<t>" does not exist — autoSync is off…"
 ```

@@ -17,7 +17,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - Cache (`cache`, `cacheResponse`) on Redis or memory, also used as the JWT session-revocation store
 - CLI (`efc` binary) incl. migrations, seeds and a read-only studio
 
-**Status: v0.4.0 Beta (Phase 2 complete).** See `README.md` and `docs/` for full documentation.
+**Status: v0.5.0 Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types + M2 `defineTable`).** See `README.md` and `docs/` for full documentation.
 
 ---
 
@@ -26,6 +26,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 ```
 packages/core/src/       ← framework source (express-file-cluster)
 packages/create-efc-app/ ← npx create-efc-app scaffolder
+packages/mcp/            ← express-file-cluster-mcp (MCP server serving the docs)
 docs/                    ← documentation
 client/                  ← marketing site (static)
 Skills/efc/              ← dense reference cards (/efc skill)
@@ -36,7 +37,7 @@ Skills/efc/              ← dense reference cards (/efc skill)
 ## Three import paths — nothing else
 
 ```ts
-import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, transaction,
+import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, defineTable, transaction,
          ModelValidationError, logger, getLogger, cache, cacheResponse } from 'express-file-cluster'
 import { issueToken, revokeToken, revokeSession, revokeAllSessions, signToken, requireAuth,
          getCurrentUser } from 'express-file-cluster/auth'
@@ -85,7 +86,11 @@ src/api/docs/[...slug].ts    → /docs/a/b  (req.params.slug = ['a', 'b'])
 
 - Engine = `config.database` ?? `databaseUrl` scheme; models compile on first use (define at import time is fine)
 - MongoDB needs `mongoose`; PostgreSQL needs `pg` + `drizzle-orm` (all optional peers)
-- PostgreSQL tables are created only by `Model.sync()` — run from a migration (`efc db migrate`); scaffolded apps ship `src/migrations/00000000000000_init`
+- Tables (PostgreSQL) / collections + indexes (MongoDB) reconcile automatically on a model's first use (`autoSync`, default true; advisory-locked, one transaction). Sync adds columns, converts types, drops stale NOT NULLs, rebuilds enum CHECKs (NOT VALID), creates/drops EFC-named indexes — never drops columns or rows. `efc db sync [--dry-run]`; `autoSync: false` leaves it to migrations
+- Types are inferred from the schema literal (`InferRecord<typeof M>`, `InferCreate<typeof M>`) — don't write interfaces; `defineModel<T>()` still works (v0.4 behaviour, `create()` takes `Partial<T>`)
+- Portable extras on both engines: `exists`, `distinct` (scalar fields only, sorted, non-null), `updateOne`/`deleteOne` (first match, one statement, return the record), `upsert(filter, create, update)` (filter not merged into create; 409 on create retried once)
+- `defineTable(name, schema, options)` = PostgreSQL-only, Prisma vocabulary (`findMany({ where, orderBy, take, cursor, select })`, `findUnique`, `upsert` = INSERT … ON CONFLICT, `groupBy`, `aggregate`) and SQL types (`integer`, `bigint`→`bigint`, `decimal`→string, `uuid`, `json`, `varchar` via `maxLength`, native arrays, `nativeEnum`, `id: 'serial' | 'bigserial'`, `naming: 'snake_case'`). Throws on MongoDB at first use; defineModel ops on it don't compile. Shares pgTable (pg-table.ts) with defineModel's PostgreSQL adapter. No relations/`include` yet (M3). `ignite()` serialises bigints in JSON as strings
+- Undeclared fields behave like mongoose on both engines: ignored on writes, treated as absent in filters, ignored in sort/select
 - `update()` / `updateMany()` validate changed fields; failures throw `ModelValidationError` (400), duplicate unique → `HttpError` 409
 - Shared filter subset: `$eq $ne $gt $gte $lt $lte $in $nin $exists $regex $and $or`, dotted paths, array contains; updates: `$set $unset $inc $push $pull`
 - `aggregate()` and TTL indexes are MongoDB-only; MongoDB `transaction()` needs a replica set
@@ -114,6 +119,7 @@ src/api/docs/[...slug].ts    → /docs/a/b  (req.params.slug = ['a', 'b'])
 - OpenAPI generation, OpenTelemetry
 - `efc lint`, `efc deploy` commands
 - Schema-diff migration generation (`efc db generate`) — migrations are hand-written; `sync()` only adds
+- `defineCollection` (MongoDB-native) and `defineTable` relations (`include`, FKs, nested writes) — planned in `prisma-parity-plan.md` (M5 / M3)
 
 Do not suggest or generate code for these features.
 
@@ -132,6 +138,7 @@ Do not suggest or generate code for these features.
 - `efc.config.ts` is informational; `src/index.ts` is the actual runtime entrypoint
 - `efc build prod` transpiles `src/**` unbundled → `dist/src/**` (entry `dist/src/index.js`); routes/tasks must exist as files in `dist/` because they're discovered by filesystem scan
 - New runtime packages imported by core must be `dependencies` or (optional) `peerDependencies` — tsup bundles devDependency-only imports into `dist`, which breaks CJS packages at runtime
+- `npm run build` bundles `docs/` + `Skills/efc/` into `dist/docs` of `express-file-cluster` and `express-file-cluster-mcp` (`scripts/bundle-docs.mjs`) — docs changes ship with the next release; scaffolded apps get an `AGENTS.md` pointing at them. `AGENTS.md` at the repo root is the cross-agent version of these rules
 - Integration tests that need a database self-skip when it's unreachable; CI provides MongoDB (+ replica set), Redis and PostgreSQL. Locally: Mongo `27017` (+ replset `27018`), Redis `6379`, Postgres via `EFC_TEST_PG_URL`
 
 ---

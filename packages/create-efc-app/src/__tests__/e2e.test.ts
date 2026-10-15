@@ -11,7 +11,8 @@ import type { AdminFeatures, UserFeatures } from '../scaffold.js';
 
 // Full scaffold flow, the way a user runs it: scaffold with the interactive defaults →
 // npm install (against a packed tarball of the local core, not the registry) →
-// `efc db migrate` → `efc start dev` → `efc build prod` → boot → real HTTP, for every stack. Slow and needs
+// `efc start dev` (no migration first) → `efc db migrate` / `efc db sync` → `efc build prod` → boot →
+// real HTTP, for every stack. Slow and needs
 // network plus MongoDB, Redis and PostgreSQL, so it only runs with EFC_E2E=1 (the `e2e`
 // CI job sets it).
 const RUN = process.env['EFC_E2E'] === '1';
@@ -130,11 +131,6 @@ describe.skipIf(!RUN).each(STACKS)('create-efc-app — end to end ($label)', (st
     run('npm', ['install', '--no-audit', '--no-fund'], appDir);
   }, 300_000);
 
-  it('creates the schema with efc db migrate', () => {
-    const out = run(path.join(appDir, 'node_modules', '.bin', 'efc'), ['db', 'migrate'], appDir);
-    expect(out).toMatch(/00000000000000_init[\s\S]*Ran 1 migration/);
-  }, 120_000);
-
   afterAll(async () => {
     if (server?.pid && server.exitCode === null) process.kill(-server.pid, 'SIGKILL');
     // Leave the database clean for the next run: roll the init migration back.
@@ -178,11 +174,34 @@ describe.skipIf(!RUN).each(STACKS)('create-efc-app — end to end ($label)', (st
           throw new Error(`dev server never became healthy\n${devOut}`);
         await new Promise((r) => setTimeout(r, 250));
       }
+      // A write on a fresh database: only works if autoSync created the tables.
+      const reg = await fetch(`http://127.0.0.1:${port}/v1/api/auth/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Dev',
+          email: `dev-${Date.now()}@example.com`,
+          password: 'secret-pass-123',
+        }),
+      });
+      expect(reg.status, `${await reg.clone().text()}\n${devOut}`).toBe(201);
     } finally {
       if (dev.pid) process.kill(-dev.pid, 'SIGTERM');
       await new Promise((r) => dev.once('exit', r));
     }
   }, 60_000);
+
+  it('needs no migration first; efc db migrate and sync then find nothing to do', () => {
+    // The dev-server step above ran on a fresh database: tables came from autoSync.
+    const out = run(path.join(appDir, 'node_modules', '.bin', 'efc'), ['db', 'migrate'], appDir);
+    expect(out).toMatch(/00000000000000_init[\s\S]*Ran 1 migration/);
+    const sync = run(
+      path.join(appDir, 'node_modules', '.bin', 'efc'),
+      ['db', 'sync', '--dry-run'],
+      appDir,
+    );
+    expect(sync).toMatch(/Everything in sync/);
+  }, 120_000);
 
   it('builds for production with no type errors', () => {
     run(path.join(appDir, 'node_modules', '.bin', 'efc'), ['build', 'prod'], appDir);

@@ -189,6 +189,23 @@ A second full pass — every todo item re-verified against the code, plus the pa
 - [x] e2e now also covers `efc start dev` and `efc db status --dist` on every stack, with an isolated database per stack.
 - [x] Stale references to the removed `usage/` app removed from CLAUDE.md, the contributing guide and the Skills card.
 
+### Release rehearsal (2026-10-13)
+
+npm publishing is blocked for a few days, so the release was rehearsed against a throwaway local registry (Verdaccio): both packages published there, the real interactive `npx create-efc-app` driven through a pseudo-terminal, and each generated app taken through its outro with the **global** `efc` — migrate, dev server, build, production server, auth + logout replay, SIGTERM. Now repeatable: `scripts/release-rehearsal/run.sh`.
+
+- [x] **Global `efc` broke `efc db migrate`** — the scaffolder installs `efc` globally and its outro says to run `efc db migrate`, but the global copy resolved database drivers from its own install ("mongoose is not installed") and would have loaded a second framework instance. A global `efc` now hands the whole invocation to the project's local install (`integration/cli-delegation.test.ts`).
+- [x] Rehearsal passes for MongoDB + BullMQ, PostgreSQL + pg-boss, and JavaScript + PostgreSQL.
+
+### PostgreSQL feels like MongoDB (2026-10-13)
+
+Goal: define a model and use it — no table chores, on either engine.
+
+- [x] **Auto schema sync** (`autoSync`, default on): a model's first use reconciles its table/collection and indexes, like mongoose's autoCreate/autoIndex. Postgres runs it in one transaction under an advisory lock (safe with every cluster worker syncing at boot); `autoSync: false` also turns off mongoose's auto-indexing, and a missing table then gets a clear error.
+- [x] **Reconciling sync** (introspect → plan → apply): add columns, convert changed types (`USING` casts), drop stale `NOT NULL`s, rebuild enum `CHECK`s (`NOT VALID`), create declared indexes and drop EFC-named ones no longer declared. Never drops columns or rows. `sync({ dryRun })` returns the plan; MongoDB uses `diffIndexes()`.
+- [x] **Undeclared fields like mongoose**: ignored on writes (incl. dotted update paths), absent in filters, ignored in sort/select — Postgres used to answer 400.
+- [x] **`efc db sync [--dry-run]`** for every model in `src/model(s)/`; **studio Structure view** (Postgres columns/types/indexes; MongoDB sampled fields + indexes).
+- [x] Scaffolder outro no longer needs `efc db migrate`; e2e and the release rehearsal now register users on a fresh database before any migration, then check `efc db sync --dry-run` reports everything in sync.
+
 ### Not done — deliberately out of scope (and the late addition)
 
 - [x] **Redis adapter (cache + session store)** — from plan.md's Phase 2 table, added 2026-10-10: `ignite({ cache })` with Redis or memory backends, `cache` API (`get/set/has/del/wrap/clear`), `cacheResponse()` middleware, and JWT session revocation (`revokeSession`, `revokeAllSessions`) enforced by `requireAuth`. Redis outages degrade to misses for cache calls; revocation checks reject with 503 by default (`onRevocationCheckError: 'allow'` to pass), revoke calls fail loudly. The memory backend lives in the cluster primary and workers share it over IPC. Scaffolded apps configure a cache (Redis if `REDIS_URL`, else memory), log out with `revokeSession` and revoke all sessions on password reset (`integration/cache.test.ts`, `integration/cluster.test.ts`, e2e logout replay on both stacks).
@@ -238,6 +255,11 @@ Found by actually running each exit criterion end to end, not by reading code:
 - [x] mongoose versions aligned (2026-10-10): peer `^8.0.0 || ^9.0.0` (was an open-ended `>=8.0.0` that admitted untested v10), scaffolder `^9.7.2` (was `^8.0.0`). DB smoke + live-Mongo integration suites verified green on both 8.24.5 and 9.7.2. Smoke tests moved off deprecated `validateSync()` to `validate()`.
 
 ## What to Build Next — Phase 3 (Priority Order)
+
+0. **Data layer that competes with Prisma** — [`prisma-parity-plan.md`](./prisma-parity-plan.md): one shared foundation (inferred types, validation, auto-sync) under three APIs — portable `defineModel` (today's), PostgreSQL-native `defineTable` (Prisma-style queries, real relations/joins, SQL types) and MongoDB-native `defineCollection` (typed pipelines, `$lookup`, geo/text, bulkWrite, change streams); no cross-engine emulation. Milestones M1–M7.
+   - [x] **M1** — inferred types (`InferRecord` / `InferCreate`, scaffolds without interfaces), engine-guard plumbing for the native APIs, portable `upsert` / `updateOne` / `deleteOne` / `exists` / `distinct`; nested dates revived on PostgreSQL
+   - [x] **M2** — `defineTable`: SQL types (integer, bigint, decimal, uuid, json, varchar, native arrays/enums), serial/bigserial ids, snake_case naming; Prisma-style findMany/findUnique/count/aggregate/groupBy, create/createMany/update/updateMany/upsert (ON CONFLICT)/delete, cursor pagination, select/omit/distinct; shared pgTable layer
+   - [ ] M3 relations · [ ] M4 schema lifecycle · [ ] M5 `defineCollection` · [ ] M6 tooling · [ ] M7 docs
 
 1. **`efc/testing` — `createTestApp()`** — the integration tests here hand-roll tmp projects + `ignite()`; ship that as a supported helper
 2. **OpenAPI generation** — `schema` exports are Standard Schema validators; derive request schemas (+ `meta`) into an OpenAPI document
