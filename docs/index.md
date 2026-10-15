@@ -47,6 +47,7 @@
 | [Environment Variables](./guides/environment-variables.md) | Full `.env` reference |
 | [Error Handling](./guides/error-handling.md) | `HttpError`, custom handlers, task failures |
 | [Deployment](./guides/deployment.md) | Build, start, and ship to production |
+| [AI Coding Agents](./guides/ai-agents.md) | Docs bundled in the package, `AGENTS.md`, the `express-file-cluster-mcp` server |
 
 ### Tooling
 
