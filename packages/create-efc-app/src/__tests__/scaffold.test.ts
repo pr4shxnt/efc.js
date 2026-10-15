@@ -17,7 +17,10 @@ import type { ScaffoldOptions } from '../scaffold.js';
 const dirs: string[] = [];
 
 function tmpDest(name: string): string {
-  const dir = path.join(os.tmpdir(), `efc-scaffold-test-${name}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = path.join(
+    os.tmpdir(),
+    `efc-scaffold-test-${name}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   dirs.push(dir);
   return dir;
 }
@@ -107,3 +110,25 @@ describe('scaffold() — JavaScript projects', () => {
   }, 60_000);
 });
 
+describe('scaffold() — AGENTS.md', () => {
+  it('points agents at doc pages that really ship in express-file-cluster/dist/docs', async () => {
+    const dest = tmpDest('agents');
+    await scaffold(baseOptions(dest, true));
+    const agents = await fs.readFile(path.join(dest, 'AGENTS.md'), 'utf8');
+    expect(agents).toContain('node_modules/express-file-cluster/dist/docs/');
+
+    // Bundle the docs exactly like the core build does, then check every referenced page.
+    const bundle = tmpDest('agents-docs');
+    const root = path.resolve(import.meta.dirname, '../../../..');
+    execFileSync('node', [path.join(root, 'scripts/bundle-docs.mjs'), bundle]);
+    const pages = [
+      ...agents.matchAll(
+        /`(?:node_modules\/express-file-cluster\/dist\/docs\/)?([\w-]+(?:\/[\w-]+)*\.md)`/g,
+      ),
+    ].map((m) => m[1]!);
+    expect(pages.length).toBeGreaterThan(8);
+    for (const page of pages) {
+      expect(fs.existsSync(path.join(bundle, 'docs', page)), page).toBe(true);
+    }
+  });
+});

@@ -85,6 +85,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   await writeEfcConfig(dest, opts);
   await writeEntryPoint(dest, opts);
   await writeGitignore(dest);
+  await writeAgentsMd(dest, opts);
   await writeEnvFiles(dest, opts);
   await writeExampleRoute(dest, opts);
   if (needsUserModel) await writeUserModel(dest, opts);
@@ -257,6 +258,61 @@ async function writeGitignore(dest: string): Promise<void> {
     path.join(dest, '.gitignore'),
     'node_modules/\ndist/\n.env\n.env.local\n*.log\n',
   );
+}
+
+// Points AI coding agents at the docs bundled with the installed framework version, so
+// they read the real API instead of guessing it.
+async function writeAgentsMd(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const ext = opts.language === 'typescript' ? 'ts' : 'js';
+  const D = 'node_modules/express-file-cluster/dist/docs';
+  const engine = opts.database === 'postgresql' ? 'PostgreSQL' : 'MongoDB';
+  const content = `# AGENTS.md
+
+This is an **express-file-cluster (EFC)** app (${opts.language === 'typescript' ? 'TypeScript' : 'JavaScript'}, ${engine}).
+EFC's API is probably not in your training data — **read its docs before writing code**, and
+don't use any EFC import, option or method you can't find in them.
+
+## Read the docs first
+
+The docs for the exact installed version ship inside the package, under \`${D}/\`:
+
+1. \`${D}/skills/api-surface.md\` — every public export and signature
+2. \`${D}/skills/what-not-to-invent.md\` — things that do NOT exist
+3. \`${D}/index.md\`, then the page for your task:
+   - routes & URL params — \`core-concepts/file-based-routing.md\`, \`skills/routing-rules.md\`
+   - request validation — \`guides/validation.md\`
+   - models & queries — \`guides/database.md\`, \`api-reference/db.md\`
+   - migrations — \`guides/migrations.md\`
+   - auth & roles — \`guides/authentication.md\`, \`guides/rbac.md\`
+   - background tasks — \`core-concepts/background-tasks.md\`
+   - config & boot — \`api-reference/ignite.md\`
+
+Search them: \`grep -rn "<term>" ${D}\`
+
+Optional — the same docs over MCP, with search and scaffolding tools:
+\`claude mcp add efc -- npx -y express-file-cluster-mcp\`
+(other clients: command \`npx\`, args \`["-y", "express-file-cluster-mcp"]\`).
+
+## Project conventions
+
+- \`src/api/**\` — every file is a route (\`users/[id].${ext}\` → \`/v1/api/users/:id\`); export
+  uppercase \`GET\`/\`POST\`/… handlers.
+- \`src/tasks/*.${ext}\` — background tasks; the file name is the task name (not recursive).
+- \`src/model/*.${ext}\` — \`defineModel\` models.
+- \`src/index.${ext}\` is the entry point; it imports \`efc.config.${ext}\` and passes it to \`ignite()\`.
+- Only three import paths exist: \`express-file-cluster\`, \`express-file-cluster/auth\`,
+  \`express-file-cluster/tasks\`.
+
+## Commands
+
+\`\`\`bash
+npx efc start dev        # dev server with reload
+npx efc db migrate       # run migrations
+npx efc build prod       # type-check + production build
+npx efc doctor           # diagnose the setup
+\`\`\`
+`;
+  await fs.outputFile(path.join(dest, 'AGENTS.md'), content);
 }
 
 async function writeEnvFiles(dest: string, opts: ScaffoldOptions): Promise<void> {
