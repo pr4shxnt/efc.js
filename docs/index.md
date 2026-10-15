@@ -37,6 +37,7 @@
 | [Authentication](./guides/authentication.md) | JWT strategies, login/logout, `requireAuth` |
 | [RBAC](./guides/rbac.md) | Role-based route protection via the `requireAuth('role')` shorthand |
 | [Database](./guides/database.md) | `defineModel`, queries, transactions, MongoDB vs PostgreSQL |
+| [defineTable](./api-reference/table.md) | PostgreSQL-native models: Prisma-style queries, SQL types, aggregation |
 | [Migrations & Seeds](./guides/migrations.md) | `efc db migrate / rollback / seed / studio` |
 | [Validation](./guides/validation.md) | Route `schema` exports with zod, valibot, arktype |
 | [Logging](./guides/logging.md) | pino, request IDs, `getLogger()` |

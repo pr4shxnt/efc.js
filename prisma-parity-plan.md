@@ -177,6 +177,17 @@ Filter operators follow Prisma's names (`equals`, `in`, `notIn`, `lt`, `contains
 **Exit criteria:** Prisma's "CRUD", "filtering and sorting", "pagination" and "aggregation" guides
 pass as `defineTable` tests.
 
+**Status: done (branch `feat/m2-define-table`).** Notes from building it:
+- One table layer (`pg-table.ts`: columns, Drizzle table, sync, records, validation, errors) under
+  both query layers — defineModel's MongoDB-style `pg-model.ts` and defineTable's `table-model.ts`.
+- Queries compile to one parameterised statement each via Drizzle's `sql`; values go through the
+  Drizzle columns' encoders/decoders so raw SQL and the query builder agree on types.
+- `idType: 'number'` from the draft was dropped: `serial` ids are numbers, `bigserial` ids are
+  bigints, `uuid` ids strings. Pages are totally ordered (ties broken by `id`), and cursors are
+  NULL-aware for any orderBy.
+- `ignite()` sends bigints as JSON strings. Not yet: `include`/relations (M3), `create-efc-app`
+  choosing `defineTable` for PostgreSQL apps (with M3, when the generated routes can use relations).
+
 ---
 
 ## M3 — `defineTable`: relations
