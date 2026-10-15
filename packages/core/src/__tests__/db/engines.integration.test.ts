@@ -644,6 +644,21 @@ for (const engine of ['mongodb', 'postgresql'] as const) {
       }
     });
 
+    it.skipIf(engine !== 'mongodb')(
+      'a unique index that cannot be built (existing duplicates) does not break the model',
+      async () => {
+        const coll = `${collection}_dupes`;
+        await mongoose.connection.collection(coll).insertMany([{ code: 'x' }, { code: 'x' }]);
+        const Dupes = defineModel(
+          `Dupes${tag}`,
+          { code: { type: 'string', unique: true } },
+          { collection: coll },
+        );
+        expect(await Dupes.count({ code: 'x' })).toBe(2);
+        expect((await Dupes.create({ code: 'y' })).code).toBe('y');
+      },
+    );
+
     it('works on first use — no sync() or migration needed', async () => {
       const Fresh = defineModel<{ title: string }>(
         `Fresh${tag}`,
@@ -652,9 +667,7 @@ for (const engine of ['mongodb', 'postgresql'] as const) {
       );
       const a = await Fresh.create({ title: 'hello' });
       expect(await Fresh.findById(a.id)).toMatchObject({ title: 'hello' });
-      // The unique index came with it. mongoose builds indexes in the background, so wait
-      // for that on MongoDB; PostgreSQL's first-use sync has already created it.
-      if (engine === 'mongodb') await ((await Fresh.raw()) as mongoose.Model<unknown>).init();
+      // The unique index came with it — on MongoDB too, first use waits for the index build.
       await expect(Fresh.create({ title: 'hello' })).rejects.toMatchObject({ statusCode: 409 });
     });
 

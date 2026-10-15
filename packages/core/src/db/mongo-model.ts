@@ -10,6 +10,7 @@ import {
 } from './schema.js';
 import { currentTx, isAutoSync } from './engine.js';
 import { notInstalled } from './postgres.js';
+import { getLogger } from '../logger.js';
 
 type AnyRecord = Record<string, unknown>;
 /** What each engine adapter implements; `defineModel` adds `name`, `upsert` and the `distinct` rules. */
@@ -218,7 +219,7 @@ export function mongoModel<T extends object>(
   let compiled: Promise<MongooseNS.Model<AnyRecord>> | undefined;
 
   const model = (): Promise<MongooseNS.Model<AnyRecord>> =>
-    (compiled ??= loadMongoose().then((mg) => {
+    (compiled ??= loadMongoose().then(async (mg) => {
       if (mg.models[name]) return mg.models[name] as MongooseNS.Model<AnyRecord>;
       const schema = new mg.Schema(buildTree(tree, mg) as MongooseNS.SchemaDefinition, {
         timestamps: options.timestamps ?? true,
@@ -247,7 +248,20 @@ export function mongoModel<T extends object>(
           }
         });
       }
-      return mg.model<AnyRecord>(name, schema);
+      const M = mg.model<AnyRecord>(name, schema);
+      if (isAutoSync()) {
+        // Like PostgreSQL's first-use sync: queries wait until the collection and its
+        // indexes exist, so a unique index is enforced from the very first write. An index
+        // that can't be built (e.g. duplicates already stored) is logged, not fatal — the
+        // model keeps working as it did before, without that index.
+        await M.init().catch((err: unknown) => {
+          getLogger().warn(
+            { model: name, err: (err as Error).message },
+            `${name}: could not build its indexes — fix the data, then run efc db sync`,
+          );
+        });
+      }
+      return M;
     }));
 
   const session = (): { session?: MongooseNS.ClientSession } => {

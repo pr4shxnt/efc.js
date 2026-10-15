@@ -76,6 +76,8 @@ Editing a model later works the same on both engines:
 | Change a field's `type` | new writes use it | `ALTER COLUMN … TYPE … USING <cast>` — fails clearly if existing data can't convert |
 | Add / remove `unique`, `index`, `indexes` | indexes synced | indexes created / EFC-created ones dropped |
 
+On MongoDB the first query also waits for the collection's indexes, so `unique` is enforced from the very first write. If an index can't be built (e.g. duplicates are already stored) EFC logs a warning and the model keeps working without it — fix the data and run `efc db sync`.
+
 Required fields, enums, bounds and custom validators are enforced by the model on writes, as on MongoDB. Columns and rows are never dropped by sync.
 
 Fields the model doesn't declare behave like mongoose's defaults on both engines: ignored on writes, treated as absent in filters (`{ legacy: null }` and `{ legacy: { $exists: false } }` match), ignored in `sort`/`select`.
