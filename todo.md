@@ -189,6 +189,13 @@ A second full pass — every todo item re-verified against the code, plus the pa
 - [x] e2e now also covers `efc start dev` and `efc db status --dist` on every stack, with an isolated database per stack.
 - [x] Stale references to the removed `usage/` app removed from CLAUDE.md, the contributing guide and the Skills card.
 
+### Release rehearsal (2026-10-13)
+
+npm publishing is blocked for a few days, so the release was rehearsed against a throwaway local registry (Verdaccio): both packages published there, the real interactive `npx create-efc-app` driven through a pseudo-terminal, and each generated app taken through its outro with the **global** `efc` — migrate, dev server, build, production server, auth + logout replay, SIGTERM. Now repeatable: `scripts/release-rehearsal/run.sh`.
+
+- [x] **Global `efc` broke `efc db migrate`** — the scaffolder installs `efc` globally and its outro says to run `efc db migrate`, but the global copy resolved database drivers from its own install ("mongoose is not installed") and would have loaded a second framework instance. A global `efc` now hands the whole invocation to the project's local install (`integration/cli-delegation.test.ts`).
+- [x] Rehearsal passes for MongoDB + BullMQ, PostgreSQL + pg-boss, and JavaScript + PostgreSQL.
+
 ### Not done — deliberately out of scope (and the late addition)
 
 - [x] **Redis adapter (cache + session store)** — from plan.md's Phase 2 table, added 2026-10-10: `ignite({ cache })` with Redis or memory backends, `cache` API (`get/set/has/del/wrap/clear`), `cacheResponse()` middleware, and JWT session revocation (`revokeSession`, `revokeAllSessions`) enforced by `requireAuth`. Redis outages degrade to misses for cache calls; revocation checks reject with 503 by default (`onRevocationCheckError: 'allow'` to pass), revoke calls fail loudly. The memory backend lives in the cluster primary and workers share it over IPC. Scaffolded apps configure a cache (Redis if `REDIS_URL`, else memory), log out with `revokeSession` and revoke all sessions on password reset (`integration/cache.test.ts`, `integration/cluster.test.ts`, e2e logout replay on both stacks).
