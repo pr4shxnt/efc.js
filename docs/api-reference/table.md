@@ -1,0 +1,250 @@
+# defineTable — API Reference
+
+```ts
+import { defineTable, type InferRecord } from 'express-file-cluster';
+```
+
+`defineTable` is EFC's **PostgreSQL-native** model API. It uses Prisma's query vocabulary
+(`findMany({ where, orderBy, take, cursor })`, `findUnique`, `upsert`, `groupBy`, `aggregate`)
+and SQL types (`integer`, `bigint`, `decimal`, `varchar`, native arrays and enums, serial ids).
+Each call is a single parameterised SQL statement.
+
+It shares the foundation with [`defineModel`](./db.md): the same schema format, validation,
+automatic table sync, `transaction()`, errors and inferred types. Choose between them:
+
+| | `defineModel` | `defineTable` |
+|---|---|---|
+| Engine | MongoDB **or** PostgreSQL | PostgreSQL only |
+| Queries | MongoDB-style (`find(filter)`, `$gt`, `$inc`) | Prisma-style (`findMany({ where })`, `gt`, `increment`) |
+| Types | portable set | + `integer`, `bigint`, `decimal`, `uuid`, `json`, `varchar`, native arrays/enums |
+| Use it when | the app may switch engines | you're building on PostgreSQL |
+
+On a MongoDB connection, the first call to a `defineTable` model throws an `[EFC]` error.
+Calling a MongoDB-style method on a table (or a Prisma-style one on a `defineModel`) is a
+compile error. A `defineModel` and a `defineTable` over the same table read and write the same
+records (default naming, uuid ids), so you can move one model at a time.
+
+---
+
+## `defineTable(name, schema, options?)`
+
+```ts
+export const Order = defineTable(
+  'Order',
+  {
+    number:   { type: 'string', required: true, unique: true, maxLength: 20 },   // varchar(20)
+    status:   { type: 'string', enum: ['open', 'paid', 'shipped'], default: 'open', nativeEnum: true },
+    total:    { type: 'decimal', precision: 10, scale: 2, required: true },      // numeric(10,2) → '19.99'
+    qty:      { type: 'integer', required: true, min: 1 },                       // integer
+    views:    { type: 'bigint', default: 0n },                                   // bigint → 0n
+    tags:     { type: 'array', of: 'string', default: [] },                      // text[]
+    shipping: { city: { type: 'string', required: true }, zip: { type: 'string' } }, // jsonb
+    meta:     { type: 'json' },                                                  // jsonb, any JSON
+    customer: { type: 'uuid', required: true },
+  },
+  { id: 'serial', naming: 'snake_case', indexes: [{ fields: { customer: 1, number: 1 }, unique: true }] },
+);
+
+export type Order = InferRecord<typeof Order>;
+// { id: number; number: string; status: 'open' | 'paid' | 'shipped'; total: string; qty: number;
+//   views: bigint; tags: string[]; customer: string; shipping?: { city: string; zip?: string };
+//   meta?: unknown; createdAt: Date; updatedAt: Date }
+```
+
+### Field types
+
+All the [`defineModel` field types and rules](./db.md#schema-fields) (`required`, `default`,
+`enum`, `min`/`max`, `minLength`/`maxLength`, `match`, `validate`, `unique`, `index`,
+`sequence`, nested objects, arrays of objects) also work here, plus:
+
+| `type` | Column | JS value (reads) | Accepts on writes |
+|---|---|---|---|
+| `'integer'` | `integer` | `number` (32-bit, whole) | `number` |
+| `'bigint'` | `bigint` | `bigint` | `bigint \| number` |
+| `'decimal'` (`precision`, `scale`) | `numeric(p,s)` | `string`, exact | `string \| number` |
+| `'uuid'` | `uuid` | `string` | `string` |
+| `'json'` | `jsonb` | `unknown` | any JSON |
+| `'string'` + `maxLength` | `varchar(n)` | `string` | `string` |
+| `{ type: 'array', of: <scalar> }` | native array (`text[]`, `integer[]`, …) | `T[]` | `T[]` |
+| `enum` + `nativeEnum: true` | PostgreSQL `ENUM` type | literal union | literal union |
+
+Without `nativeEnum`, an `enum` is a `CHECK` constraint, as with `defineModel`. Arrays of nested
+objects, embedded objects and `json` are stored as `jsonb`. `column: 'name'` sets a top-level
+field's column name.
+
+Responses from `ignite()` serialise `bigint` values as strings (`"9007199254740993"`).
+
+### Options
+
+```ts
+interface TableOptions {
+  id?: 'uuid' | 'serial' | 'bigserial';   // default 'uuid'; serial → number ids, bigserial → bigint ids
+  naming?: 'snake_case';                   // createdAt → created_at, OrderItem → order_items
+  timestamps?: boolean | { createdAt?: string | false; updatedAt?: string | false };
+  indexes?: { fields: Record<string, 1 | -1 | 'text'>; unique?: boolean; name?: string }[];
+  collection?: string;                     // table name
+}
+```
+
+### Schema sync
+
+The table is created and kept in step on first use, with the same rules as `defineModel`. It
+never drops columns or rows. On top of that:
+
+- Native enum types are created, and new values are added. Values are never removed.
+- `varchar` columns never shrink, and an existing `text` column is never narrowed.
+- An existing `jsonb` array column (e.g. from `defineModel`) is converted to a native array,
+  keeping the data.
+
+Preview the changes with `efc db sync --dry-run`.
+
+---
+
+## Reading
+
+```ts
+findMany(args?)            → Record[]
+findFirst(args?)           → Record | null
+findFirstOrThrow(args?)    → Record          // 404 HttpError if none
+findUnique({ where })      → Record | null   // where must name a unique key
+findUniqueOrThrow({ where }) → Record        // 404 HttpError if none
+count(args?)               → number          // or { _all, field… } with select
+```
+
+```ts
+const page = await Order.findMany({
+  where: {
+    status: { in: ['paid', 'shipped'] },
+    total: { gte: '100' },
+    customer: id,
+    OR: [{ number: { startsWith: 'EU-' } }, { tags: { has: 'priority' } }],
+  },
+  orderBy: [{ createdAt: 'desc' }, { qty: { sort: 'asc', nulls: 'last' } }],
+  take: 20,
+  skip: 20,
+  select: { id: true, number: true, total: true },   // result type narrows to these
+});
+```
+
+| Argument | |
+|---|---|
+| `where` | filters (below) |
+| `orderBy` | `{ field: 'asc' \| 'desc' }`, `{ field: { sort, nulls: 'first' \| 'last' } }`, or an array |
+| `take` / `skip` | page size / offset. A negative `take` reads backwards. |
+| `cursor` | a unique `where` (`{ id }`). The page starts **at** that record; add `skip: 1` to start after it. |
+| `distinct` | `['field', …]`: the first record per distinct combination, in `orderBy` order |
+| `select` / `omit` | `{ field: true }`: keep, or leave out, these fields. The result type follows. |
+
+Pages are ordered deterministically: when `take`, `skip` or `cursor` is used, ties are broken
+by `id`. Cursors work with any `orderBy`, including mixed directions and nullable columns.
+
+```ts
+// Cursor pagination
+const next = await Order.findMany({ orderBy: { qty: 'desc' }, take: 20, cursor: { id: last }, skip: 1 });
+```
+
+### Filters
+
+| Field kind | Filters |
+|---|---|
+| any scalar | a value (equality), `null`, `equals`, `not`, `in`, `notIn`, `lt`, `lte`, `gt`, `gte` |
+| strings | + `contains`, `startsWith`, `endsWith`, `mode: 'insensitive'` (ILIKE) |
+| native arrays | `has`, `hasEvery`, `hasSome`, `isEmpty`, `equals` |
+| objects / arrays of objects / `json` | `equals`, `not`, and with `path: ['a', 'b']`: `equals`, `string_contains`, `string_starts_with`, `string_ends_with`, `array_contains`, `gt`… |
+| combinators | `AND`, `OR`, `NOT` (an object or an array) |
+
+`undefined` values are ignored. Filters on undeclared fields match nothing, as with
+`defineModel`. `LIKE` wildcards in `contains`, `startsWith` and `endsWith` are escaped.
+
+### Unique lookups
+
+`findUnique`, `update`, `upsert`, `delete` and `cursor` take a `where` that names one record:
+`id`, a `unique: true` field, or every field of a `unique` index (e.g. `{ customer, number }`).
+Other filters may be added. A `where` that isn't unique doesn't compile, and at runtime it
+throws a `ModelValidationError`.
+
+---
+
+## Writing
+
+```ts
+create({ data, select?, omit? })                        → Record
+createMany({ data: [...], skipDuplicates? })            → { count }
+createManyAndReturn({ data: [...], select? })           → Record[]
+update({ where: unique, data, select? })                → Record        // 404 if missing
+updateMany({ where?, data })                            → { count }
+updateManyAndReturn({ where?, data, select? })          → Record[]
+upsert({ where: unique, create, update, select? })      → Record
+delete({ where: unique })                               → Record        // 404 if missing
+deleteMany({ where? })                                  → { count }
+```
+
+```ts
+await Order.update({
+  where: { number: 'EU-1' },
+  data: {
+    status: 'paid',
+    qty: { increment: 1 },        // decrement, multiply, divide — number fields
+    views: { increment: 1n },
+    total: { decrement: '5.00' },  // exact on decimals
+    tags: { push: 'priority' },    // or an array; on native arrays
+    shipping: { city: 'Oslo' },    // jsonb fields take whole values
+    meta: null,                     // null unsets an optional field
+  },
+});
+```
+
+- **`upsert`** is a single `INSERT … ON CONFLICT (<unique key>) DO UPDATE`, so it's atomic and
+  race-free. Key values from `where` fill `create` when they're missing there.
+- **`createMany({ skipDuplicates: true })`** → `ON CONFLICT DO NOTHING`.
+- Writes are validated like `defineModel` writes: type, `enum`, bounds, `integer` range,
+  `decimal` precision/scale, `maxLength` and `validate`. Failures throw `ModelValidationError`
+  (400); a duplicate unique value gives a 409. `updatedAt` is refreshed on every update.
+  `increment`/`decrement` results are not re-checked against `min`/`max`.
+
+---
+
+## Aggregation
+
+```ts
+const stats = await Order.aggregate({
+  where: { status: 'paid' },
+  _count: true,
+  _sum: { total: true, qty: true },
+  _avg: { qty: true },
+  _min: { createdAt: true },
+  _max: { total: true },
+});
+// { _count: number; _sum: { total: string | null; qty: number | null }; _avg: { qty: number | null };
+//   _min: { createdAt: Date | null }; _max: { total: string | null } }
+
+const byStatus = await Order.groupBy({
+  by: ['status'],
+  where: { createdAt: { gte: since } },
+  _count: { _all: true },
+  _sum: { total: true },
+  having: { total: { _sum: { gt: 1000 } } },
+  orderBy: { _sum: { total: 'desc' } },
+  take: 10,
+});
+```
+
+| Aggregate | Applies to | Returns |
+|---|---|---|
+| `_count` | `true` or `{ _all, field }` | `number` (non-null values per field) |
+| `_sum` | number fields | `integer`/`number` → `number`, `bigint` → `bigint`, `decimal` → `string` |
+| `_avg` | number fields | `number`; `decimal` → `string` |
+| `_min` / `_max` | scalar fields | the field's type |
+
+Over an empty set, `_sum`, `_avg`, `_min` and `_max` are `null`. `aggregate` also takes
+`orderBy`, `take`, `skip` and `cursor`, and then aggregates over that page.
+
+---
+
+## Also
+
+- `raw()` returns the Drizzle `pgTable`, for anything EFC doesn't cover.
+- `sync({ dryRun })` / `drop()` work as with `defineModel`.
+- `transaction(async () => …)` covers `defineTable` calls too.
+- Relations (`include`, foreign keys, relation filters, nested writes) are planned (M3), not
+  implemented yet.
