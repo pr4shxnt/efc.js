@@ -28,8 +28,31 @@ function gracefulShutdown(server: http.Server | undefined, timeoutMs?: number): 
 function compose(...handlers: RequestHandler[]): RequestHandler
 
 // Models — one API on MongoDB (mongoose) and PostgreSQL (Drizzle); engine picked at first use
-function defineModel<T extends object>(name: string, schema: ModelSchema, options?: ModelOptions): ModelCRUD<T>
+// Types are INFERRED from the schema literal — no interface needed:
+//   const User = defineModel('User', {...}); type User = InferRecord<typeof User>;
+// Explicit defineModel<T>(...) still works (v0.4 behaviour: create() takes Partial<T>).
+function defineModel(name: string, schema: ModelSchema, options?: ModelOptions): ModelCRUD<Record, CreateInput>
+type InferRecord<typeof Model>  // record incl. id + timestamps per options (defineModel and defineTable)
+type InferCreate<typeof Model>  // create() input: required w/o default/sequence mandatory; dates accept string|number
 async function transaction<T>(fn: () => Promise<T>): Promise<T> // model calls inside join automatically
+// PostgreSQL-native (Prisma vocabulary + SQL types); MongoDB → [EFC] error at first use
+function defineTable(name: string, schema: TableSchema, options?: TableOptions): TableModel<S, O>
+//   types: + 'integer' (number) 'bigint' (bigint) 'decimal' {precision, scale} (string, exact) 'uuid' 'json'
+//          'string'+maxLength → varchar(n); { type:'array', of: scalar } → native array; enum + nativeEnum → PG ENUM
+//   options: id: 'uuid' | 'serial' (number ids) | 'bigserial' (bigint ids); naming: 'snake_case'; field `column`
+//   findMany({ where, orderBy, take (neg = backwards), skip, cursor (unique where, inclusive), distinct, select | omit })
+//   findFirst / findFirstOrThrow / findUnique({ where: unique }) / findUniqueOrThrow → 404 HttpError
+//   count({ where, select?: { _all, field } }) · aggregate({ _count, _sum, _avg, _min, _max, where, ...page })
+//   groupBy({ by, where, having: { f: { _sum: { gt } } }, orderBy: { _sum: { f: 'desc' } }, take, skip })
+//   create({ data }) · createMany({ data, skipDuplicates }) → { count } · createManyAndReturn
+//   update({ where: unique, data }) 404 if missing · updateMany → { count } · updateManyAndReturn
+//   upsert({ where: unique, create, update }) = one INSERT … ON CONFLICT · delete({ where: unique }) · deleteMany → { count }
+//   where: value | null | equals not in notIn lt lte gt gte · strings: contains startsWith endsWith mode:'insensitive'
+//          arrays: has hasEvery hasSome isEmpty · jsonb: { path: [...], equals | string_contains | array_contains | gt… }
+//          AND / OR / NOT · undefined ignored · undeclared fields match nothing
+//   data ops: { increment | decrement | multiply | divide } (numbers), { push } (arrays), { set }, null unsets
+//   unique where: id | unique field | all fields of a unique index. No relations/include yet (M3).
+
 class ModelValidationError extends HttpError { issues: { path: string; message: string }[] } // status 400
 
 // Native client from Pre-Flight: mongoose Connection (MongoDB) or pg Pool (PostgreSQL)
@@ -78,6 +101,7 @@ interface EFCConfig {
   cors?: boolean | CorsConfig;      // default true
   requestTimeout?: number;          // ms → 408
   logging?: LoggingConfig | false;
+  autoSync?: boolean;               // default true — reconcile tables/collections + indexes on first use
   cache?: ({ prefix?: string; onRevocationCheckError?: 'reject' | 'allow' /* default reject → 503 */ } & (
           | { backend: 'redis'; url?: string; timeout?: number }
           | { backend: 'memory'; maxEntries?: number } /* lives in the cluster primary; workers use IPC */
@@ -144,7 +168,7 @@ interface FieldDefinition {
 }
 
 // A field: FieldDefinition | nested ModelSchema (embedded object shorthand) | [ModelSchema] (array of embedded docs)
-type SchemaField = FieldDefinition | ModelSchema | [ModelSchema];
+type SchemaField = FieldDefinition | ModelSchema | [ModelSchema] | readonly [ModelSchema];
 interface ModelSchema { [field: string]: SchemaField }
 
 type DefaultOperator = '$now' | '$uuid' | '$objectId' | '$timestamp' | '$shortId' | '$currentUser' | `$currentUser.${string}`;
@@ -162,21 +186,28 @@ interface FindOptions { populate?: string | string[]; select?: string[]; sort?: 
 //            $and / $or, dotted paths ('address.city'), `id` for the primary key. Typed — no casts.
 // Update<T>: plain fields (= $set) and/or $set (dotted ok) $inc $push ({$each}) $pull $unset.
 
-interface ModelCRUD<T> {
+// Inferred: record type = required/default/sequence fields non-optional, enum → literal union,
+// 'date' → Date (nested too, both engines), 'objectId' → string, untyped object/array → unknown.
+interface ModelCRUD<T, TCreate = Partial<T>> {
   readonly name: string;
   find(filter?: Filter<T>, options?: FindOptions): Promise<ModelRecord<T>[]>;
   findById(id: string, options?: ModelQueryOptions): Promise<ModelRecord<T> | null>; // malformed id → null
   findOne(filter: Filter<T>, options?: ModelQueryOptions): Promise<ModelRecord<T> | null>;
-  create(data: Partial<T>): Promise<ModelRecord<T>>;
-  createMany(data: Partial<T>[]): Promise<ModelRecord<T>[]>;
+  exists(filter: Filter<T>): Promise<boolean>;
+  distinct(field: ScalarKeys<T>, filter?: Filter<T>): Promise<T[field][]>; // non-null, sorted; arrays/objects rejected
+  create(data: TCreate): Promise<ModelRecord<T>>;
+  createMany(data: TCreate[]): Promise<ModelRecord<T>[]>;
   update(id: string, data: Update<T>): Promise<ModelRecord<T> | null>;  // VALIDATES changed fields
+  updateOne(filter: Filter<T>, data: Update<T>): Promise<ModelRecord<T> | null>; // first match, one statement
   updateMany(filter: Filter<T>, data: Update<T>): Promise<number>;
+  upsert(filter: Filter<T>, create: TCreate, update: Update<T>): Promise<ModelRecord<T>>; // filter NOT merged into create; 409 on create retried once as update
   delete(id: string): Promise<void>;
+  deleteOne(filter: Filter<T>): Promise<ModelRecord<T> | null>; // returns the deleted record
   deleteMany(filter: Filter<T>): Promise<number>;
   count(filter?: Filter<T>): Promise<number>;
   aggregate<R>(pipeline: object[]): Promise<R[]>;  // MongoDB only — rejects on PostgreSQL
   raw(): Promise<unknown>;                          // mongoose Model / Drizzle pgTable
-  sync(): Promise<void>;                            // create table/collection, add columns, indexes — never drops
+  sync(opts?: { dryRun?: boolean }): Promise<string[]>; // reconcile (auto on first use); returns changes / planned SQL
   drop(): Promise<void>;
 }
 type ModelRecord<T> = T & { id: string };

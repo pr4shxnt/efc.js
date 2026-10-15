@@ -51,6 +51,9 @@ interface EFCConfig {
   // Logging
   logging?: LoggingConfig | false;
 
+  // Reconcile tables/collections + indexes on first use (default true)
+  autoSync?: boolean;
+
   // Cache + session revocation store
   cache?: CacheConfig | false;
 
@@ -255,6 +258,12 @@ type CacheConfig = { prefix?: string; onRevocationCheckError?: 'reject' | 'allow
 `onRevocationCheckError` (default `'reject'`): when the cache can't be reached for a revocation check, `requireAuth` answers 503 (`'reject'`) or lets the request through (`'allow'`).
 
 Enables `cache`, `cacheResponse()` and session revocation (`revokeSession`, `revokeAllSessions`). Connected during Pre-Flight, after the database. See [Caching & Sessions](../guides/caching.md).
+
+---
+
+### `autoSync`
+
+Default `true`: the first time each model is used in a process, its table (PostgreSQL) or collection and indexes (MongoDB) are reconciled with the definition — see [Database](../guides/database.md#the-schema-takes-care-of-itself). Set `false` to change the schema only through `efc db sync` / migrations; on MongoDB this also turns off mongoose's `autoIndex` / `autoCreate`.
 
 ---
 
