@@ -28,7 +28,12 @@ function gracefulShutdown(server: http.Server | undefined, timeoutMs?: number): 
 function compose(...handlers: RequestHandler[]): RequestHandler
 
 // Models — one API on MongoDB (mongoose) and PostgreSQL (Drizzle); engine picked at first use
-function defineModel<T extends object>(name: string, schema: ModelSchema, options?: ModelOptions): ModelCRUD<T>
+// Types are INFERRED from the schema literal — no interface needed:
+//   const User = defineModel('User', {...}); type User = InferRecord<typeof User>;
+// Explicit defineModel<T>(...) still works (v0.4 behaviour: create() takes Partial<T>).
+function defineModel(name: string, schema: ModelSchema, options?: ModelOptions): ModelCRUD<Record, CreateInput>
+type InferRecord<typeof Model>  // record incl. id + timestamps per options
+type InferCreate<typeof Model>  // create() input: required w/o default/sequence mandatory; dates accept string|number
 async function transaction<T>(fn: () => Promise<T>): Promise<T> // model calls inside join automatically
 class ModelValidationError extends HttpError { issues: { path: string; message: string }[] } // status 400
 
@@ -145,7 +150,7 @@ interface FieldDefinition {
 }
 
 // A field: FieldDefinition | nested ModelSchema (embedded object shorthand) | [ModelSchema] (array of embedded docs)
-type SchemaField = FieldDefinition | ModelSchema | [ModelSchema];
+type SchemaField = FieldDefinition | ModelSchema | [ModelSchema] | readonly [ModelSchema];
 interface ModelSchema { [field: string]: SchemaField }
 
 type DefaultOperator = '$now' | '$uuid' | '$objectId' | '$timestamp' | '$shortId' | '$currentUser' | `$currentUser.${string}`;
@@ -163,16 +168,23 @@ interface FindOptions { populate?: string | string[]; select?: string[]; sort?: 
 //            $and / $or, dotted paths ('address.city'), `id` for the primary key. Typed — no casts.
 // Update<T>: plain fields (= $set) and/or $set (dotted ok) $inc $push ({$each}) $pull $unset.
 
-interface ModelCRUD<T> {
+// Inferred: record type = required/default/sequence fields non-optional, enum → literal union,
+// 'date' → Date (nested too, both engines), 'objectId' → string, untyped object/array → unknown.
+interface ModelCRUD<T, TCreate = Partial<T>> {
   readonly name: string;
   find(filter?: Filter<T>, options?: FindOptions): Promise<ModelRecord<T>[]>;
   findById(id: string, options?: ModelQueryOptions): Promise<ModelRecord<T> | null>; // malformed id → null
   findOne(filter: Filter<T>, options?: ModelQueryOptions): Promise<ModelRecord<T> | null>;
-  create(data: Partial<T>): Promise<ModelRecord<T>>;
-  createMany(data: Partial<T>[]): Promise<ModelRecord<T>[]>;
+  exists(filter: Filter<T>): Promise<boolean>;
+  distinct(field: ScalarKeys<T>, filter?: Filter<T>): Promise<T[field][]>; // non-null, sorted; arrays/objects rejected
+  create(data: TCreate): Promise<ModelRecord<T>>;
+  createMany(data: TCreate[]): Promise<ModelRecord<T>[]>;
   update(id: string, data: Update<T>): Promise<ModelRecord<T> | null>;  // VALIDATES changed fields
+  updateOne(filter: Filter<T>, data: Update<T>): Promise<ModelRecord<T> | null>; // first match, one statement
   updateMany(filter: Filter<T>, data: Update<T>): Promise<number>;
+  upsert(filter: Filter<T>, create: TCreate, update: Update<T>): Promise<ModelRecord<T>>; // filter NOT merged into create; 409 on create retried once as update
   delete(id: string): Promise<void>;
+  deleteOne(filter: Filter<T>): Promise<ModelRecord<T> | null>; // returns the deleted record
   deleteMany(filter: Filter<T>): Promise<number>;
   count(filter?: Filter<T>): Promise<number>;
   aggregate<R>(pipeline: object[]): Promise<R[]>;  // MongoDB only — rejects on PostgreSQL

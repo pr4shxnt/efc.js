@@ -328,12 +328,47 @@ export function pgModel<T extends object>(
         : sql.join(parts, sql` and `);
   }
 
+  // `id = (first matching id)`, locked so a concurrent writer can't take the same row
+  // between the lookup and the write — updateOne/deleteOne stay one statement.
+  function firstMatch(sql: any, t: any, filter: AnyRecord | undefined): any {
+    const w = where(sql, t, filter) ?? sql`true`;
+    return sql`${t.id} = (select ${t.id} from ${t} where ${w} limit 1 for update)`;
+  }
+
   // ── records ────────────────────────────────────────────────────────────────
+
+  // jsonb keeps dates as ISO strings; turn the ones the schema declares back into Dates,
+  // as MongoDB returns them.
+  const revive = (node: FieldNode, value: unknown): unknown => {
+    if (value == null) return value;
+    if (node.kind === 'scalar')
+      return node.type === 'date' && typeof value === 'string' ? new Date(value) : value;
+    if (node.kind === 'array' && Array.isArray(value))
+      return value.map((v) => revive(node.item, v));
+    if (node.kind === 'object' && typeof value === 'object' && !Array.isArray(value)) {
+      const out: AnyRecord = { ...(value as AnyRecord) };
+      for (const [k, child] of Object.entries(node.fields)) {
+        if (out[k] !== undefined) out[k] = revive(child, out[k]);
+      }
+      return out;
+    }
+    return value;
+  };
+  const hasNestedDate = (node: FieldNode): boolean =>
+    node.kind === 'scalar'
+      ? node.type === 'date'
+      : node.kind === 'array'
+        ? hasNestedDate(node.item)
+        : node.kind === 'object' && Object.values(node.fields).some(hasNestedDate);
+  const datedJson = Object.entries(tree).filter(
+    ([, node]) => node.kind !== 'scalar' && hasNestedDate(node),
+  );
 
   // NULL columns are dropped so records look like MongoDB's: unset fields are absent.
   const fromRow = (row: AnyRecord): AnyRecord => {
     const out: AnyRecord = {};
     for (const [k, v] of Object.entries(row)) if (v !== null) out[k] = v;
+    for (const [k, node] of datedJson) if (out[k] !== undefined) out[k] = revive(node, out[k]);
     return out;
   };
 
@@ -822,6 +857,29 @@ export function pgModel<T extends object>(
           null,
       ),
 
+    exists: (filter) =>
+      guard(async () => {
+        const { t, sql } = await ready();
+        let query = client()
+          .select({ one: sql`1` })
+          .from(t);
+        const w = where(sql, t, filter as AnyRecord);
+        if (w) query = query.where(w);
+        return ((await query.limit(1)) as unknown[]).length > 0;
+      }),
+
+    distinct: (field, filter) =>
+      guard(async () => {
+        const { t, sql } = await ready();
+        if (!columns.has(field)) return [];
+        let query = client()
+          .selectDistinct({ v: columnFor(t, field) })
+          .from(t);
+        const w = where(sql, t, filter as AnyRecord);
+        if (w) query = query.where(w);
+        return ((await query) as { v: unknown }[]).map((r) => r.v);
+      }),
+
     create: (data) =>
       guard(async () => {
         const { t } = await ready();
@@ -853,6 +911,21 @@ export function pgModel<T extends object>(
         return row ? (fromRow(row) as Rec) : null;
       }),
 
+    updateOne: (filter, data) =>
+      guard(async () => {
+        const { t, sql } = await ready();
+        const set = await buildSet(data as AnyRecord);
+        if (Object.keys(set).length === 0) {
+          return ((await runFind(filter as AnyRecord, { limit: 1 }))[0] as Rec | undefined) ?? null;
+        }
+        const [row] = await client()
+          .update(t)
+          .set(set)
+          .where(firstMatch(sql, t, filter as AnyRecord))
+          .returning();
+        return row ? (fromRow(row) as Rec) : null;
+      }),
+
     updateMany: (filter, data) =>
       guard(async () => {
         const { t, sql } = await ready();
@@ -870,6 +943,16 @@ export function pgModel<T extends object>(
         await client()
           .delete(t)
           .where(sql`${t.id} = ${id}`);
+      }),
+
+    deleteOne: (filter) =>
+      guard(async () => {
+        const { t, sql } = await ready();
+        const [row] = await client()
+          .delete(t)
+          .where(firstMatch(sql, t, filter as AnyRecord))
+          .returning();
+        return row ? (fromRow(row) as Rec) : null;
       }),
 
     deleteMany: (filter) =>

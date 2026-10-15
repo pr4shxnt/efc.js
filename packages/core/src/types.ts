@@ -277,7 +277,7 @@ export interface FieldDefinition {
  * - a one-element tuple holding a nested `ModelSchema` — an array of embedded
  *   documents: `items: [{ sku: { type: 'string' } }]`
  */
-export type SchemaField = FieldDefinition | ModelSchema | [ModelSchema];
+export type SchemaField = FieldDefinition | ModelSchema | [ModelSchema] | readonly [ModelSchema];
 export interface ModelSchema {
   [field: string]: SchemaField;
 }
@@ -363,18 +363,49 @@ export type Update<T> =
 
 export type ModelRecord<T> = T & { id: string };
 
-export interface ModelCRUD<T extends object> {
+/** Fields of `T` that hold a single scalar value — the fields `distinct()` accepts. */
+export type ScalarKeys<T> = {
+  [K in keyof T]-?: NonNullable<T[K]> extends string | number | boolean | Date ? K : never;
+}[keyof T] &
+  string &
+  keyof T;
+
+export interface ModelCRUD<T extends object, TCreate = Partial<T>> {
   readonly name: string;
   find(filter?: Filter<T>, options?: FindOptions): Promise<ModelRecord<T>[]>;
   findById(id: string, options?: ModelQueryOptions): Promise<ModelRecord<T> | null>;
   findOne(filter: Filter<T>, options?: ModelQueryOptions): Promise<ModelRecord<T> | null>;
-  create(data: Partial<T>): Promise<ModelRecord<T>>;
-  createMany(data: Partial<T>[]): Promise<ModelRecord<T>[]>;
+  /** `true` if at least one record matches. */
+  exists(filter: Filter<T>): Promise<boolean>;
+  /**
+   * The distinct non-null values of a scalar field among matching records, sorted
+   * ascending. Array and object fields are rejected (the engines disagree on them).
+   */
+  distinct<K extends ScalarKeys<ModelRecord<T>>>(
+    field: K,
+    filter?: Filter<T>,
+  ): Promise<NonNullable<ModelRecord<T>[K]>[]>;
+  create(data: TCreate): Promise<ModelRecord<T>>;
+  createMany(data: TCreate[]): Promise<ModelRecord<T>[]>;
   /** Validates changed fields (enum, min/max, custom validators) before writing. */
   update(id: string, data: Update<T>): Promise<ModelRecord<T> | null>;
+  /**
+   * Updates the first record matching `filter` (in one statement) and returns it, or
+   * `null` if nothing matched. Which record is "first" is unspecified when several match.
+   */
+  updateOne(filter: Filter<T>, data: Update<T>): Promise<ModelRecord<T> | null>;
   /** Returns the number of records modified. */
   updateMany(filter: Filter<T>, data: Update<T>): Promise<number>;
+  /**
+   * Applies `update` to the first record matching `filter`, or creates `create` if none
+   * matches; returns the resulting record. `create` is used as given — fields of `filter`
+   * are not copied into it. Only a unique index on the filtered fields makes concurrent
+   * upserts race-free: a duplicate (409) on create is retried once as an update.
+   */
+  upsert(filter: Filter<T>, create: TCreate, update: Update<T>): Promise<ModelRecord<T>>;
   delete(id: string): Promise<void>;
+  /** Deletes the first record matching `filter` and returns it, or `null` if none matched. */
+  deleteOne(filter: Filter<T>): Promise<ModelRecord<T> | null>;
   /** Returns the number of records deleted. */
   deleteMany(filter: Filter<T>): Promise<number>;
   count(filter?: Filter<T>): Promise<number>;
@@ -396,6 +427,120 @@ export interface ModelCRUD<T extends object> {
   /** Drops the collection/table and all its data. For migration `down()` functions. */
   drop(): Promise<void>;
 }
+
+// ── Type inference from the schema ───────────────────────────────────────────
+// `defineModel('User', { ... })` derives its record and create-input types from the
+// schema literal, so no interface has to be written (or kept in step) by hand.
+
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
+
+type PrimitiveValue<P> = P extends 'string'
+  ? string
+  : P extends 'number'
+    ? number
+    : P extends 'boolean'
+      ? boolean
+      : P extends 'date'
+        ? Date
+        : P extends 'objectId'
+          ? string
+          : unknown; // 'object' without `fields`: any JSON value
+
+/** What a date field accepts on writes: anything that parses as a date. */
+type InputValue<V> = V extends Date ? Date | string | number : V;
+
+/** `I` = input mode (create data) instead of record mode. */
+type InferDefinition<F, I extends boolean> = F extends { type: 'array' }
+  ? F extends { of: infer O }
+    ? O extends PrimitiveFieldType
+      ? (I extends true ? InputValue<PrimitiveValue<O>> : PrimitiveValue<O>)[]
+      : InferObject<O, I>[]
+    : unknown[]
+  : F extends { type: 'object' }
+    ? F extends { fields: infer S }
+      ? InferObject<S, I>
+      : unknown
+    : F extends { enum: readonly (infer E)[] }
+      ? E
+      : F extends { type: infer P }
+        ? I extends true
+          ? InputValue<PrimitiveValue<P>>
+          : PrimitiveValue<P>
+        : never;
+
+type InferField<F, I extends boolean> = F extends readonly [infer S]
+  ? InferObject<S, I>[]
+  : F extends { type: PrimitiveFieldType | 'array' }
+    ? InferDefinition<F, I>
+    : InferObject<F, I>;
+
+/** Fields always present on a stored record: required, defaulted or sequence-assigned. */
+type PresentKeys<S> = {
+  [K in keyof S]: S[K] extends
+    | { required: true }
+    | { default: unknown }
+    | { sequence: true | string }
+    ? K
+    : never;
+}[keyof S];
+
+/** Fields a create call must supply: required, with no default and no sequence. */
+type MandatoryKeys<S> = {
+  [K in keyof S]: S[K] extends { required: true }
+    ? S[K] extends { default: unknown } | { sequence: true | string }
+      ? never
+      : K
+    : never;
+}[keyof S];
+
+type InferObject<S, I extends boolean> = I extends true
+  ? Simplify<
+      { -readonly [K in MandatoryKeys<S>]: InferField<S[K], true> } & {
+        -readonly [K in Exclude<keyof S, MandatoryKeys<S>>]?: InferField<S[K], true> | undefined;
+      }
+    >
+  : Simplify<
+      { -readonly [K in PresentKeys<S>]: InferField<S[K], false> } & {
+        -readonly [K in Exclude<keyof S, PresentKeys<S>>]?: InferField<S[K], false>;
+      }
+    >;
+
+type TimestampName<O, K extends 'createdAt' | 'updatedAt'> = O extends { timestamps: false }
+  ? never
+  : O extends { timestamps: infer TS extends object }
+    ? TS extends { [P in K]: infer N }
+      ? N extends string
+        ? N
+        : never
+      : K
+    : K;
+
+type TimestampFields<O> = {
+  [P in TimestampName<O, 'createdAt'> | TimestampName<O, 'updatedAt'>]: Date;
+};
+
+/** The record type a schema describes (without `id`), incl. the timestamps `O` enables. */
+export type InferSchema<S, O = object> = Simplify<InferObject<S, false> & TimestampFields<O>>;
+
+/** The data `create()` accepts for a schema: required fields without a default are mandatory. */
+export type InferCreateInput<S> = InferObject<S, true>;
+
+/** The model type `defineModel` returns: explicit generic, inferred, or loose for a widened schema. */
+export type InferredModel<T extends object, S, O> = [T] extends [never]
+  ? string extends keyof S
+    ? ModelCRUD<object> // schema typed as plain `ModelSchema` — nothing to infer from
+    : ModelCRUD<InferSchema<S, O>, InferCreateInput<S>>
+  : ModelCRUD<T>;
+
+/**
+ * The record type of a model, `id` included:
+ * `type UserRecord = InferRecord<typeof User>`.
+ */
+export type InferRecord<M> =
+  M extends ModelCRUD<infer T, unknown> ? Simplify<ModelRecord<T>> : never;
+
+/** The data a model's `create()` accepts: `type NewUser = InferCreate<typeof User>`. */
+export type InferCreate<M> = M extends { create(data: infer C): unknown } ? C : never;
 
 /** Passed to migration `up`/`down` functions and seed functions. */
 export interface MigrationContext {

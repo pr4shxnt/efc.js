@@ -1,5 +1,5 @@
 import type * as MongooseNS from 'mongoose';
-import type { FindOptions, ModelCRUD, ModelOptions, ModelQueryOptions } from '../types.js';
+import type { Filter, FindOptions, ModelCRUD, ModelOptions, ModelQueryOptions } from '../types.js';
 import { HttpError } from '../errors.js';
 import {
   ModelValidationError,
@@ -12,7 +12,10 @@ import { currentTx, isAutoSync } from './engine.js';
 import { notInstalled } from './postgres.js';
 
 type AnyRecord = Record<string, unknown>;
-export type EngineModel<T extends object> = Omit<ModelCRUD<T>, 'name'>;
+/** What each engine adapter implements; `defineModel` adds `name`, `upsert` and the `distinct` rules. */
+export type EngineModel<T extends object> = Omit<ModelCRUD<T>, 'name' | 'upsert' | 'distinct'> & {
+  distinct(field: string, filter?: Filter<T>): Promise<unknown[]>;
+};
 
 let mongoosePromise: Promise<typeof MongooseNS> | undefined;
 
@@ -315,6 +318,26 @@ export function mongoModel<T extends object>(
         return normalise(doc!.toObject()) as Rec;
       }),
 
+    exists: (filter) =>
+      guard(async () => {
+        const M = await model();
+        return (
+          (await M.exists(mapFilter(filter as AnyRecord)).session(session().session ?? null)) !==
+          null
+        );
+      }),
+
+    distinct: (field, filter) =>
+      guard(async () => {
+        const mg = await loadMongoose();
+        const M = await model();
+        const values: unknown[] = await M.distinct(
+          field === 'id' ? '_id' : field,
+          mapFilter(filter as AnyRecord),
+        ).session(session().session ?? null);
+        return values.map((v) => (v instanceof mg.Types.ObjectId ? String(v) : v));
+      }),
+
     createMany: (data) =>
       guard(async () => {
         const M = await model();
@@ -338,6 +361,17 @@ export function mongoModel<T extends object>(
       }
     },
 
+    updateOne: (filter, data) =>
+      guard(async () => {
+        const M = await model();
+        const doc = await M.findOneAndUpdate(mapFilter(filter as AnyRecord), data as AnyRecord, {
+          returnDocument: 'after',
+          runValidators: true,
+          ...session(),
+        }).lean();
+        return doc ? (normalise(doc) as Rec) : null;
+      }),
+
     updateMany: (filter, data) =>
       guard(async () => {
         const M = await model();
@@ -357,6 +391,13 @@ export function mongoModel<T extends object>(
         translateError(name, err);
       }
     },
+
+    deleteOne: (filter) =>
+      guard(async () => {
+        const M = await model();
+        const doc = await M.findOneAndDelete(mapFilter(filter as AnyRecord), session()).lean();
+        return doc ? (normalise(doc) as Rec) : null;
+      }),
 
     deleteMany: (filter) =>
       guard(async () => {
