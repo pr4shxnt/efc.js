@@ -413,7 +413,20 @@ export interface TableOptions extends ModelOptions {
    * `column` overrides it. Default: columns are named like the fields.
    */
   naming?: 'snake_case';
+  /**
+   * Back-relations, loaded with `include`: records of another model that reference this one
+   * through `foreignKey` — a `ref` field on that model (scalar, or a many-to-many array).
+   * `hasOne` needs that field to be `unique`.
+   *
+   * @example relations: { comments: { hasMany: 'Comment', foreignKey: 'post' } }
+   */
+  relations?: Record<string, TableRelation>;
 }
+
+/** A back-relation of a `defineTable` model (see `TableOptions.relations`). */
+export type TableRelation =
+  | { hasMany: string; foreignKey: string; hasOne?: never }
+  | { hasOne: string; foreignKey: string; hasMany?: never };
 
 /** Comparison operators accepted in filters (the MongoDB query subset both engines support). */
 export interface FilterOperators<V> {
