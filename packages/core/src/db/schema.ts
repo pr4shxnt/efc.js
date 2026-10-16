@@ -113,7 +113,10 @@ class SchemaBuilder {
         );
       }
       if (many && def.onDelete !== undefined) {
-        this.fail(path, `'onDelete' doesn't apply to many-to-many refs — links are always removed with either record`);
+        this.fail(
+          path,
+          `'onDelete' doesn't apply to many-to-many refs — links are always removed with either record`,
+        );
       }
       if (many && (def.unique || def.index)) {
         this.fail(path, `many-to-many refs are indexed already; 'unique' / 'index' don't apply`);

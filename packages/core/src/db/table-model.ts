@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TableOptions, TableSchema } from '../types.js';
 import type { TableModel } from '../table-types.js';
-import { HttpError } from '../errors.js';
+import { HttpError, isHttpError } from '../errors.js';
 import { ModelValidationError, normalizeSchema, type FieldIssue } from './schema.js';
 import { getDbEngine, getRegisteredModel, registerModel } from './engine.js';
 import { pgTable, q, type ColumnSpec, type JoinSpec, type PgTable } from './pg-table.js';
@@ -30,15 +30,31 @@ const isPlainObject = (v: unknown): v is AnyRecord =>
 
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
-/** A change to a many-to-many field: replace its links, or append to them. */
+/** A change to a many-to-many field: replace its links, append to them, or remove some. */
 interface JoinOp {
   field: string;
-  mode: 'set' | 'push';
+  mode: 'set' | 'push' | 'pull';
   items: unknown[];
 }
 
 const relAlias = (field: string) => `efc_rel_${field}`;
 const incAlias = (name: string) => `efc_inc_${name}`;
+// Nested write operations, per kind of relation.
+const ONE_OPS = new Set(['connect', 'create', 'connectOrCreate', 'disconnect']);
+const JOIN_OPS = new Set([
+  'connect',
+  'create',
+  'connectOrCreate',
+  'disconnect',
+  'set',
+  'push',
+  'pull',
+]);
+const BACK_ONE_OPS = new Set(['connect', 'create', 'disconnect', 'delete']);
+const BACK_MANY_OPS = new Set(['connect', 'create', 'disconnect', 'set', 'delete', 'deleteMany']);
+const idJson = (_k: string, v: unknown) => (typeof v === 'bigint' ? String(v) : v);
+// Relation filters can nest; every subquery gets its own alias.
+let aliasSeq = 0;
 const literal = (s: string) => `'${s.replace(/'/g, "''")}'`;
 // jsonb_build_object takes at most 100 arguments: build wide records in chunks.
 const JSON_PAIRS_PER_CALL = 50;
@@ -201,6 +217,11 @@ class TableRuntime {
         else if (key === 'OR')
           parts.push(subs.length ? sql`(${sql.join(subs, sql` or `)})` : sql`false`);
         else parts.push(subs.length ? sql`not (${sql.join(subs, sql` or `)})` : sql`true`);
+        continue;
+      }
+      const rel = this.relationFilterOf(key, value);
+      if (rel) {
+        parts.push(this.relationFilter(sql, rel, value as AnyRecord, alias));
         continue;
       }
       const spec = this.spec(key);
@@ -550,7 +571,7 @@ class TableRuntime {
   // ── reads ──────────────────────────────────────────────────────────────────
 
   async findMany(args: AnyRecord = {}): Promise<AnyRecord[]> {
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready(args['where'], args['cursor']);
     return this.tbl.guard(async () => {
       const fields = this.projection(args);
       // A distinct read selects from a derived table, not the table itself.
@@ -668,20 +689,53 @@ class TableRuntime {
     depth: number,
   ): Promise<Sql> {
     const T = runtimeOf(rel.target, `${this.name}.${rel.name}`);
-    const { t } = await T.tbl.ready();
+    const { t } = await T.ready(args['where']);
     const a = `efc_r${depth}`;
     const obj = await T.jsonRecord(sql, t, args, a, depth + 1);
+    const { from, cond, defaultOrder } = this.relationSource(rel, owner, a, `efc_j${depth}`);
+    if (rel.via === 'fk') return sql`(select ${obj} from ${sql.raw(from)} where ${sql.raw(cond)})`;
+    if (rel.kind === 'one') {
+      return sql`(select ${obj} from ${sql.raw(from)} where ${sql.raw(cond)} limit 1)`;
+    }
+
+    const where = T.where(sql, t, args['where'], a);
+    const order = args['orderBy']
+      ? T.orderSql(sql, T.orderList(args['orderBy']), a)
+      : sql.raw(defaultOrder);
+    const take = args['take'] as number | undefined;
+    if (take !== undefined && (!Number.isInteger(take) || take < 0)) {
+      this.fail(`include.${rel.name}.take`, 'must be a whole number ≥ 0 inside include');
+    }
+    const s = `efc_s${depth}`;
+    return sql`coalesce((select jsonb_agg(${sql.raw(`${s}.o order by ${s}.n`)}) from (select ${obj} as o, row_number() over (order by ${order}) as n from ${sql.raw(from)} where ${sql.raw(cond)}${where ? sql` and ${where}` : sql``} order by ${order}${take !== undefined ? sql` limit ${sql.param(take)}` : sql``}${args['skip'] ? sql` offset ${sql.param(args['skip'])}` : sql``}) ${sql.raw(s)}), '[]'::jsonb)`;
+  }
+
+  /**
+   * Where a relation's records come from, for rows of this table aliased `owner`: the FROM
+   * (target aliased `a`, plus its join table aliased `j` when there is one) and the
+   * condition tying them to the owner row.
+   */
+  private relationSource(
+    rel: Relation,
+    owner: string,
+    a: string,
+    j: string,
+  ): { T: TableRuntime; from: string; cond: string; defaultOrder: string } {
+    const T = runtimeOf(rel.target, `${this.name}.${rel.name}`);
     const target = `${q(T.tbl.table)} ${a}`;
     const ownerId = `${owner}.${q('id')}`;
     if (rel.via === 'fk') {
-      return sql`(select ${obj} from ${sql.raw(target)} where ${sql.raw(`${a}.${q('id')} = ${owner}.${q(rel.column)}`)})`;
+      return {
+        T,
+        from: target,
+        cond: `${a}.${q('id')} = ${owner}.${q(rel.column)}`,
+        defaultOrder: `${a}.${q('id')}`,
+      };
     }
-
     let from: string;
     let cond: string;
     let defaultOrder: string;
     if (rel.via === 'join') {
-      const j = `efc_j${depth}`;
       from = `${q(rel.join.table)} ${j} join ${target} on ${a}.${q('id')} = ${j}.ref_id`;
       cond = `${j}.owner_id = ${ownerId}`;
       defaultOrder = `${j}.position`;
@@ -701,7 +755,6 @@ class TableRuntime {
             `[EFC] ${this.name}.${rel.name}: ${rel.target}.${rel.foreignKey} is many-to-many — use hasMany`,
           );
         }
-        const j = `efc_j${depth}`;
         from = `${q(join.table)} ${j} join ${target} on ${a}.${q('id')} = ${j}.owner_id`;
         cond = `${j}.ref_id = ${ownerId}`;
       } else {
@@ -715,20 +768,354 @@ class TableRuntime {
       }
       defaultOrder = `${a}.${q('id')}`;
     }
-    if (rel.kind === 'one') {
-      return sql`(select ${obj} from ${sql.raw(from)} where ${sql.raw(cond)} limit 1)`;
-    }
+    return { T, from, cond, defaultOrder };
+  }
 
-    const where = T.where(sql, t, args['where'], a);
-    const order = args['orderBy']
-      ? T.orderSql(sql, T.orderList(args['orderBy']), a)
-      : sql.raw(defaultOrder);
-    const take = args['take'] as number | undefined;
-    if (take !== undefined && (!Number.isInteger(take) || take < 0)) {
-      this.fail(`include.${rel.name}.take`, 'must be a whole number ≥ 0 inside include');
+  // ── nested writes ──────────────────────────────────────────────────────────
+
+  /** Whether `data` writes related records (connect / create / … on a relation). */
+  private hasNested(data: unknown): boolean {
+    if (!isPlainObject(data)) return false;
+    return Object.entries(data).some(([key, v]) => {
+      const rel = this.relations().get(key);
+      if (!rel || v === undefined) return false;
+      if (rel.via === 'back') return true;
+      if (!isPlainObject(v)) return false;
+      // A ref holds an id, never an object: any object there is a nested write (or a mistake
+      // resolveNested explains). A many-to-many field also takes set / push / pull of ids.
+      if (rel.via === 'fk') return true;
+      const keys = Object.keys(v);
+      if (keys.some((k) => !['set', 'push', 'pull'].includes(k))) return true;
+      // `set: [{ id }]` / unique wheres on a many-to-many field.
+      return rel.via === 'join' && Array.isArray(v['set']) && v['set'].some(isPlainObject);
+    });
+  }
+
+  /** The id of the `rel` record a unique where (or a bare id) names; 400 when none does. */
+  private async connectId(rel: Relation, w: unknown, path: string): Promise<unknown> {
+    const T = runtimeOf(rel.target, `${this.name}.${rel.name}`);
+    const where = isPlainObject(w) ? w : { id: w };
+    const found = await T.findUnique({ where, select: { id: true } });
+    if (!found) {
+      throw new ModelValidationError(this.name, [
+        { path, message: `no ${rel.target} matches ${JSON.stringify(where, idJson)}` },
+      ]);
     }
-    const s = `efc_s${depth}`;
-    return sql`coalesce((select jsonb_agg(${sql.raw(`${s}.o order by ${s}.n`)}) from (select ${obj} as o, row_number() over (order by ${order}) as n from ${sql.raw(from)} where ${sql.raw(cond)}${where ? sql` and ${where}` : sql``} order by ${order}${take !== undefined ? sql` limit ${sql.param(take)}` : sql``}${args['skip'] ? sql` offset ${sql.param(args['skip'])}` : sql``}) ${sql.raw(s)}), '[]'::jsonb)`;
+    return found['id'];
+  }
+
+  private async connectOrCreateId(rel: Relation, arg: unknown, path: string): Promise<unknown> {
+    if (!isPlainObject(arg) || !isPlainObject(arg['where']) || !isPlainObject(arg['create'])) {
+      this.fail(path, 'connectOrCreate needs { where, create }');
+    }
+    const T = runtimeOf(rel.target, `${this.name}.${rel.name}`);
+    const found = await T.findUnique({ where: arg['where'], select: { id: true } });
+    return found ? found['id'] : (await T.createNested({ data: arg['create'] }))['id'];
+  }
+
+  /**
+   * Splits nested relation writes out of `data`: own refs and many-to-many fields are
+   * resolved to ids before the row is written; back-relations become steps to run with
+   * the owner's id afterwards. Runs inside the caller's transaction.
+   */
+  private async resolveNested(
+    data: AnyRecord,
+    mode: 'create' | 'update',
+  ): Promise<{ data: AnyRecord; after: ((id: unknown) => Promise<void>)[] }> {
+    const out: AnyRecord = { ...data };
+    const after: ((id: unknown) => Promise<void>)[] = [];
+    const list = (v: unknown) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
+
+    for (const [key, v] of Object.entries(data)) {
+      const rel = this.relations().get(key);
+      if (!rel || v === undefined) continue;
+      const T = runtimeOf(rel.target, `${this.name}.${rel.name}`);
+      const ops = isPlainObject(v) ? v : undefined;
+      for (const op of Object.keys(ops ?? {})) {
+        const allowed =
+          rel.via === 'fk'
+            ? ONE_OPS
+            : rel.via === 'join'
+              ? JOIN_OPS
+              : rel.kind === 'one'
+                ? BACK_ONE_OPS
+                : BACK_MANY_OPS;
+        if (!allowed.has(op)) {
+          this.fail(key, `"${op}" isn't a nested write here (use ${[...allowed].join(', ')})`);
+        }
+      }
+
+      if (rel.via === 'fk') {
+        if (!ops) continue; // a plain id
+        if (ops['disconnect']) {
+          if (mode === 'create') this.fail(key, 'disconnect only applies to updates');
+          out[key] = null;
+        } else if (ops['connect'] !== undefined) {
+          out[key] = await this.connectId(rel, ops['connect'], key);
+        } else if (ops['connectOrCreate'] !== undefined) {
+          out[key] = await this.connectOrCreateId(rel, ops['connectOrCreate'], key);
+        } else if (ops['create'] !== undefined) {
+          out[key] = (await T.createNested({ data: ops['create'] }))['id'];
+        }
+        continue;
+      }
+
+      if (rel.via === 'join') {
+        if (!ops || !this.hasNested({ [key]: v })) continue; // ids, set / push / pull of ids
+        const ids = async (items: unknown[]) => {
+          const got: unknown[] = [];
+          for (const w of items) got.push(await this.connectId(rel, w, key));
+          return got;
+        };
+        const added = await ids(list(ops['connect']));
+        for (const a of list(ops['connectOrCreate'])) {
+          added.push(await this.connectOrCreateId(rel, a, key));
+        }
+        for (const c of list(ops['create'])) added.push((await T.createNested({ data: c }))['id']);
+        const removed: unknown[] = [];
+        for (const w of list(ops['disconnect'])) {
+          const where = isPlainObject(w) ? w : { id: w };
+          const found = await T.findUnique({ where, select: { id: true } });
+          if (found) removed.push(found['id']);
+        }
+        const gone = new Set(removed.map(String));
+        if (ops['set'] !== undefined || mode === 'create') {
+          const base = ops['set'] === undefined ? [] : await ids(list(ops['set']));
+          const all = dedupe([...base, ...added]).filter((x) => !gone.has(String(x)));
+          out[key] = mode === 'create' ? all : { set: all };
+        } else {
+          out[key] = {
+            ...(added.length && { push: added }),
+            ...(removed.length && { pull: removed }),
+          };
+        }
+        continue;
+      }
+
+      // A back-relation: the other model's `foreignKey` field points here.
+      delete out[key];
+      const fk = rel.foreignKey;
+      const many = T.tbl.joins.has(fk); // their side is many-to-many
+      const mine = (owner: unknown): AnyRecord =>
+        many ? { [fk]: { has: owner } } : { [fk]: owner };
+      const whereOf = (w: unknown) => (isPlainObject(w) ? w : { id: w });
+      const link = async (owner: unknown, w: unknown) => {
+        if (many) {
+          const id = await this.connectId(rel, w, key);
+          await T.updateNested({ where: { id }, data: { [fk]: { push: owner } } });
+        } else {
+          try {
+            await T.updateNested({ where: whereOf(w), data: { [fk]: owner } });
+          } catch (err) {
+            if (isHttpError(err) && err.statusCode === 404) {
+              throw new ModelValidationError(this.name, [
+                {
+                  path: key,
+                  message: `no ${rel.target} matches ${JSON.stringify(whereOf(w), idJson)}`,
+                },
+              ]);
+            }
+            throw err;
+          }
+        }
+      };
+      const unlink = (owner: unknown, where?: AnyRecord) =>
+        many
+          ? T.updateManyLinks(fk, owner, where)
+          : T.updateMany(
+              { where: { AND: [mine(owner), ...(where ? [where] : [])] }, data: { [fk]: null } },
+              false,
+            );
+      const createChild = (owner: unknown, c: unknown) => {
+        if (!isPlainObject(c)) this.fail(key, 'create needs record data');
+        return T.createNested({ data: { ...c, [fk]: many ? [owner] : owner } });
+      };
+
+      after.push(async (owner) => {
+        if (rel.kind === 'one') {
+          if (mode === 'update' && (ops?.['create'] || ops?.['connect'] || ops?.['disconnect'])) {
+            await unlink(owner); // the current one, if any, steps aside
+          }
+          if (ops?.['delete']) await T.deleteMany({ where: mine(owner) });
+          if (ops?.['connect'] !== undefined) await link(owner, ops['connect']);
+          if (ops?.['create'] !== undefined) await createChild(owner, ops['create']);
+          return;
+        }
+        if (ops?.['set'] !== undefined) {
+          const keep = list(ops['set']).map(whereOf);
+          await unlink(owner, keep.length ? { NOT: { OR: keep } } : undefined);
+          for (const w of keep) await link(owner, w);
+        }
+        for (const w of list(ops?.['disconnect'])) await unlink(owner, whereOf(w));
+        for (const w of list(ops?.['delete']))
+          await T.deleteMany({ where: { AND: [mine(owner), whereOf(w)] } });
+        if (ops?.['deleteMany'] !== undefined) {
+          for (const w of list(ops['deleteMany'])) {
+            await T.deleteMany({ where: { AND: [mine(owner), ...(isPlainObject(w) ? [w] : [])] } });
+          }
+        }
+        for (const w of list(ops?.['connect'])) await link(owner, w);
+        for (const c of list(ops?.['create'])) await createChild(owner, c);
+      });
+    }
+    return { data: out, after };
+  }
+
+  /** Removes `owner` from the many-to-many field `fk` of the records `where` matches. */
+  async updateManyLinks(fk: string, owner: unknown, where?: AnyRecord): Promise<void> {
+    const matches = await this.findMany({
+      where: { AND: [{ [fk]: { has: owner } }, ...(where ? [where] : [])] },
+      select: { id: true },
+    });
+    const { sql } = await this.ready();
+    await this.applyJoins(
+      sql,
+      matches.map((m) => ({ id: m['id'], ops: [{ field: fk, mode: 'pull', items: [owner] }] })),
+    );
+  }
+
+  /** Runs a write whose data may hold nested writes, all in one transaction. */
+  private withNested(
+    data: unknown,
+    mode: 'create' | 'update',
+    write: (data: AnyRecord) => Promise<AnyRecord>,
+  ): Promise<AnyRecord> {
+    if (!this.hasNested(data)) return write(data as AnyRecord);
+    return transaction(async () => {
+      const { data: plain, after } = await this.resolveNested(data as AnyRecord, mode);
+      const record = await write(plain);
+      for (const step of after) await step(record['id']);
+      return record;
+    });
+  }
+
+  createNested(args: AnyRecord): Promise<AnyRecord> {
+    return this.withNested(args['data'], 'create', (data) => this.create({ ...args, data }));
+  }
+
+  updateNested(args: AnyRecord): Promise<AnyRecord> {
+    return this.withNested(args['data'], 'update', (data) => this.update({ ...args, data }));
+  }
+
+  /** upsert with nested writes: find, then update or create — in one transaction. */
+  async upsertNested(args: AnyRecord): Promise<AnyRecord> {
+    if (!this.hasNested(args['create']) && !this.hasNested(args['update']))
+      return this.upsert(args);
+    this.uniqueKey(args['where'], 'upsert');
+    return transaction(async () => {
+      const found = await this.findUnique({ where: args['where'], select: { id: true } });
+      const { create, update, where, ...rest } = args;
+      if (found)
+        return this.updateNested({ ...rest, where: { id: found['id'] }, data: update ?? {} });
+      const key = this.uniqueKey(where, 'upsert');
+      const data = { ...(create as AnyRecord) };
+      for (const f of key) if (data[f] === undefined) data[f] = where[f];
+      return this.createNested({ ...rest, data });
+    });
+  }
+
+  /** createMany / updateMany write rows only, as in Prisma. */
+  noNested(data: unknown, op: string): void {
+    for (const d of Array.isArray(data) ? data : [data]) {
+      if (this.hasNested(d))
+        this.fail(
+          'data',
+          `${op} doesn't take nested writes — use ${op === 'updateMany' ? 'update' : 'create'}`,
+        );
+    }
+  }
+
+  // ── relation filters ───────────────────────────────────────────────────────
+
+  /** The compiled Drizzle table, once `ready()` has run (relation filters need it sync). */
+  t: any;
+
+  /**
+   * Compiles (and auto-syncs) this table, and every table a relation filter in `wheres`
+   * reaches, so `where()` can build those filters synchronously.
+   */
+  async ready(...wheres: unknown[]): Promise<{ t: any; sql: Sql }> {
+    const out = await this.tbl.ready();
+    this.t = out.t;
+    for (const w of wheres) await this.prepareWhere(w);
+    return out;
+  }
+
+  private async prepareWhere(where: unknown): Promise<void> {
+    if (!isPlainObject(where)) return;
+    for (const [key, value] of Object.entries(where)) {
+      if (key === 'AND' || key === 'OR' || key === 'NOT') {
+        for (const w of Array.isArray(value) ? value : [value]) await this.prepareWhere(w);
+        continue;
+      }
+      const rel = this.relationFilterOf(key, value);
+      if (!rel) continue;
+      const T = runtimeOf(rel.target, `${this.name}.${rel.name}`);
+      for (const sub of Object.values(value as AnyRecord)) await T.ready(sub);
+    }
+  }
+
+  /** The relation `where.key` filters on, when `value` is a relation filter. */
+  private relationFilterOf(key: string, value: unknown): Relation | undefined {
+    const rel = this.relations().get(key);
+    if (!rel) return undefined;
+    const ops = rel.kind === 'many' ? ['some', 'every', 'none'] : ['is', 'isNot'];
+    const keys = isPlainObject(value) ? Object.keys(value) : [];
+    const isFilter = keys.length > 0 && keys.every((k) => ops.includes(k));
+    // A ref / many-to-many field also takes its plain id filters; a back-relation only these.
+    if (!isFilter && rel.via === 'back') {
+      this.fail(`where.${key}`, `filter a relation with ${ops.join(' / ')}`);
+    }
+    return isFilter ? rel : undefined;
+  }
+
+  /** some / every / none, is / isNot → EXISTS subqueries on the related table. */
+  private relationFilter(sql: Sql, rel: Relation, filter: AnyRecord, owner?: string): Sql {
+    const a = `efc_f${++aliasSeq}`;
+    const { T, from, cond } = this.relationSource(
+      rel,
+      owner ?? q(this.tbl.table),
+      a,
+      `efc_fj${aliasSeq}`,
+    );
+    if (T.t === undefined) {
+      throw new Error(
+        `[EFC] ${this.name}: relation filter on ${rel.name} before its table was ready`,
+      );
+    }
+    const exists = (w: unknown, negate = false): Sql => {
+      const inner = isPlainObject(w) ? T.where(sql, T.t, w, a) : undefined;
+      const extra = inner
+        ? negate
+          ? sql` and not (${inner})`
+          : sql` and ${inner}`
+        : negate
+          ? sql` and false`
+          : sql``;
+      return sql`exists (select 1 from ${sql.raw(from)} where ${sql.raw(cond)}${extra})`;
+    };
+    const parts: Sql[] = [];
+    for (const [op, w] of Object.entries(filter)) {
+      if (w === undefined) continue;
+      switch (op) {
+        case 'some':
+          parts.push(exists(w));
+          break;
+        case 'none':
+          parts.push(sql`not ${exists(w)}`);
+          break;
+        case 'every':
+          parts.push(sql`not ${exists(w, true)}`);
+          break;
+        case 'is':
+          parts.push(w === null ? sql`not ${exists(undefined)}` : exists(w));
+          break;
+        case 'isNot':
+          parts.push(w === null ? exists(undefined) : sql`not ${exists(w)}`);
+          break;
+      }
+    }
+    return parts.length === 1 ? parts[0] : sql`(${sql.join(parts, sql` and `)})`;
   }
 
   /** A record of this table (aliased `alias`) as jsonb, with its own includes. */
@@ -872,7 +1259,7 @@ class TableRuntime {
   }
 
   async count(args: AnyRecord = {}): Promise<number | AnyRecord> {
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready(args['where']);
     return this.tbl.guard(async () => {
       const select = args['select'] as AnyRecord | undefined;
       const counted = select
@@ -966,7 +1353,7 @@ class TableRuntime {
   }
 
   async aggregate(args: AnyRecord = {}): Promise<AnyRecord> {
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready(args['where']);
     return this.tbl.guard(async () => {
       const specs = this.aggregateSpec(args);
       if (specs.length === 0) return {};
@@ -1022,7 +1409,7 @@ class TableRuntime {
   }
 
   async groupBy(args: AnyRecord): Promise<AnyRecord[]> {
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready(args['where']);
     return this.tbl.guard(async () => {
       const by = (Array.isArray(args['by']) ? args['by'] : [args['by']]) as string[];
       if (by.length === 0) this.fail('by', 'groupBy needs at least one field');
@@ -1113,11 +1500,11 @@ class TableRuntime {
         const entries = isPlainObject(value) ? Object.entries(value) : [['set', value]];
         for (const [op, v] of entries) {
           if (v === undefined) continue;
-          if (op !== 'set' && op !== 'push') {
+          if (op !== 'set' && op !== 'push' && op !== 'pull') {
             issues.push({ path: field, message: `unknown update operation "${op}"` });
             continue;
           }
-          const items = v === null ? [] : Array.isArray(v) ? v : op === 'push' ? [v] : v;
+          const items = v === null ? [] : Array.isArray(v) ? v : op !== 'set' ? [v] : v;
           await this.tbl.validate({ [field]: items }, true);
           joinOps.push({ field, mode: op, items: items as unknown[] });
         }
@@ -1220,13 +1607,23 @@ class TableRuntime {
           sql`delete from ${jt} as efc_j using unnest(${sql.param(owners)}::${sql.raw(idDdl)}[], ${sql.param(lists)}::text[]) as w(owner, ids) where efc_j.owner_id = w.owner and not (efc_j.ref_id = any(w.ids::${sql.raw(join.ddl)}))`,
         );
       }
+      const pulls = entries.filter((e) => e.op.mode === 'pull');
+      if (pulls.length) {
+        const pairs = pulls.flatMap((e) => dedupe(e.op.items).map((ref) => [e.id, ref] as const));
+        if (pairs.length) {
+          await this.exec(
+            sql`delete from ${jt} as efc_j using unnest(${sql.param(pairs.map((p) => idText(p[0])))}::${sql.raw(idDdl)}[], ${sql.param(pairs.map((p) => idText(p[1])))}::${sql.raw(join.ddl)}) as d(o, r) where efc_j.owner_id = d.o and efc_j.ref_id = d.r`,
+          );
+        }
+      }
       // One insert for every new link: (owner, ref, position).
+      const adds = entries.filter((e) => e.op.mode !== 'pull');
       const links: [unknown, unknown, number][] = [];
-      for (const { id, op } of entries) {
+      for (const { id, op } of adds) {
         dedupe(op.items).forEach((ref, i) => links.push([id, ref, i + 1]));
       }
       if (links.length === 0) continue;
-      const pushes = new Set(entries.filter((e) => e.op.mode === 'push').map((e) => idText(e.id)));
+      const pushes = new Set(adds.filter((e) => e.op.mode === 'push').map((e) => idText(e.id)));
       const owners = sql`${sql.param(links.map((l) => idText(l[0])))}::${sql.raw(idDdl)}[]`;
       const refs = sql`${sql.param(links.map((l) => idText(l[1])))}::${sql.raw(join.ddl)}`;
       const pos = sql`${sql.param(links.map((l) => l[2]))}::integer[]`;
@@ -1304,7 +1701,7 @@ class TableRuntime {
   }
 
   async create(args: AnyRecord): Promise<AnyRecord> {
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready();
     return this.tbl.guard(async () => {
       const { row, ops } = this.splitJoins(await this.prepare(args['data']));
       return this.withLinks(
@@ -1328,7 +1725,7 @@ class TableRuntime {
   }
 
   async createMany(args: AnyRecord, returning: boolean): Promise<{ count: number } | AnyRecord[]> {
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready();
     return this.tbl.guard(async () => {
       const data = (Array.isArray(args['data']) ? args['data'] : [args['data']]) as AnyRecord[];
       if (data.length === 0) return returning ? [] : { count: 0 };
@@ -1411,7 +1808,7 @@ class TableRuntime {
 
   async update(args: AnyRecord): Promise<AnyRecord> {
     this.uniqueKey(args['where'], 'update');
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready(args['where']);
     return this.tbl.guard(async () => {
       const { sets, joinOps } = await this.setList(sql, t, args['data'] ?? {});
       return this.withLinks(joinOps.length > 0, async () => {
@@ -1432,7 +1829,7 @@ class TableRuntime {
   }
 
   async updateMany(args: AnyRecord, returning: boolean): Promise<{ count: number } | AnyRecord[]> {
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready(args['where']);
     return this.tbl.guard(async () => {
       const { sets, joinOps } = await this.setList(sql, t, args['data'] ?? {});
       if (sets.length === 0 && joinOps.length === 0) {
@@ -1469,7 +1866,7 @@ class TableRuntime {
 
   async upsert(args: AnyRecord): Promise<AnyRecord> {
     const key = this.uniqueKey(args['where'], 'upsert');
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready(args['where']);
     return this.tbl.guard(async () => {
       const { row, ops: createOps } = this.splitJoins(await this.prepare(args['create']));
       for (const f of key) {
@@ -1520,7 +1917,7 @@ class TableRuntime {
 
   async delete(args: AnyRecord): Promise<AnyRecord> {
     this.uniqueKey(args['where'], 'delete');
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready(args['where']);
     return this.tbl.guard(async () => {
       const where = this.where(sql, t, args['where'])!;
       // RETURNING runs before ON DELETE CASCADE removes the links, so they're still there.
@@ -1536,7 +1933,7 @@ class TableRuntime {
   }
 
   async deleteMany(args: AnyRecord = {}): Promise<{ count: number }> {
-    const { t, sql } = await this.tbl.ready();
+    const { t, sql } = await this.ready(args['where']);
     return this.tbl.guard(async () => {
       const where = this.where(sql, t, args['where']) ?? sql`true`;
       const result = await this.tbl
@@ -1622,13 +2019,17 @@ export function createTable(name: string, schema: TableSchema, options: TableOpt
     count: (args?: AnyRecord) => call((r) => r.count(args)),
     aggregate: (args?: AnyRecord) => call((r) => r.aggregate(args)),
     groupBy: (args: AnyRecord) => call((r) => r.groupBy(args)),
-    create: (args: AnyRecord) => call((r) => r.withInclude(args, (a) => r.create(a))),
-    createMany: (args: AnyRecord) => call((r) => r.createMany(args, false)),
-    createManyAndReturn: (args: AnyRecord) => call((r) => r.createMany(args, true)),
-    update: (args: AnyRecord) => call((r) => r.withInclude(args, (a) => r.update(a))),
-    updateMany: (args: AnyRecord) => call((r) => r.updateMany(args, false)),
-    updateManyAndReturn: (args: AnyRecord) => call((r) => r.updateMany(args, true)),
-    upsert: (args: AnyRecord) => call((r) => r.withInclude(args, (a) => r.upsert(a))),
+    create: (args: AnyRecord) => call((r) => r.withInclude(args, (a) => r.createNested(a))),
+    createMany: (args: AnyRecord) =>
+      call((r) => (r.noNested(args?.['data'], 'createMany'), r.createMany(args, false))),
+    createManyAndReturn: (args: AnyRecord) =>
+      call((r) => (r.noNested(args?.['data'], 'createMany'), r.createMany(args, true))),
+    update: (args: AnyRecord) => call((r) => r.withInclude(args, (a) => r.updateNested(a))),
+    updateMany: (args: AnyRecord) =>
+      call((r) => (r.noNested(args?.['data'], 'updateMany'), r.updateMany(args, false))),
+    updateManyAndReturn: (args: AnyRecord) =>
+      call((r) => (r.noNested(args?.['data'], 'updateMany'), r.updateMany(args, true))),
+    upsert: (args: AnyRecord) => call((r) => r.withInclude(args, (a) => r.upsertNested(a))),
     delete: (args: AnyRecord) => call((r) => r.deleteWithInclude(args)),
     deleteMany: (args?: AnyRecord) => call((r) => r.deleteMany(args)),
     raw: () => call(async (r) => (await r.tbl.compile()).t),

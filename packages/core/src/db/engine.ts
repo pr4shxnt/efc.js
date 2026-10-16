@@ -59,7 +59,12 @@ export function registeredModels(): RegisteredModel[] {
 /** The open transaction for the current async scope: a mongoose session or a Drizzle tx. */
 export type TxHandle =
   | { engine: 'mongodb'; session: unknown }
-  | { engine: 'postgresql'; tx: unknown };
+  | {
+      engine: 'postgresql';
+      tx: unknown;
+      /** Work to run once the transaction has committed (e.g. deferred foreign keys). */
+      afterCommit: (() => void)[];
+    };
 
 const txStorage = new AsyncLocalStorage<TxHandle>();
 
