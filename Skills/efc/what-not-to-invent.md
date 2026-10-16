@@ -39,7 +39,7 @@ defineTable()          // ← EXISTS (PostgreSQL-only, Prisma-style) — see api
 defineCollection()     // ← NOT YET — planned (MongoDB-native API, prisma-parity-plan M5)
 Model.findMany() / findUnique() / groupBy()   // ← only on defineTable, NOT on defineModel
 Table.find() / findById() / $gt / $inc        // ← defineModel vocabulary, NOT on defineTable
-Table.findMany({ include })                   // ← include NOT YET (M3); FKs via `ref` + `onDelete` DO exist
+Table.findMany({ include })                   // ← include NOT YET (M3); FKs via `ref` + `onDelete` and m:n via array refs DO exist
 defineModel(..., { type: 'integer' | 'bigint' | 'decimal' | 'uuid' | 'json' })  // ← defineTable-only types
 Model.updateOne(f, u, { upsert: true })       // ← no options arg; use Model.upsert(filter, create, update)
 getModel()             // ← does NOT exist as a public export

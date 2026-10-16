@@ -51,7 +51,7 @@ function defineTable(name: string, schema: TableSchema, options?: TableOptions):
 //          arrays: has hasEvery hasSome isEmpty · jsonb: { path: [...], equals | string_contains | array_contains | gt… }
 //          AND / OR / NOT · undefined ignored · undeclared fields match nothing
 //   data ops: { increment | decrement | multiply | divide } (numbers), { push } (arrays), { set }, null unsets
-//   unique where: id | unique field | all fields of a unique index. Top-level `ref` = FK, `onDelete: 'restrict'|'cascade'|'setNull'`, ref type must match target id (uuid/objectId | integer for serial | bigint for bigserial). No include yet (M3).
+//   unique where: id | unique field | all fields of a unique index. Top-level `ref` = FK, `onDelete: 'restrict'|'cascade'|'setNull'`, ref type must match target id (uuid/objectId | integer for serial | bigint for bigserial). Array of refs `{ type: 'array', of: <id type>, ref }` = many-to-many (join table, record keeps id list, list filters, set/push). No include yet (M3).
 
 class ModelValidationError extends HttpError { issues: { path: string; message: string }[] } // status 400
 
