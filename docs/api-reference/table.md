@@ -142,6 +142,45 @@ doesn't declare are left alone.
 `defineModel` keeps `ref` portable: on PostgreSQL it stays a plain column with no foreign key,
 the same as on MongoDB.
 
+### Many-to-many
+
+An array of refs is a many-to-many relation:
+
+```ts
+export const Tag = defineTable('Tag', { label: { type: 'string', required: true, unique: true } });
+export const Post = defineTable('Post', {
+  title: { type: 'string', required: true },
+  tags:  { type: 'array', of: 'uuid', ref: 'Tag' },          // of: matches Tag's id type
+});
+
+const post = await Post.create({ data: { title: 'Hello', tags: [news, tech] } });
+post.tags;                                                   // [news, tech] — ids, in order
+await Post.findMany({ where: { tags: { has: tech } } });
+await Post.update({ where: { id: post.id }, data: { tags: { push: launch } } });
+await Post.update({ where: { id: post.id }, data: { tags: { set: [tech] } } });
+```
+
+- Records keep the list of ids (`string[]`, `number[]` or `bigint[]`), in the order written, without
+  duplicates. New records start with `[]`.
+- Filters are the list filters: `has`, `hasSome`, `hasEvery`, `isEmpty`, `equals`. Updates take a
+  list, `{ set: [...] }` or `{ push: id | [...] }` (ids already linked are left in place).
+  `select` / `omit` work as for any field. Ordering, grouping and `_sum`-style aggregates on the
+  field are refused.
+- The links live in a join table, `<table>_<column>` (`posts_tags`): `owner_id`, `ref_id`,
+  `position`, primary key `(owner_id, ref_id)`, an index on `ref_id`, and foreign keys to both
+  tables with `ON DELETE CASCADE`. Deleting a post or a tag removes its links (a deleted tag
+  disappears from every post's `tags`). There is no `onDelete` option for these fields.
+- An id that doesn't exist is a **400** on the field, and nothing is written.
+- Reads stay one statement (the list is a subquery). A write that changes links runs in a
+  transaction: the row, then the links.
+- Self-relations work (`friends: { type: 'array', of: 'uuid', ref: 'Person' }`).
+
+**Moving from an array column.** If the table already stores the field as an array (`uuid[]`,
+or `jsonb` from `defineModel`), the first sync copies it into the join table, keeping the order
+and skipping values that aren't ids. The old column stays (sync never drops columns) but is no
+longer read or written, so a `defineModel` over the same table won't see later changes to the
+list.
+
 ---
 
 ## Reading
@@ -290,5 +329,5 @@ Over an empty set, `_sum`, `_avg`, `_min` and `_max` are `null`. `aggregate` als
 - `raw()` returns the Drizzle `pgTable`, for anything EFC doesn't cover.
 - `sync({ dryRun })` / `drop()` work as with `defineModel`.
 - `transaction(async () => …)` covers `defineTable` calls too.
-- Foreign keys are in (above). `include`, many-to-many join tables, relation filters and nested
-  writes are planned (M3), not implemented yet.
+- Foreign keys and many-to-many are in (above). `include`, relation filters and nested writes
+  are planned (M3), not implemented yet.

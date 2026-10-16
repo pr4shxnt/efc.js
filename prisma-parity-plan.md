@@ -209,9 +209,10 @@ await Post.create({ data: { title, author: { connect: { id } }, tags: { connectO
 ```
 - Real `REFERENCES … ON DELETE` (`restrict` default | `cascade` | `setNull`), added by sync
   `NOT VALID` and validated separately so dirty data can't block a deploy. **Done (M3a)** —
-  scalar refs; target tables synced first; 400/409 error mapping. m:n join tables, `relations`,
-  `include`, filters and nested writes remain.
-- m:n → auto-managed join tables with FKs; records keep `tags: string[]`.
+  scalar refs; target tables synced first; 400/409 error mapping.
+- m:n → auto-managed join tables with FKs; records keep `tags: string[]`. **Done (M3a-2)** — join
+  table `<table>_<column>` (owner_id, ref_id, position); first sync backfills from the old
+  array/jsonb column (kept). `relations`, `include`, filters and nested writes remain (M3b/c).
 - `include` → one statement (`LEFT JOIN LATERAL … json_agg`), any depth; included fields typed.
 - Relation filters `is/isNot/some/every/none` → `EXISTS` sub-queries; nested writes in one transaction.
 
