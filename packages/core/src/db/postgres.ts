@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 import { getLogger } from '../logger.js';
+import { countStatement } from './query-log.js';
 
 // Pre-Flight's PostgreSQL connection: a node-postgres Pool (exposed as `db`) plus a
 // Drizzle instance over it that the model adapter queries through.
@@ -27,10 +28,10 @@ export async function connectPostgres(url: string): Promise<Pool> {
   } catch (err) {
     throw notInstalled(err, 'pg', 'npm install pg drizzle-orm');
   }
-  let drizzle: (client: Pool) => unknown;
+  let drizzle: (client: Pool, config: object) => unknown;
   try {
     ({ drizzle } = (await import('drizzle-orm/node-postgres')) as unknown as {
-      drizzle: (client: Pool) => unknown;
+      drizzle: (client: Pool, config: object) => unknown;
     });
   } catch (err) {
     throw notInstalled(err, 'drizzle-orm', 'npm install drizzle-orm');
@@ -42,7 +43,8 @@ export async function connectPostgres(url: string): Promise<Pool> {
   next.on('error', (err) => getLogger().error({ err }, 'PostgreSQL pool error'));
   await next.query('select 1');
   pool = next;
-  orm = drizzle(next);
+  // Every model statement goes through Drizzle, in or out of a transaction: count it.
+  orm = drizzle(next, { logger: { logQuery: countStatement } });
   getLogger().info('PostgreSQL connected');
   return next;
 }

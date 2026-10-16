@@ -127,6 +127,7 @@ interface LoggingConfig {
   level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent'; // default 'info'
   pretty?: boolean;   // default: non-production TTY
   requests?: boolean; // default true
+  queries?: boolean | { all?: boolean; slowMs?: number; nPlusOne?: number | false }; // default off; slowMs 500, nPlusOne 10
 }
 ```
 
