@@ -53,7 +53,7 @@ Both approaches produce the same 401/403 behavior — RBAC-on just centralizes t
 
 ### `Role` model
 
-A `src/model/Role.ts` model is created (MongoDB: a real `defineModel`-backed collection; PostgreSQL: a commented-out Drizzle stub, per the current [database support status](./database.md)).
+A `src/model/Role.ts` model is created (`defineModel` on MongoDB, `defineTable` on PostgreSQL by default).
 
 ### Admin role management routes
 

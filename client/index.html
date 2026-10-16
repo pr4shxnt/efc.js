@@ -77,7 +77,7 @@
     <section class="hero" id="hero">
       <div class="hero-glow"></div>
       <div class="container">
-        <div class="badge">v0.7.0</div>
+        <div class="badge">v0.7.1</div>
         <h1 class="hero-title">
           Express, but your folder<br />
           <span class="accent">is your router.</span>
@@ -626,6 +626,25 @@
           <em>Change</em><span style="font-weight: 600">log</span>
         </h2>
         <div class="changelog-list">
+          <div class="changelog-item">
+            <div class="changelog-meta">
+              <div class="cl-version">express-file-cluster v0.7.1 / create-efc-app v0.7.1 / express-file-cluster-mcp v0.7.1</div>
+              <div class="cl-date">Oct 16, 2026</div>
+              <div class="cl-tag">SCAFFOLDER</div>
+            </div>
+            <div class="changelog-content">
+              <h3><code>create-efc-app</code> Scaffolds <code>defineTable</code> on PostgreSQL</h3>
+              <p>
+                New PostgreSQL apps get <code>defineTable</code> models by default (a new <em>Models</em>
+                prompt keeps the portable <code>defineModel</code> one click away). The generated models
+                are linked by real foreign keys — a user's sessions, invoices and tickets, a
+                subscription's plan, a category's parent — with <code>relations</code> ready for
+                <code>include</code>, a <code>src/model/index</code> that registers them all and types
+                includes, and routes written in <code>defineTable</code>'s Prisma-style vocabulary.
+              </p>
+            </div>
+          </div>
+
           <div class="changelog-item">
             <div class="changelog-meta">
               <div class="cl-version">express-file-cluster v0.7.0 / create-efc-app v0.7.0 / express-file-cluster-mcp v0.7.0</div>

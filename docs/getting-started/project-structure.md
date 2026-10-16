@@ -70,7 +70,7 @@ See [Background Tasks](../core-concepts/background-tasks.md).
 
 ## `src/model/` — Data models
 
-Engine-agnostic model definitions using `defineModel()` — they compile to a mongoose model on MongoDB or a Drizzle table on PostgreSQL, with the same API on both.
+Model definitions. On PostgreSQL (by default) they're [`defineTable`](../api-reference/table.md) models — PostgreSQL-native, with foreign keys and `relations` between them — and `src/model/index.ts` imports them all and declares the `Tables` map that types `include`; add new models there. On MongoDB (or with the **defineModel** choice) they're engine-agnostic `defineModel()` models, which compile to mongoose or Drizzle with the same API on both.
 
 See [Database Guide](../guides/database.md).
 
