@@ -1,7 +1,14 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { spawn } from 'node:child_process';
-import { scaffold, type ScaffoldOptions, type AdminFeatures, type UserFeatures, NO_ADMIN_FEATURES, NO_USER_FEATURES } from './scaffold.js';
+import {
+  scaffold,
+  type ScaffoldOptions,
+  type AdminFeatures,
+  type UserFeatures,
+  NO_ADMIN_FEATURES,
+  NO_USER_FEATURES,
+} from './scaffold.js';
 
 function cancel(msg = 'Cancelled'): never {
   p.cancel(msg);
@@ -38,6 +45,23 @@ async function main(): Promise<void> {
   });
   if (p.isCancel(database)) cancel();
 
+  let modelApi: ScaffoldOptions['modelApi'];
+  if (database === 'postgresql') {
+    const api = await p.select({
+      message: 'Models:',
+      options: [
+        {
+          value: 'defineTable',
+          label: 'defineTable',
+          hint: 'PostgreSQL-native — foreign keys, relations, include, Prisma-style queries',
+        },
+        { value: 'defineModel', label: 'defineModel', hint: 'portable — the same API on MongoDB' },
+      ],
+    });
+    if (p.isCancel(api)) cancel();
+    modelApi = api as ScaffoldOptions['modelApi'];
+  }
+
   const authStrategy = await p.select({
     message: 'Authentication strategy:',
     options: [
@@ -50,13 +74,13 @@ async function main(): Promise<void> {
   const features = await p.multiselect({
     message: 'Features: (space to toggle, enter to confirm)',
     options: [
-      { value: 'cluster',    label: 'Multi-core clustering',          hint: 'Node cluster module' },
-      { value: 'tasks',      label: 'Background tasks',               hint: 'BullMQ / pg-boss' },
-      { value: 'routeDocs',  label: 'API route documentation',        hint: 'meta exports + dashboard' },
-      { value: 'userPortal', label: 'User portal',                    hint: 'auth, profile, billing routes' },
-      { value: 'adminPortal',label: 'Admin portal',                   hint: 'dashboard, user mgmt, analytics' },
-      { value: 'rbac',       label: 'Role-based access control',      hint: "requireAuth('role') middleware" },
-      { value: 'mailer',     label: 'Mailer',                         hint: 'nodemailer + SMTP' },
+      { value: 'cluster', label: 'Multi-core clustering', hint: 'Node cluster module' },
+      { value: 'tasks', label: 'Background tasks', hint: 'BullMQ / pg-boss' },
+      { value: 'routeDocs', label: 'API route documentation', hint: 'meta exports + dashboard' },
+      { value: 'userPortal', label: 'User portal', hint: 'auth, profile, billing routes' },
+      { value: 'adminPortal', label: 'Admin portal', hint: 'dashboard, user mgmt, analytics' },
+      { value: 'rbac', label: 'Role-based access control', hint: "requireAuth('role') middleware" },
+      { value: 'mailer', label: 'Mailer', hint: 'nodemailer + SMTP' },
     ],
     initialValues: ['cluster', 'tasks', 'routeDocs', 'userPortal', 'adminPortal', 'rbac'],
     required: false,
@@ -70,17 +94,55 @@ async function main(): Promise<void> {
     const chosen = await p.multiselect({
       message: 'User portal features: (space to toggle, enter to confirm)',
       options: [
-        { value: 'profileViewing',   label: 'Profile viewing & editing', hint: 'GET/PUT /user/profile' },
-        { value: 'forgotPassword',   label: 'Forgot / reset password',   hint: 'forgot-password, reset-password' },
-        { value: 'accountSecurity',  label: 'Change password, 2FA & sessions', hint: 'change-password, 2fa/*, sessions/*, token refresh' },
-        { value: 'emailVerification',label: 'Email verification',        hint: 'verify-email route + registration flow' },
-        { value: 'accountSettings',  label: 'Account settings',          hint: 'avatar, settings, account, dashboard, activity' },
-        { value: 'notifications',    label: 'Notifications',             hint: 'user/notifications' },
-        { value: 'filesAndMedia',    label: 'Files, favorites & bookmarks', hint: 'files, favorites, bookmarks, search' },
-        { value: 'apiAndBilling',    label: 'API keys & billing',        hint: 'api-keys, plans, subscription, invoices' },
-        { value: 'support',         label: 'Support tickets',           hint: 'create & view own tickets' },
+        {
+          value: 'profileViewing',
+          label: 'Profile viewing & editing',
+          hint: 'GET/PUT /user/profile',
+        },
+        {
+          value: 'forgotPassword',
+          label: 'Forgot / reset password',
+          hint: 'forgot-password, reset-password',
+        },
+        {
+          value: 'accountSecurity',
+          label: 'Change password, 2FA & sessions',
+          hint: 'change-password, 2fa/*, sessions/*, token refresh',
+        },
+        {
+          value: 'emailVerification',
+          label: 'Email verification',
+          hint: 'verify-email route + registration flow',
+        },
+        {
+          value: 'accountSettings',
+          label: 'Account settings',
+          hint: 'avatar, settings, account, dashboard, activity',
+        },
+        { value: 'notifications', label: 'Notifications', hint: 'user/notifications' },
+        {
+          value: 'filesAndMedia',
+          label: 'Files, favorites & bookmarks',
+          hint: 'files, favorites, bookmarks, search',
+        },
+        {
+          value: 'apiAndBilling',
+          label: 'API keys & billing',
+          hint: 'api-keys, plans, subscription, invoices',
+        },
+        { value: 'support', label: 'Support tickets', hint: 'create & view own tickets' },
       ],
-      initialValues: ['profileViewing', 'forgotPassword', 'accountSecurity', 'emailVerification', 'accountSettings', 'notifications', 'filesAndMedia', 'apiAndBilling', 'support'],
+      initialValues: [
+        'profileViewing',
+        'forgotPassword',
+        'accountSecurity',
+        'emailVerification',
+        'accountSettings',
+        'notifications',
+        'filesAndMedia',
+        'apiAndBilling',
+        'support',
+      ],
       required: false,
     });
     if (p.isCancel(chosen)) cancel();
@@ -103,16 +165,49 @@ async function main(): Promise<void> {
     const chosen = await p.multiselect({
       message: 'Admin panel features: (space to toggle, enter to confirm)',
       options: [
-        { value: 'userManagement',       label: 'User management', hint: 'list/create/suspend/verify/export users + dashboard stats' },
-        { value: 'adminManagement',      label: 'Admin & role management', hint: 'manage other admins' + (selected.has('rbac') ? ' + roles' : '') },
-        { value: 'analytics',            label: 'Analytics',       hint: 'users, revenue, traffic dashboards' },
-        { value: 'contentManagement',    label: 'Content management', hint: 'FAQs, blog posts, categories' },
-        { value: 'billingManagement',    label: 'Billing management', hint: 'plans, coupons, subscriptions' },
-        { value: 'supportManagement',    label: 'Support tickets', hint: 'view & respond to tickets' },
-        { value: 'notificationsAndLogs', label: 'Notifications & audit logs', hint: 'broadcast + audit/activity/security logs' },
-        { value: 'systemSettings',       label: 'System settings & health', hint: 'app settings, health check, cache' },
+        {
+          value: 'userManagement',
+          label: 'User management',
+          hint: 'list/create/suspend/verify/export users + dashboard stats',
+        },
+        {
+          value: 'adminManagement',
+          label: 'Admin & role management',
+          hint: 'manage other admins' + (selected.has('rbac') ? ' + roles' : ''),
+        },
+        { value: 'analytics', label: 'Analytics', hint: 'users, revenue, traffic dashboards' },
+        {
+          value: 'contentManagement',
+          label: 'Content management',
+          hint: 'FAQs, blog posts, categories',
+        },
+        {
+          value: 'billingManagement',
+          label: 'Billing management',
+          hint: 'plans, coupons, subscriptions',
+        },
+        { value: 'supportManagement', label: 'Support tickets', hint: 'view & respond to tickets' },
+        {
+          value: 'notificationsAndLogs',
+          label: 'Notifications & audit logs',
+          hint: 'broadcast + audit/activity/security logs',
+        },
+        {
+          value: 'systemSettings',
+          label: 'System settings & health',
+          hint: 'app settings, health check, cache',
+        },
       ],
-      initialValues: ['userManagement', 'adminManagement', 'analytics', 'contentManagement', 'billingManagement', 'supportManagement', 'notificationsAndLogs', 'systemSettings'],
+      initialValues: [
+        'userManagement',
+        'adminManagement',
+        'analytics',
+        'contentManagement',
+        'billingManagement',
+        'supportManagement',
+        'notificationsAndLogs',
+        'systemSettings',
+      ],
       required: false,
     });
     if (p.isCancel(chosen)) cancel();
@@ -191,8 +286,8 @@ async function main(): Promise<void> {
     if (smtpProvider === 'gmail') {
       p.note(
         'Google no longer accepts your regular account password for SMTP.\n' +
-          "Generate a 16-character App Password: Google Account -> Security -> 2-Step Verification -> App passwords.\n" +
-          "Enter it below without spaces (not your Gmail login password).",
+          'Generate a 16-character App Password: Google Account -> Security -> 2-Step Verification -> App passwords.\n' +
+          'Enter it below without spaces (not your Gmail login password).',
         'Gmail app password required',
       );
     }
@@ -216,21 +311,22 @@ async function main(): Promise<void> {
     language: language as ScaffoldOptions['language'],
     database: database as ScaffoldOptions['database'],
     authStrategy: authStrategy as ScaffoldOptions['authStrategy'],
-    cluster:     selected.has('cluster'),
-    tasks:       selected.has('tasks'),
-    routeDocs:   selected.has('routeDocs'),
-    userPortal:  selected.has('userPortal'),
+    cluster: selected.has('cluster'),
+    tasks: selected.has('tasks'),
+    routeDocs: selected.has('routeDocs'),
+    userPortal: selected.has('userPortal'),
     adminPortal: selected.has('adminPortal'),
     userFeatures,
     adminFeatures,
-    rbac:        selected.has('rbac'),
-    mailer:      selected.has('mailer'),
-    ...(taskBackend   !== undefined && { taskBackend }),
-    ...(smtpProvider  !== undefined && { smtpProvider }),
-    ...(smtpHost      !== undefined && { smtpHost }),
-    ...(smtpPort      !== undefined && { smtpPort }),
-    ...(smtpUser      !== undefined && { smtpUser }),
-    ...(smtpPass      !== undefined && { smtpPass }),
+    rbac: selected.has('rbac'),
+    mailer: selected.has('mailer'),
+    ...(modelApi !== undefined && { modelApi }),
+    ...(taskBackend !== undefined && { taskBackend }),
+    ...(smtpProvider !== undefined && { smtpProvider }),
+    ...(smtpHost !== undefined && { smtpHost }),
+    ...(smtpPort !== undefined && { smtpPort }),
+    ...(smtpUser !== undefined && { smtpUser }),
+    ...(smtpPass !== undefined && { smtpPass }),
   };
 
   const spinner = p.spinner();
@@ -250,7 +346,9 @@ async function main(): Promise<void> {
   spinner.stop('Dependencies installed');
 
   spinner.start('Installing efc CLI globally…');
-  await npmInstallGlobal().catch(() => { /* non-fatal */ });
+  await npmInstallGlobal().catch(() => {
+    /* non-fatal */
+  });
   spinner.stop('efc CLI ready');
 
   if (opts.mailer) {
@@ -283,7 +381,9 @@ function npmInstall(projectDir: string): Promise<void> {
 function npmInstallGlobal(): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn('npm', ['install', '-g', 'express-file-cluster'], { stdio: 'ignore' });
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error('global install failed'))));
+    child.on('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error('global install failed')),
+    );
   });
 }
 

@@ -68,6 +68,108 @@ export interface ScaffoldOptions {
   smtpPort?: string;
   smtpUser?: string;
   smtpPass?: string;
+  /**
+   * Model API on PostgreSQL: `defineTable` (default — foreign keys, relations, Prisma-style
+   * queries) or the portable `defineModel` (same API as on MongoDB). MongoDB always uses
+   * `defineModel`.
+   */
+  modelApi?: 'defineTable' | 'defineModel';
+}
+
+/** Whether the generated models are `defineTable` (PostgreSQL-native) ones. */
+export function usesTables(opts: ScaffoldOptions): boolean {
+  return opts.database === 'postgresql' && opts.modelApi !== 'defineModel';
+}
+
+/**
+ * Code for model calls in generated routes, in the vocabulary of the chosen API:
+ * `defineModel` (`User.findOne({ email })`) or `defineTable` (`User.findFirst({ where: … })`).
+ * Arguments are source text.
+ */
+function orm(opts: ScaffoldOptions) {
+  const t = usesTables(opts);
+  const where = (filter: string) =>
+    filter.replace(/\s/g, '') === '{}' ? '' : `{ where: ${filter} }`;
+  const byId = (id: string) => (id === 'id' ? '{ id }' : `{ id: ${id} }`);
+  return {
+    findOne: (m: string, filter: string) =>
+      t ? `${m}.findFirst({ where: ${filter} })` : `${m}.findOne(${filter})`,
+    findById: (m: string, id: string) =>
+      t ? `${m}.findUnique({ where: ${byId(id)} })` : `${m}.findById(${id})`,
+    find: (m: string, filter: string) =>
+      t ? `${m}.findMany(${where(filter)})` : `${m}.find(${filter})`,
+    count: (m: string, filter: string) =>
+      t ? `${m}.count(${where(filter)})` : `${m}.count(${filter})`,
+    create: (m: string, data: string) =>
+      t ? `${m}.create({ data: ${data} })` : `${m}.create(${data})`,
+    update: (m: string, id: string, data: string) =>
+      t ? `${m}.update({ where: ${byId(id)}, data: ${data} })` : `${m}.update(${id}, ${data})`,
+    delete: (m: string, id: string) =>
+      t ? `${m}.delete({ where: ${byId(id)} })` : `${m}.delete(${id})`,
+  };
+}
+
+/** The models `scaffold()` generates for these options. */
+export function generatedModels(opts: ScaffoldOptions): Set<string> {
+  const uf = opts.userFeatures;
+  const af = opts.adminFeatures;
+  const user = opts.userPortal;
+  const admin = opts.adminPortal;
+  const m = new Set<string>();
+  // Admin "user management" operates on the User collection even when there's
+  // no separate self-service user portal, so the model must exist for it too.
+  if (user || (admin && af.userManagement)) m.add('User');
+  if (admin) m.add('Admin');
+  if (user && uf.accountSecurity) m.add('Session');
+  if ((user && uf.notifications) || (admin && af.notificationsAndLogs)) m.add('Notification');
+  if (user && uf.filesAndMedia) m.add('File');
+  if ((user && uf.support) || (admin && af.supportManagement)) m.add('SupportTicket');
+  if (admin && af.notificationsAndLogs) m.add('AuditLog');
+  if (user && uf.apiAndBilling) m.add('Subscription').add('Invoice').add('ApiKey');
+  if (admin && af.billingManagement) m.add('Plan').add('Coupon');
+  if (opts.rbac && admin && af.adminManagement) m.add('Role');
+  if (admin && af.contentManagement) m.add('FAQ').add('Blog').add('Category');
+  return m;
+}
+
+/** `import { defineTable }` / `import { defineModel }` and the function's name. */
+function modelApi(opts: ScaffoldOptions): { name: string; import: string } {
+  const name = usesTables(opts) ? 'defineTable' : 'defineModel';
+  return { name, import: `import { ${name} } from 'express-file-cluster';` };
+}
+
+/**
+ * A reference field: on defineTable, a real foreign key when its target model is generated;
+ * otherwise the plain id string `legacy` describes (defineModel, or no such model).
+ */
+function refField(
+  opts: ScaffoldOptions,
+  r: {
+    field: string;
+    target: string;
+    legacy: string;
+    required?: boolean;
+    onDelete: 'cascade' | 'setNull' | 'restrict';
+  },
+): string {
+  if (!usesTables(opts) || !generatedModels(opts).has(r.target)) return r.legacy;
+  const opts2 = `${r.required ? ', required: true' : ''}${r.onDelete === 'restrict' ? '' : `, onDelete: '${r.onDelete}'`}`;
+  return `  ${(r.field + ':').padEnd(13)}{ type: 'uuid', ref: '${r.target}'${opts2} },`;
+}
+
+/** The `relations` option (defineTable): back-relations whose models are generated. */
+function relationsOption(
+  opts: ScaffoldOptions,
+  rels: { name: string; kind: 'hasMany' | 'hasOne'; target: string; foreignKey: string }[],
+): string {
+  if (!usesTables(opts)) return '';
+  const models = generatedModels(opts);
+  const live = rels.filter((r) => models.has(r.target));
+  if (live.length === 0) return '';
+  const lines = live.map(
+    (r) => `    ${r.name}: { ${r.kind}: '${r.target}', foreignKey: '${r.foreignKey}' },`,
+  );
+  return `, {\n  relations: {\n${lines.join('\n')}\n  },\n}`;
 }
 
 export async function scaffold(opts: ScaffoldOptions): Promise<void> {
@@ -75,10 +177,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   await fs.ensureDir(dest);
 
   const uf = opts.userFeatures;
-  const af = opts.adminFeatures;
-  // Admin "user management" operates on the User collection even when there's
-  // no separate self-service user portal, so the model must exist for it too.
-  const needsUserModel = opts.userPortal || (opts.adminPortal && af.userManagement);
+  const models = generatedModels(opts);
 
   await writePackageJson(dest, opts);
   await writeTsConfig(dest, opts);
@@ -88,29 +187,31 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
   await writeAgentsMd(dest, opts);
   await writeEnvFiles(dest, opts);
   await writeExampleRoute(dest, opts);
-  if (needsUserModel) await writeUserModel(dest, opts);
-  if (opts.adminPortal) await writeAdminModel(dest, opts);
+  if (models.has('User')) await writeUserModel(dest, opts);
+  if (models.has('Admin')) await writeAdminModel(dest, opts);
   await writeAuthRoutes(dest, opts);
   if (opts.adminPortal) await writeAdminRoutes(dest, opts);
   if (opts.userPortal && uf.profileViewing) await writeUserRoutes(dest, opts);
   if (opts.tasks) await writeExampleTask(dest, opts);
   // Extended models — only generated when a feature that uses them is selected
-  if (opts.userPortal && uf.accountSecurity) await writeSessionModel(dest, opts);
-  if ((opts.userPortal && uf.notifications) || (opts.adminPortal && af.notificationsAndLogs))
-    await writeNotificationModel(dest, opts);
-  if (opts.userPortal && uf.filesAndMedia) await writeFileModel(dest, opts);
-  if ((opts.userPortal && uf.support) || (opts.adminPortal && af.supportManagement))
-    await writeSupportTicketModel(dest, opts);
-  if (opts.adminPortal && af.notificationsAndLogs) await writeAuditLogModel(dest, opts);
-  if (opts.userPortal && uf.apiAndBilling) await writeSubscriptionModel(dest, opts);
-  if (opts.adminPortal && af.billingManagement) await writePlanModel(dest, opts);
-  if (opts.userPortal && uf.apiAndBilling) await writeInvoiceModel(dest, opts);
-  if (opts.userPortal && uf.apiAndBilling) await writeApiKeyModel(dest, opts);
-  if (opts.rbac && opts.adminPortal && af.adminManagement) await writeRoleModel(dest, opts);
-  if (opts.adminPortal && af.contentManagement) await writeFAQModel(dest, opts);
-  if (opts.adminPortal && af.contentManagement) await writeBlogModel(dest, opts);
-  if (opts.adminPortal && af.contentManagement) await writeCategoryModel(dest, opts);
-  if (opts.adminPortal && af.billingManagement) await writeCouponModel(dest, opts);
+  const extended: [string, (dest: string, opts: ScaffoldOptions) => Promise<void>][] = [
+    ['Session', writeSessionModel],
+    ['Notification', writeNotificationModel],
+    ['File', writeFileModel],
+    ['SupportTicket', writeSupportTicketModel],
+    ['AuditLog', writeAuditLogModel],
+    ['Subscription', writeSubscriptionModel],
+    ['Plan', writePlanModel],
+    ['Invoice', writeInvoiceModel],
+    ['ApiKey', writeApiKeyModel],
+    ['Role', writeRoleModel],
+    ['FAQ', writeFAQModel],
+    ['Blog', writeBlogModel],
+    ['Category', writeCategoryModel],
+    ['Coupon', writeCouponModel],
+  ];
+  for (const [name, write] of extended) if (models.has(name)) await write(dest, opts);
+  if (usesTables(opts)) await writeModelIndex(dest, opts);
   // Extended routes — gated by the same per-feature flags as their models
   if (opts.userPortal) await writeAuthExtendedRoutes(dest, opts);
   if (opts.userPortal) await writeUserExtendedRoutes(dest, opts);
@@ -298,7 +399,14 @@ Optional — the same docs over MCP, with search and scaffolding tools:
 - \`src/api/**\` — every file is a route (\`users/[id].${ext}\` → \`/v1/api/users/:id\`); export
   uppercase \`GET\`/\`POST\`/… handlers.
 - \`src/tasks/*.${ext}\` — background tasks; the file name is the task name (not recursive).
-- \`src/model/*.${ext}\` — \`defineModel\` models.
+${
+  usesTables(opts)
+    ? `- \`src/model/*.${ext}\` — \`defineTable\` models (PostgreSQL-native, Prisma-style queries:
+  \`findMany({ where, include })\`, \`create({ data })\`, \`update({ where, data })\`). A \`ref\` is a
+  foreign key; back-relations are in each model's \`relations\`. \`src/model/index.${ext}\` imports
+  them all${opts.language === 'typescript' ? ' and declares `Tables` (typed `include`)' : ''} — add new models there.`
+    : `- \`src/model/*.${ext}\` — \`defineModel\` models.`
+}
 - \`src/index.${ext}\` is the entry point; it imports \`efc.config.${ext}\` and passes it to \`ignite()\`.
 - Only three import paths exist: \`express-file-cluster\`, \`express-file-cluster/auth\`,
   \`express-file-cluster/tasks\`.
@@ -341,7 +449,8 @@ async function writeEnvFiles(dest: string, opts: ScaffoldOptions): Promise<void>
     ? `\nAPP_URL=http://localhost:3000\nSMTP_HOST=${resolvedHost}\nSMTP_PORT=${resolvedPort}\nSMTP_USER=your@email.com\nSMTP_PASS=${isGmail ? 'your_16_char_app_password' : 'your_smtp_password'}${passComment}\nSMTP_FROM=noreply@yourapp.com\n`
     : '';
   // Only BullMQ needs Redis — and `efc tasks failed` picks its backend from REDIS_URL.
-  const redis = opts.tasks && opts.taskBackend !== 'pg-boss' ? '\nREDIS_URL=redis://localhost:6379' : '';
+  const redis =
+    opts.tasks && opts.taskBackend !== 'pg-boss' ? '\nREDIS_URL=redis://localhost:6379' : '';
   const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbUrl}\nJWT_SECRET=${secret}${redis}\nCORS_ORIGINS=http://localhost:3000${smtpVars}`;
   const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>${redis}\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com${smtpExample}`;
   await fs.outputFile(path.join(dest, '.env'), dotenv);
@@ -454,9 +563,9 @@ export default defineTask(async (payload) => {
 async function writeUserModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
 
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const User = defineModel('User', {
+export const User = ${modelApi(opts).name}('User', {
   name:               { type: 'string',  required: true },
   email:              { type: 'string',  required: true, unique: true },
   password:           { type: 'string',  required: true },
@@ -469,7 +578,15 @@ export const User = defineModel('User', {
   resetTokenExpiry:   { type: 'date' },
   refreshToken:       { type: 'string' },
   refreshTokenExpiry: { type: 'date' },
-});
+}${relationsOption(opts, [
+    { name: 'sessions', kind: 'hasMany', target: 'Session', foreignKey: 'user' },
+    { name: 'notifications', kind: 'hasMany', target: 'Notification', foreignKey: 'user' },
+    { name: 'files', kind: 'hasMany', target: 'File', foreignKey: 'user' },
+    { name: 'tickets', kind: 'hasMany', target: 'SupportTicket', foreignKey: 'user' },
+    { name: 'subscriptions', kind: 'hasMany', target: 'Subscription', foreignKey: 'user' },
+    { name: 'invoices', kind: 'hasMany', target: 'Invoice', foreignKey: 'user' },
+    { name: 'apiKeys', kind: 'hasMany', target: 'ApiKey', foreignKey: 'user' },
+  ])});
 `;
 
   await fs.outputFile(path.join(dest, 'src', 'model', `User.${ext}`), content);
@@ -478,9 +595,9 @@ export const User = defineModel('User', {
 async function writeAdminModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
 
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Admin = defineModel('Admin', {
+export const Admin = ${modelApi(opts).name}('Admin', {
   name:               { type: 'string',  required: true },
   email:              { type: 'string',  required: true, unique: true },
   password:           { type: 'string',  required: true },
@@ -491,13 +608,18 @@ export const Admin = defineModel('Admin', {
   resetTokenExpiry:   { type: 'date' },
   refreshToken:       { type: 'string' },
   refreshTokenExpiry: { type: 'date' },
-});
+}${relationsOption(opts, [
+    { name: 'assignedTickets', kind: 'hasMany', target: 'SupportTicket', foreignKey: 'assignedTo' },
+    { name: 'auditLogs', kind: 'hasMany', target: 'AuditLog', foreignKey: 'admin' },
+    { name: 'posts', kind: 'hasMany', target: 'Blog', foreignKey: 'author' },
+  ])});
 `;
 
   await fs.outputFile(path.join(dest, 'src', 'model', `Admin.${ext}`), content);
 }
 
 async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const db = orm(opts);
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
 
@@ -519,7 +641,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
 
   const loginBody =
     hasAdmin && hasUser
-      ? `  const admin = await Admin.findOne({ email });
+      ? `  const admin = await ${db.findOne('Admin', `{ email }`)};
   if (admin) {
     const match = await bcrypt.compare(password, admin.password);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
@@ -529,7 +651,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     return res.json({ message: 'Logged in as admin' });
   }
 
-  const user = await User.findOne({ email });
+  const user = await ${db.findOne('User', `{ email }`)};
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await bcrypt.compare(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
@@ -538,7 +660,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   await issueRefreshToken(res, User, user.id);
   res.json({ message: 'Logged in' });`
       : hasAdmin
-        ? `  const admin = await Admin.findOne({ email });
+        ? `  const admin = await ${db.findOne('Admin', `{ email }`)};
   if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await bcrypt.compare(password, admin.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
@@ -546,7 +668,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
   await issueRefreshToken(res, Admin, admin.id);
   res.json({ message: 'Logged in as admin' });`
-        : `  const user = await User.findOne({ email });
+        : `  const user = await ${db.findOne('User', `{ email }`)};
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await bcrypt.compare(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
@@ -563,11 +685,15 @@ ${loginDbImports}${loginMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 
 
 async function issueRefreshToken(
   res: Response,
-  model: { update: (id: string, data: Record<string, unknown>) => Promise<unknown> },
+  model: ${
+    usesTables(opts)
+      ? '{ update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }'
+      : '{ update: (id: string, data: Record<string, unknown>) => Promise<unknown> }'
+  },
   id: string,
 ): Promise<void> {
   const refreshToken = crypto.randomBytes(40).toString('hex');
-  await model.update(id, { refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+  await ${db.update('model', 'id', '{ refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) }')};
   res.cookie('efc_refresh_token', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -588,7 +714,7 @@ ${loginDbImports}${loginMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 
 
 async function issueRefreshToken(res, model, id) {
   const refreshToken = crypto.randomBytes(40).toString('hex');
-  await model.update(id, { refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+  await ${db.update('model', 'id', '{ refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) }')};
   res.cookie('efc_refresh_token', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -657,8 +783,7 @@ ${logoutMeta}export const POST = async (req, res) => {
       : `export const meta = {\n  POST: {\n    description: 'Register a new user account.',\n    request: { body: { name: 'Jane Doe', email: 'jane@example.com', password: 'secret' } },\n    response: { status: 201, body: { message: 'Account created successfully' } },\n  },\n};\n\n`
     : '';
 
-  const registerDbImports =
-    `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\n${opts.mailer ? "import { enqueue } from 'express-file-cluster/tasks';\n" : ''}import { User } from '../../model/User.js';\n`;
+  const registerDbImports = `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\n${opts.mailer ? "import { enqueue } from 'express-file-cluster/tasks';\n" : ''}import { User } from '../../model/User.js';\n`;
 
   const sendVerifyEmail = opts.mailer
     ? `
@@ -673,34 +798,33 @@ ${logoutMeta}export const POST = async (req, res) => {
   // TODO: email this token to the user — enable the Mailer feature to auto-wire SendEmail
 `;
 
-  const registerContent =
-    ts
-        ? `import type { Request, Response } from 'express';
+  const registerContent = ts
+    ? `import type { Request, Response } from 'express';
 ${registerDbImports}${registerMeta}export const POST = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
   }
-  const existing = await User.findOne({ email });
+  const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
   const hashed = await bcrypt.hash(password, 10);
   const verifyToken = crypto.randomBytes(32).toString('hex');
-  const user = await User.create({ name, email, password: hashed, verifyToken });
+  const user = await ${db.create('User', `{ name, email, password: hashed, verifyToken }`)};
 ${sendVerifyEmail}
   const { password: _, verifyToken: __, ...safe } = user;
   res.status(201).json({ message: 'Account created successfully', user: safe });
 };
 `
-        : `${registerDbImports}${registerMeta}export const POST = async (req, res) => {
+    : `${registerDbImports}${registerMeta}export const POST = async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
   }
-  const existing = await User.findOne({ email });
+  const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
   const hashed = await bcrypt.hash(password, 10);
   const verifyToken = crypto.randomBytes(32).toString('hex');
-  const user = await User.create({ name, email, password: hashed, verifyToken });
+  const user = await ${db.create('User', `{ name, email, password: hashed, verifyToken }`)};
 ${sendVerifyEmail}
   const { password: _, verifyToken: __, ...safe } = user;
   res.status(201).json({ message: 'Account created successfully', user: safe });
@@ -734,6 +858,7 @@ ${meMeta}${meMiddlewares}export const GET = async (req, res) => {
 }
 
 async function writeAdminRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const db = orm(opts);
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
   const middlewares = opts.rbac
@@ -765,9 +890,9 @@ import type { Request, Response } from 'express';
 ${dashboardDbImport}${dashboardMeta}${middlewares}
 export const GET = async (_req: Request, res: Response) => {
 ${roleGuard}  const [totalUsers, activeUsers, verifiedUsers] = await Promise.all([
-    User.count({}),
-    User.count({ isActive: true }),
-    User.count({ isVerified: true }),
+    ${db.count('User', `{}`)},
+    ${db.count('User', `{ isActive: true }`)},
+    ${db.count('User', `{ isVerified: true }`)},
   ]);
   res.json({ stats: { totalUsers, activeUsers, verifiedUsers } });
 };
@@ -776,9 +901,9 @@ ${roleGuard}  const [totalUsers, activeUsers, verifiedUsers] = await Promise.all
 ${dashboardDbImport}${dashboardMeta}${middlewares}
 export const GET = async (_req, res) => {
 ${roleGuard}  const [totalUsers, activeUsers, verifiedUsers] = await Promise.all([
-    User.count({}),
-    User.count({ isActive: true }),
-    User.count({ isVerified: true }),
+    ${db.count('User', `{}`)},
+    ${db.count('User', `{ isActive: true }`)},
+    ${db.count('User', `{ isVerified: true }`)},
   ]);
   res.json({ stats: { totalUsers, activeUsers, verifiedUsers } });
 };
@@ -811,20 +936,18 @@ ${roleGuard}  // TODO: aggregate stats from DB
       : `export const meta = {\n  GET: {\n    description: 'List all users, paginated (admin only).',\n    request: { query: { page: '1', limit: '20' } },\n    response: { status: 200, body: { users: [], total: 0, page: 1, limit: 20 } },\n  },\n  POST: {\n    description: 'Create a new user account (admin only).',\n    request: { body: { name: 'Jane Doe', email: 'jane@example.com', password: 'secret', role: 'user' } },\n    response: { status: 201, body: { message: 'User created', user: { id: 'new-id', name: 'Jane Doe', email: 'jane@example.com', role: 'user' } } },\n  },\n};\n\n`
     : '';
 
-  const adminUsersDbImport =
-    ts
-        ? `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`
-        : `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`;
+  const adminUsersDbImport = ts
+    ? `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`
+    : `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`;
 
-  const usersListContent =
-    ts
-        ? `import { requireAuth } from 'express-file-cluster/auth';
+  const usersListContent = ts
+    ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${adminUsersDbImport}${usersListMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Number(req.query.limit) || 20);
-  const [all, total] = await Promise.all([User.find({}), User.count({})]);
+  const [all, total] = await Promise.all([${db.find('User', `{}`)}, ${db.count('User', `{}`)}]);
   const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, ...u }) => u);
   res.json({ users, total, page, limit });
 };
@@ -832,20 +955,20 @@ ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
 export const POST = async (req: Request, res: Response) => {
 ${roleGuard}  const { name, email, password, role } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email and password are required' });
-  const existing = await User.findOne({ email });
+  const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
   const hashed = await bcrypt.hash(password, 10);
-  const user = await User.create({ name, email, password: hashed, role: role ?? 'user' });
+  const user = await ${db.create('User', `{ name, email, password: hashed, role: role ?? 'user' }`)};
   const { password: _, ...safe } = user;
   res.status(201).json({ message: 'User created', user: safe });
 };
 `
-        : `import { requireAuth } from 'express-file-cluster/auth';
+    : `import { requireAuth } from 'express-file-cluster/auth';
 ${adminUsersDbImport}${usersListMeta}${middlewares}
 export const GET = async (req, res) => {
 ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Number(req.query.limit) || 20);
-  const [all, total] = await Promise.all([User.find({}), User.count({})]);
+  const [all, total] = await Promise.all([${db.find('User', `{}`)}, ${db.count('User', `{}`)}]);
   const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, ...u }) => u);
   res.json({ users, total, page, limit });
 };
@@ -853,10 +976,10 @@ ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
 export const POST = async (req, res) => {
 ${roleGuard}  const { name, email, password, role } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email and password are required' });
-  const existing = await User.findOne({ email });
+  const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
   const hashed = await bcrypt.hash(password, 10);
-  const user = await User.create({ name, email, password: hashed, role: role ?? 'user' });
+  const user = await ${db.create('User', `{ name, email, password: hashed, role: role ?? 'user' }`)};
   const { password: _, ...safe } = user;
   res.status(201).json({ message: 'User created', user: safe });
 };
@@ -873,17 +996,15 @@ ${roleGuard}  const { name, email, password, role } = req.body;
       : `export const meta = {\n  GET: {\n    description: 'Fetch a single user by ID (admin only).',\n    request: { params: { id: 'usr_01HXZ' } },\n    response: { status: 200, body: { user: { id: 'usr_01HXZ', name: 'Jane Doe', email: 'jane@example.com', role: 'user' } } },\n  },\n  PUT: {\n    description: 'Update a user by ID (admin only).',\n    request: { params: { id: 'usr_01HXZ' }, body: { name: 'Jane Doe', email: 'jane@example.com', role: 'user', isActive: true } },\n    response: { status: 200, body: { message: 'User updated', user: { id: 'usr_01HXZ', name: 'Jane Doe', email: 'jane@example.com', role: 'user' } } },\n  },\n  DELETE: {\n    description: 'Delete a user by ID (admin only).',\n    request: { params: { id: 'usr_01HXZ' } },\n    response: { status: 200, body: { message: 'User usr_01HXZ deleted' } },\n  },\n};\n\n`
     : '';
 
-  const adminUserByIdDbImport =
-    `import { User } from '../../../model/User.js';\n`;
+  const adminUserByIdDbImport = `import { User } from '../../../model/User.js';\n`;
 
-  const userByIdContent =
-    ts
-        ? `import { requireAuth } from 'express-file-cluster/auth';
+  const userByIdContent = ts
+    ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${adminUserByIdDbImport}${userByIdMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
-  const user = await User.findById(id);
+  const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
   const { password: _, ...safe } = user;
   res.json({ user: safe });
@@ -892,7 +1013,7 @@ ${roleGuard}  const { id } = req.params;
 export const PUT = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
   const { name, email, role, isActive } = req.body;
-  const updated = await User.update(id, { name, email, role, isActive });
+  const updated = await ${db.update('User', `id`, `{ name, email, role, isActive }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
   const { password: _, ...safe } = updated;
   res.json({ message: 'User updated', user: safe });
@@ -900,17 +1021,17 @@ ${roleGuard}  const { id } = req.params;
 
 export const DELETE = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
-  const user = await User.findById(id);
+  const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  await User.delete(id);
+  await ${db.delete('User', `id`)};
   res.json({ message: \`User \${id} deleted\` });
 };
 `
-        : `import { requireAuth } from 'express-file-cluster/auth';
+    : `import { requireAuth } from 'express-file-cluster/auth';
 ${adminUserByIdDbImport}${userByIdMeta}${middlewares}
 export const GET = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
-  const user = await User.findById(id);
+  const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
   const { password: _, ...safe } = user;
   res.json({ user: safe });
@@ -919,7 +1040,7 @@ ${roleGuard}  const { id } = req.params;
 export const PUT = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
   const { name, email, role, isActive } = req.body;
-  const updated = await User.update(id, { name, email, role, isActive });
+  const updated = await ${db.update('User', `id`, `{ name, email, role, isActive }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
   const { password: _, ...safe } = updated;
   res.json({ message: 'User updated', user: safe });
@@ -927,9 +1048,9 @@ ${roleGuard}  const { id } = req.params;
 
 export const DELETE = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
-  const user = await User.findById(id);
+  const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  await User.delete(id);
+  await ${db.delete('User', `id`)};
   res.json({ message: \`User \${id} deleted\` });
 };
 `;
@@ -941,6 +1062,7 @@ ${roleGuard}  const { id } = req.params;
 }
 
 async function writeUserRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const db = orm(opts);
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
   const middlewares = opts.rbac
@@ -953,17 +1075,15 @@ async function writeUserRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
       : `export const meta = {\n  GET: {\n    description: "Fetch the authenticated user's profile.",\n    response: { status: 200, body: { user: { id: '1', role: 'user', email: 'user@example.com' } } },\n  },\n  PUT: {\n    description: "Update the authenticated user's profile.",\n    request: { body: { name: 'Jane Doe', email: 'jane@example.com' } },\n    response: { status: 200, body: { message: 'Profile updated', user: { id: '1', role: 'user', email: 'jane@example.com' } } },\n  },\n};\n\n`
     : '';
 
-  const profileDbImport =
-    `import { User } from '../../model/User.js';\n`;
+  const profileDbImport = `import { User } from '../../model/User.js';\n`;
 
-  const profileContent =
-    ts
-        ? `import { requireAuth } from 'express-file-cluster/auth';
+  const profileContent = ts
+    ? `import { requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${profileDbImport}${profileMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
   const { id } = (req as any).user;
-  const user = await User.findById(id);
+  const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
   const { password: _, ...safe } = user;
   res.json({ user: safe });
@@ -972,17 +1092,17 @@ export const GET = async (req: Request, res: Response) => {
 export const PUT = async (req: Request, res: Response) => {
   const { id } = (req as any).user;
   const { name, email } = req.body;
-  const updated = await User.update(id, { name, email });
+  const updated = await ${db.update('User', `id`, `{ name, email }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
   const { password: _, ...safe } = updated;
   res.json({ message: 'Profile updated', user: safe });
 };
 `
-        : `import { requireAuth } from 'express-file-cluster/auth';
+    : `import { requireAuth } from 'express-file-cluster/auth';
 ${profileDbImport}${profileMeta}${middlewares}
 export const GET = async (req, res) => {
   const { id } = req.user;
-  const user = await User.findById(id);
+  const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
   const { password: _, ...safe } = user;
   res.json({ user: safe });
@@ -991,7 +1111,7 @@ export const GET = async (req, res) => {
 export const PUT = async (req, res) => {
   const { id } = req.user;
   const { name, email } = req.body;
-  const updated = await User.update(id, { name, email });
+  const updated = await ${db.update('User', `id`, `{ name, email }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
   const { password: _, ...safe } = updated;
   res.json({ message: 'Profile updated', user: safe });
@@ -1039,10 +1159,10 @@ function mkMeta(opts: ScaffoldOptions, methods: Record<string, MethodMetaSpec>):
 
 async function writeSessionModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Session = defineModel('Session', {
-  userId:    { type: 'string',  required: true },
+export const Session = ${modelApi(opts).name}('Session', {
+${refField(opts, { field: 'user', target: 'User', legacy: `  userId:    { type: 'string',  required: true },`, required: true, onDelete: 'cascade' })}
   token:     { type: 'string',  required: true, unique: true },
   ip:        { type: 'string',  required: true },
   userAgent: { type: 'string',  required: true },
@@ -1055,10 +1175,10 @@ export const Session = defineModel('Session', {
 
 async function writeNotificationModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Notification = defineModel('Notification', {
-  userId:  { type: 'string',  required: true },
+export const Notification = ${modelApi(opts).name}('Notification', {
+${refField(opts, { field: 'user', target: 'User', legacy: `  userId:  { type: 'string',  required: true },`, required: true, onDelete: 'cascade' })}
   title:   { type: 'string',  required: true },
   message: { type: 'string',  required: true },
   type:    { type: 'string',  required: true, default: 'info' },
@@ -1071,10 +1191,10 @@ export const Notification = defineModel('Notification', {
 
 async function writeFileModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const File = defineModel('File', {
-  userId:       { type: 'string',  required: true },
+export const File = ${modelApi(opts).name}('File', {
+${refField(opts, { field: 'user', target: 'User', legacy: `  userId:       { type: 'string',  required: true },`, required: true, onDelete: 'cascade' })}
   filename:     { type: 'string',  required: true },
   originalName: { type: 'string',  required: true },
   mimeType:     { type: 'string',  required: true },
@@ -1088,15 +1208,15 @@ export const File = defineModel('File', {
 
 async function writeSupportTicketModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const SupportTicket = defineModel('SupportTicket', {
-  userId:     { type: 'string', required: true },
+export const SupportTicket = ${modelApi(opts).name}('SupportTicket', {
+${refField(opts, { field: 'user', target: 'User', legacy: `  userId:     { type: 'string', required: true },`, required: true, onDelete: 'cascade' })}
   subject:    { type: 'string', required: true },
   message:    { type: 'string', required: true },
   status:     { type: 'string', required: true, default: 'open' },
   priority:   { type: 'string', required: true, default: 'normal' },
-  assignedTo: { type: 'string' },
+${refField(opts, { field: 'assignedTo', target: 'Admin', legacy: `  assignedTo: { type: 'string' },`, onDelete: 'setNull' })}
 });
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `SupportTicket.${ext}`), content);
@@ -1104,10 +1224,10 @@ export const SupportTicket = defineModel('SupportTicket', {
 
 async function writeAuditLogModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const AuditLog = defineModel('AuditLog', {
-  adminId:  { type: 'string', required: true },
+export const AuditLog = ${modelApi(opts).name}('AuditLog', {
+${refField(opts, { field: 'admin', target: 'Admin', legacy: `  adminId:  { type: 'string', required: true },`, onDelete: 'setNull' })}
   action:   { type: 'string', required: true },
   entity:   { type: 'string', required: true },
   entityId: { type: 'string', required: true },
@@ -1120,43 +1240,43 @@ export const AuditLog = defineModel('AuditLog', {
 
 async function writeSubscriptionModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Subscription = defineModel('Subscription', {
-  userId:      { type: 'string', required: true },
-  planId:      { type: 'string', required: true },
+export const Subscription = ${modelApi(opts).name}('Subscription', {
+${refField(opts, { field: 'user', target: 'User', legacy: `  userId:      { type: 'string', required: true },`, required: true, onDelete: 'cascade' })}
+${refField(opts, { field: 'plan', target: 'Plan', legacy: `  planId:      { type: 'string', required: true },`, required: true, onDelete: 'restrict' })}
   status:      { type: 'string', required: true, default: 'active' },
   startDate:   { type: 'date',   required: true },
   endDate:     { type: 'date',   required: true },
   cancelledAt: { type: 'date' },
-});
+}${relationsOption(opts, [{ name: 'invoices', kind: 'hasMany', target: 'Invoice', foreignKey: 'subscription' }])});
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Subscription.${ext}`), content);
 }
 
 async function writePlanModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Plan = defineModel('Plan', {
+export const Plan = ${modelApi(opts).name}('Plan', {
   name:        { type: 'string',  required: true },
   description: { type: 'string',  required: true },
   price:       { type: 'number',  required: true },
   interval:    { type: 'string',  required: true, default: 'monthly' },
   features:    { type: 'array',   of: 'string', default: [] },
   isActive:    { type: 'boolean', default: true },
-});
+}${relationsOption(opts, [{ name: 'subscriptions', kind: 'hasMany', target: 'Subscription', foreignKey: 'plan' }])});
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Plan.${ext}`), content);
 }
 
 async function writeInvoiceModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Invoice = defineModel('Invoice', {
-  userId:         { type: 'string', required: true },
-  subscriptionId: { type: 'string', required: true },
+export const Invoice = ${modelApi(opts).name}('Invoice', {
+${refField(opts, { field: 'user', target: 'User', legacy: `  userId:         { type: 'string', required: true },`, required: true, onDelete: 'cascade' })}
+${refField(opts, { field: 'subscription', target: 'Subscription', legacy: `  subscriptionId: { type: 'string', required: true },`, onDelete: 'setNull' })}
   amount:         { type: 'number', required: true },
   currency:       { type: 'string', required: true, default: 'USD' },
   status:         { type: 'string', required: true, default: 'pending' },
@@ -1168,10 +1288,10 @@ export const Invoice = defineModel('Invoice', {
 
 async function writeApiKeyModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const ApiKey = defineModel('ApiKey', {
-  userId:    { type: 'string',  required: true },
+export const ApiKey = ${modelApi(opts).name}('ApiKey', {
+${refField(opts, { field: 'user', target: 'User', legacy: `  userId:    { type: 'string',  required: true },`, required: true, onDelete: 'cascade' })}
   name:      { type: 'string',  required: true },
   key:       { type: 'string',  required: true, unique: true },
   lastUsed:  { type: 'date' },
@@ -1184,9 +1304,9 @@ export const ApiKey = defineModel('ApiKey', {
 
 async function writeRoleModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Role = defineModel('Role', {
+export const Role = ${modelApi(opts).name}('Role', {
   name:        { type: 'string', required: true, unique: true },
   description: { type: 'string', required: true },
   permissions: { type: 'array',  of: 'string', default: [] },
@@ -1197,9 +1317,9 @@ export const Role = defineModel('Role', {
 
 async function writeFAQModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const FAQ = defineModel('FAQ', {
+export const FAQ = ${modelApi(opts).name}('FAQ', {
   question:    { type: 'string',  required: true },
   answer:      { type: 'string',  required: true },
   category:    { type: 'string',  required: true, default: 'general' },
@@ -1212,13 +1332,13 @@ export const FAQ = defineModel('FAQ', {
 
 async function writeBlogModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Blog = defineModel('Blog', {
+export const Blog = ${modelApi(opts).name}('Blog', {
   title:       { type: 'string', required: true },
   slug:        { type: 'string', required: true, unique: true },
   content:     { type: 'string', required: true },
-  authorId:    { type: 'string', required: true },
+${refField(opts, { field: 'author', target: 'Admin', legacy: `  authorId:    { type: 'string', required: true },`, onDelete: 'setNull' })}
   category:    { type: 'string', required: true, default: 'general' },
   tags:        { type: 'array',  of: 'string', default: [] },
   status:      { type: 'string', required: true, default: 'draft' },
@@ -1230,23 +1350,23 @@ export const Blog = defineModel('Blog', {
 
 async function writeCategoryModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Category = defineModel('Category', {
+export const Category = ${modelApi(opts).name}('Category', {
   name:        { type: 'string', required: true },
   slug:        { type: 'string', required: true, unique: true },
   description: { type: 'string' },
-  parentId:    { type: 'string' },
-});
+${refField(opts, { field: 'parent', target: 'Category', legacy: `  parentId:    { type: 'string' },`, onDelete: 'setNull' })}
+}${relationsOption(opts, [{ name: 'children', kind: 'hasMany', target: 'Category', foreignKey: 'parent' }])});
 `;
   await fs.outputFile(path.join(dest, 'src', 'model', `Category.${ext}`), content);
 }
 
 async function writeCouponModel(dest: string, opts: ScaffoldOptions): Promise<void> {
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
-  const content = `import { defineModel } from 'express-file-cluster';
+  const content = `${modelApi(opts).import}
 
-export const Coupon = defineModel('Coupon', {
+export const Coupon = ${modelApi(opts).name}('Coupon', {
   code:      { type: 'string',  required: true, unique: true },
   type:      { type: 'string',  required: true, default: 'percent' },
   value:     { type: 'number',  required: true },
@@ -1262,6 +1382,7 @@ export const Coupon = defineModel('Coupon', {
 // ─── EXTENDED ROUTE WRITERS ───────────────────────────────────────────────
 
 async function writeAuthExtendedRoutes(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const db = orm(opts);
   const ext = opts.language === 'typescript' ? 'ts' : 'js';
   const ts = opts.language === 'typescript';
   const mwUser2 = opts.rbac
@@ -1305,17 +1426,17 @@ async function writeAuthExtendedRoutes(dest: string, opts: ScaffoldOptions): Pro
     });
     const refreshModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
     const refreshLookup = hasAdmin
-      ? `  const user = await User.findOne({ refreshToken: token });
-  const admin = user ? null : await Admin.findOne({ refreshToken: token });
+      ? `  const user = await ${db.findOne('User', `{ refreshToken: token }`)};
+  const admin = user ? null : await ${db.findOne('Admin', `{ refreshToken: token }`)};
   const account = user || admin;`
-      : `  const user = await User.findOne({ refreshToken: token });
+      : `  const user = await ${db.findOne('User', `{ refreshToken: token }`)};
   const account = user;`;
     const refreshPersist = hasAdmin
-      ? `  if (user) await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });
-  else if (admin) await Admin.update(admin.id, { refreshToken: newRefreshToken, refreshTokenExpiry });`
-      : `  await User.update(user.id, { refreshToken: newRefreshToken, refreshTokenExpiry });`;
+      ? `  if (user) await ${db.update('User', `user.id`, `{ refreshToken: newRefreshToken, refreshTokenExpiry }`)};
+  else if (admin) await ${db.update('Admin', `admin.id`, `{ refreshToken: newRefreshToken, refreshTokenExpiry }`)};`
+      : `  await ${db.update('User', `user.id`, `{ refreshToken: newRefreshToken, refreshTokenExpiry }`)};`;
     const refreshContent = ts
-        ? `import { issueToken } from 'express-file-cluster/auth';
+      ? `import { issueToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
 ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
@@ -1345,7 +1466,7 @@ ${refreshPersist}
   res.json({ message: 'Token refreshed' });
 };
 `
-        : `import { issueToken } from 'express-file-cluster/auth';
+      : `import { issueToken } from 'express-file-cluster/auth';
 import crypto from 'node:crypto';
 ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
@@ -1392,17 +1513,17 @@ ${refreshPersist}
       },
     });
     const veContent = ts
-        ? `import type { Request, Response } from 'express';
+      ? `import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
 ${mailerTaskImport}import { User } from '../../model/User.js';
 ${veMeta}export const GET = async (req: Request, res: Response) => {
   const { token } = req.query;
   if (!token || typeof token !== 'string') return res.status(400).json({ error: 'token is required' });
 
-  const user = await User.findOne({ verifyToken: token });
+  const user = await ${db.findOne('User', `{ verifyToken: token }`)};
   if (!user) return res.status(400).json({ error: 'Invalid or expired verification token' });
 
-  await User.update(user.id, { isVerified: true, verifyToken: '' });
+  await ${db.update('User', `user.id`, `{ isVerified: true, verifyToken: '' }`)};
   res.json({ message: 'Email verified' });
 };
 
@@ -1410,25 +1531,25 @@ export const POST = async (req: Request, res: Response) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email is required' });
 
-  const user = await User.findOne({ email });
+  const user = await ${db.findOne('User', `{ email }`)};
   if (user && !user.isVerified) {
     const verifyToken = crypto.randomBytes(32).toString('hex');
-    await User.update(user.id, { verifyToken });
+    await ${db.update('User', `user.id`, `{ verifyToken }`)};
 ${sendVerifyEmailResend}  }
 
   res.json({ message: 'Verification email sent' });
 };
 `
-        : `import crypto from 'node:crypto';
+      : `import crypto from 'node:crypto';
 ${mailerTaskImport}import { User } from '../../model/User.js';
 ${veMeta}export const GET = async (req, res) => {
   const { token } = req.query;
   if (!token || typeof token !== 'string') return res.status(400).json({ error: 'token is required' });
 
-  const user = await User.findOne({ verifyToken: token });
+  const user = await ${db.findOne('User', `{ verifyToken: token }`)};
   if (!user) return res.status(400).json({ error: 'Invalid or expired verification token' });
 
-  await User.update(user.id, { isVerified: true, verifyToken: '' });
+  await ${db.update('User', `user.id`, `{ isVerified: true, verifyToken: '' }`)};
   res.json({ message: 'Email verified' });
 };
 
@@ -1436,10 +1557,10 @@ export const POST = async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email is required' });
 
-  const user = await User.findOne({ email });
+  const user = await ${db.findOne('User', `{ email }`)};
   if (user && !user.isVerified) {
     const verifyToken = crypto.randomBytes(32).toString('hex');
-    await User.update(user.id, { verifyToken });
+    await ${db.update('User', `user.id`, `{ verifyToken }`)};
 ${sendVerifyEmailResend}  }
 
   res.json({ message: 'Verification email sent' });
@@ -1459,16 +1580,16 @@ ${sendVerifyEmailResend}  }
     });
     const fpModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
     const fpLookup = hasAdmin
-      ? `  const user = await User.findOne({ email });
-  const admin = user ? null : await Admin.findOne({ email });`
-      : `  const user = await User.findOne({ email });`;
+      ? `  const user = await ${db.findOne('User', `{ email }`)};
+  const admin = user ? null : await ${db.findOne('Admin', `{ email }`)};`
+      : `  const user = await ${db.findOne('User', `{ email }`)};`;
     const fpGuard = hasAdmin ? 'user || admin' : 'user';
     const fpPersist = hasAdmin
-      ? `    if (user) await User.update(user.id, { resetToken, resetTokenExpiry });
-    else if (admin) await Admin.update(admin.id, { resetToken, resetTokenExpiry });`
-      : `    await User.update(user.id, { resetToken, resetTokenExpiry });`;
+      ? `    if (user) await ${db.update('User', `user.id`, `{ resetToken, resetTokenExpiry }`)};
+    else if (admin) await ${db.update('Admin', `admin.id`, `{ resetToken, resetTokenExpiry }`)};`
+      : `    await ${db.update('User', `user.id`, `{ resetToken, resetTokenExpiry }`)};`;
     const fpContent = ts
-        ? `import type { Request, Response } from 'express';
+      ? `import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
 ${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
@@ -1489,7 +1610,7 @@ ${sendResetEmail}  }
   res.json({ message: 'Reset email sent' });
 };
 `
-        : `import crypto from 'node:crypto';
+      : `import crypto from 'node:crypto';
 ${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
 export const POST = async (req, res) => {
@@ -1521,17 +1642,17 @@ ${sendResetEmail}  }
     });
     const rpModelImports = `import { User } from '../../model/User.js';\n${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`;
     const rpLookup = hasAdmin
-      ? `  const user = await User.findOne({ resetToken: token });
-  const admin = user ? null : await Admin.findOne({ resetToken: token });
+      ? `  const user = await ${db.findOne('User', `{ resetToken: token }`)};
+  const admin = user ? null : await ${db.findOne('Admin', `{ resetToken: token }`)};
   const account = user || admin;`
-      : `  const user = await User.findOne({ resetToken: token });
+      : `  const user = await ${db.findOne('User', `{ resetToken: token }`)};
   const account = user;`;
     const rpPersist = hasAdmin
-      ? `  if (user) await User.update(user.id, { password: hashed, resetToken: '' });
-  else if (admin) await Admin.update(admin.id, { password: hashed, resetToken: '' });`
-      : `  await User.update(user.id, { password: hashed, resetToken: '' });`;
+      ? `  if (user) await ${db.update('User', `user.id`, `{ password: hashed, resetToken: '' }`)};
+  else if (admin) await ${db.update('Admin', `admin.id`, `{ password: hashed, resetToken: '' }`)};`
+      : `  await ${db.update('User', `user.id`, `{ password: hashed, resetToken: '' }`)};`;
     const rpContent = ts
-        ? `import type { Request, Response } from 'express';
+      ? `import type { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import { revokeAllSessions } from 'express-file-cluster/auth';
 ${rpModelImports}${rpMeta}export const POST = async (req: Request, res: Response) => {
@@ -1552,7 +1673,7 @@ ${rpPersist}
   res.json({ message: 'Password reset successfully' });
 };
 `
-        : `import bcrypt from 'bcrypt';
+      : `import bcrypt from 'bcrypt';
 import { revokeAllSessions } from 'express-file-cluster/auth';
 ${rpModelImports}${rpMeta}export const POST = async (req, res) => {
   const { token, password } = req.body;
@@ -1782,18 +1903,18 @@ async function writeUserExtendedRoutes(dest: string, opts: ScaffoldOptions): Pro
 
   // avatar.ts
   if (uf.accountSettings) {
-  const avatarMeta = mkMeta(opts, {
-    POST: {
-      description: 'Upload a new avatar image for the authenticated user.',
-      response: `{ message: 'Avatar updated', url: 'https://example.com/avatar.jpg' }`,
-    },
-    DELETE: {
-      description: "Remove the authenticated user's avatar.",
-      response: `{ message: 'Avatar removed' }`,
-    },
-  });
-  const avatarContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    const avatarMeta = mkMeta(opts, {
+      POST: {
+        description: 'Upload a new avatar image for the authenticated user.',
+        response: `{ message: 'Avatar updated', url: 'https://example.com/avatar.jpg' }`,
+      },
+      DELETE: {
+        description: "Remove the authenticated user's avatar.",
+        response: `{ message: 'Avatar removed' }`,
+      },
+    });
+    const avatarContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${avatarMeta}${mw2}
 export const POST = async (req: Request, res: Response) => {
   // TODO: handle multipart upload, store file, update user.avatar
@@ -1805,7 +1926,7 @@ export const DELETE = async (req: Request, res: Response) => {
   res.json({ message: 'Avatar removed' });
 };
 `
-    : `${RA}${avatarMeta}${mw2}
+      : `${RA}${avatarMeta}${mw2}
 export const POST = async (req, res) => {
   // TODO: handle multipart upload, store file, update user.avatar
   res.json({ message: 'Avatar updated', url: 'https://example.com/avatar.jpg' });
@@ -1816,23 +1937,23 @@ export const DELETE = async (req, res) => {
   res.json({ message: 'Avatar removed' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', `avatar.${ext}`), avatarContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'user', `avatar.${ext}`), avatarContent);
 
-  // settings.ts
-  const settingsMeta = mkMeta(opts, {
-    GET: {
-      description:
-        'Get account settings (notifications, language, theme, privacy) for the authenticated user.',
-      response: `{ settings: { notifications: true, language: 'en', theme: 'system', privacy: 'public' } }`,
-    },
-    PUT: {
-      description: 'Update account settings for the authenticated user.',
-      request: `{ notifications: true, language: 'en', theme: 'system', privacy: 'public' }`,
-      response: `{ message: 'Settings updated', settings: { notifications: true, language: 'en', theme: 'system', privacy: 'public' } }`,
-    },
-  });
-  const settingsContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // settings.ts
+    const settingsMeta = mkMeta(opts, {
+      GET: {
+        description:
+          'Get account settings (notifications, language, theme, privacy) for the authenticated user.',
+        response: `{ settings: { notifications: true, language: 'en', theme: 'system', privacy: 'public' } }`,
+      },
+      PUT: {
+        description: 'Update account settings for the authenticated user.',
+        request: `{ notifications: true, language: 'en', theme: 'system', privacy: 'public' }`,
+        response: `{ message: 'Settings updated', settings: { notifications: true, language: 'en', theme: 'system', privacy: 'public' } }`,
+      },
+    });
+    const settingsContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${settingsMeta}${mw2}
 export const GET = async (req: Request, res: Response) => {
   // TODO: fetch user settings from DB
@@ -1845,7 +1966,7 @@ export const PUT = async (req: Request, res: Response) => {
   res.json({ message: 'Settings updated', settings: { notifications, language, theme, privacy } });
 };
 `
-    : `${RA}${settingsMeta}${mw2}
+      : `${RA}${settingsMeta}${mw2}
 export const GET = async (req, res) => {
   // TODO: fetch user settings from DB
   res.json({ settings: { notifications: true, language: 'en', theme: 'system', privacy: 'public' } });
@@ -1857,23 +1978,23 @@ export const PUT = async (req, res) => {
   res.json({ message: 'Settings updated', settings: { notifications, language, theme, privacy } });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', `settings.${ext}`), settingsContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'user', `settings.${ext}`), settingsContent);
 
-  // account.ts
-  const accountMeta = mkMeta(opts, {
-    GET: {
-      description: 'Download a personal data export for the authenticated user.',
-      response: `{ data: { user: { id: '1', role: 'user', email: 'user@example.com' }, exportedAt: '2026-01-01T00:00:00.000Z' } }`,
-    },
-    DELETE: {
-      description:
-        'Schedule the authenticated account for deletion (requires password confirmation).',
-      request: `{ password: 'current' }`,
-      response: `{ message: 'Account scheduled for deletion' }`,
-    },
-  });
-  const accountContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // account.ts
+    const accountMeta = mkMeta(opts, {
+      GET: {
+        description: 'Download a personal data export for the authenticated user.',
+        response: `{ data: { user: { id: '1', role: 'user', email: 'user@example.com' }, exportedAt: '2026-01-01T00:00:00.000Z' } }`,
+      },
+      DELETE: {
+        description:
+          'Schedule the authenticated account for deletion (requires password confirmation).',
+        request: `{ password: 'current' }`,
+        response: `{ message: 'Account scheduled for deletion' }`,
+      },
+    });
+    const accountContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${accountMeta}${mw2}
 export const GET = async (req: Request, res: Response) => {
   // TODO: compile and return personal data export
@@ -1887,7 +2008,7 @@ export const DELETE = async (req: Request, res: Response) => {
   res.json({ message: 'Account scheduled for deletion' });
 };
 `
-    : `${RA}${accountMeta}${mw2}
+      : `${RA}${accountMeta}${mw2}
 export const GET = async (req, res) => {
   // TODO: compile and return personal data export
   res.json({ data: { user: ${user}, exportedAt: new Date().toISOString() } });
@@ -1900,41 +2021,41 @@ export const DELETE = async (req, res) => {
   res.json({ message: 'Account scheduled for deletion' });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', `account.${ext}`), accountContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'user', `account.${ext}`), accountContent);
 
-  // dashboard.ts
-  const dashMeta = mkMeta(opts, {
-    GET: {
-      description: 'Personal dashboard: stats, recent activity, and quick actions.',
-      response: `{ stats: {}, recentActivity: [], quickActions: [] }`,
-    },
-  });
-  const dashContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // dashboard.ts
+    const dashMeta = mkMeta(opts, {
+      GET: {
+        description: 'Personal dashboard: stats, recent activity, and quick actions.',
+        response: `{ stats: {}, recentActivity: [], quickActions: [] }`,
+      },
+    });
+    const dashContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${dashMeta}${mw2}
 export const GET = async (req: Request, res: Response) => {
   // TODO: aggregate personal stats and activity
   res.json({ stats: {}, recentActivity: [], quickActions: [] });
 };
 `
-    : `${RA}${dashMeta}${mw2}
+      : `${RA}${dashMeta}${mw2}
 export const GET = async (req, res) => {
   // TODO: aggregate personal stats and activity
   res.json({ stats: {}, recentActivity: [], quickActions: [] });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', `dashboard.${ext}`), dashContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'user', `dashboard.${ext}`), dashContent);
 
-  // activity.ts
-  const actMeta = mkMeta(opts, {
-    GET: {
-      description: 'Paginated activity history for the authenticated user.',
-      query: `{ page: '1', limit: '20' }`,
-      response: `{ activities: [], total: 0, page: 1, limit: 20 }`,
-    },
-  });
-  const actContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // activity.ts
+    const actMeta = mkMeta(opts, {
+      GET: {
+        description: 'Paginated activity history for the authenticated user.',
+        query: `{ page: '1', limit: '20' }`,
+        response: `{ activities: [], total: 0, page: 1, limit: 20 }`,
+      },
+    });
+    const actContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${actMeta}${mw2}
 export const GET = async (req: Request, res: Response) => {
   const { page = 1, limit = 20 } = req.query;
@@ -1942,30 +2063,30 @@ export const GET = async (req: Request, res: Response) => {
   res.json({ activities: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `
-    : `${RA}${actMeta}${mw2}
+      : `${RA}${actMeta}${mw2}
 export const GET = async (req, res) => {
   const { page = 1, limit = 20 } = req.query;
   // TODO: fetch paginated activity log
   res.json({ activities: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', `activity.${ext}`), actContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'user', `activity.${ext}`), actContent);
   }
 
   // notifications/index.ts
   if (uf.notifications) {
-  const notifListMeta = mkMeta(opts, {
-    GET: {
-      description: 'List notifications for the authenticated user.',
-      response: `{ notifications: [], total: 0, unread: 0 }`,
-    },
-    POST: {
-      description: 'Mark all notifications as read for the authenticated user.',
-      response: `{ message: 'All notifications marked as read' }`,
-    },
-  });
-  const notifListContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    const notifListMeta = mkMeta(opts, {
+      GET: {
+        description: 'List notifications for the authenticated user.',
+        response: `{ notifications: [], total: 0, unread: 0 }`,
+      },
+      POST: {
+        description: 'Mark all notifications as read for the authenticated user.',
+        response: `{ message: 'All notifications marked as read' }`,
+      },
+    });
+    const notifListContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${notifListMeta}${mw3}
 export const GET = async (req: Request, res: Response) => {
   // TODO: fetch notifications for user
@@ -1977,7 +2098,7 @@ export const POST = async (req: Request, res: Response) => {
   res.json({ message: 'All notifications marked as read' });
 };
 `
-    : `${RA}${notifListMeta}${mw3}
+      : `${RA}${notifListMeta}${mw3}
 export const GET = async (req, res) => {
   // TODO: fetch notifications for user
   res.json({ notifications: [], total: 0, unread: 0 });
@@ -1988,31 +2109,31 @@ export const POST = async (req, res) => {
   res.json({ message: 'All notifications marked as read' });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'notifications', `index.${ext}`),
-    notifListContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'notifications', `index.${ext}`),
+      notifListContent,
+    );
 
-  // notifications/[id].ts
-  const notifByIdMeta = mkMeta(opts, {
-    GET: {
-      description: 'Fetch a single notification by ID.',
-      params: `{ id: 'notif_01HXZ' }`,
-      response: `{ notification: { id: 'notif_01HXZ' } }`,
-    },
-    PATCH: {
-      description: 'Mark a single notification as read.',
-      params: `{ id: 'notif_01HXZ' }`,
-      response: `{ message: 'Notification marked as read', id: 'notif_01HXZ' }`,
-    },
-    DELETE: {
-      description: 'Delete a single notification.',
-      params: `{ id: 'notif_01HXZ' }`,
-      response: `{ message: 'Notification notif_01HXZ deleted' }`,
-    },
-  });
-  const notifByIdContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // notifications/[id].ts
+    const notifByIdMeta = mkMeta(opts, {
+      GET: {
+        description: 'Fetch a single notification by ID.',
+        params: `{ id: 'notif_01HXZ' }`,
+        response: `{ notification: { id: 'notif_01HXZ' } }`,
+      },
+      PATCH: {
+        description: 'Mark a single notification as read.',
+        params: `{ id: 'notif_01HXZ' }`,
+        response: `{ message: 'Notification marked as read', id: 'notif_01HXZ' }`,
+      },
+      DELETE: {
+        description: 'Delete a single notification.',
+        params: `{ id: 'notif_01HXZ' }`,
+        response: `{ message: 'Notification notif_01HXZ deleted' }`,
+      },
+    });
+    const notifByIdContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${notifByIdMeta}${mw3}
 export const GET = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -2032,7 +2153,7 @@ export const DELETE = async (req: Request, res: Response) => {
   res.json({ message: \`Notification \${id} deleted\` });
 };
 `
-    : `${RA}${notifByIdMeta}${mw3}
+      : `${RA}${notifByIdMeta}${mw3}
 export const GET = async (req, res) => {
   const { id } = req.params;
   // TODO: fetch notification by id
@@ -2051,27 +2172,27 @@ export const DELETE = async (req, res) => {
   res.json({ message: \`Notification \${id} deleted\` });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'notifications', `[id].${ext}`),
-    notifByIdContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'notifications', `[id].${ext}`),
+      notifByIdContent,
+    );
   }
 
   // files/index.ts (files, favorites, bookmarks & search share the filesAndMedia toggle)
   if (uf.filesAndMedia) {
-  const filesListMeta = mkMeta(opts, {
-    GET: {
-      description: 'List uploaded files with storage usage for the authenticated user.',
-      response: `{ files: [], total: 0, storageUsed: 0 }`,
-    },
-    POST: {
-      description: 'Upload a new file for the authenticated user.',
-      response: `{ message: 'File uploaded', file: { id: 'new-id' } }`,
-      status: 201,
-    },
-  });
-  const filesListContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    const filesListMeta = mkMeta(opts, {
+      GET: {
+        description: 'List uploaded files with storage usage for the authenticated user.',
+        response: `{ files: [], total: 0, storageUsed: 0 }`,
+      },
+      POST: {
+        description: 'Upload a new file for the authenticated user.',
+        response: `{ message: 'File uploaded', file: { id: 'new-id' } }`,
+        status: 201,
+      },
+    });
+    const filesListContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${filesListMeta}${mw3}
 export const GET = async (req: Request, res: Response) => {
   // TODO: fetch user files and compute storage usage
@@ -2083,7 +2204,7 @@ export const POST = async (req: Request, res: Response) => {
   res.status(201).json({ message: 'File uploaded', file: { id: 'new-id' } });
 };
 `
-    : `${RA}${filesListMeta}${mw3}
+      : `${RA}${filesListMeta}${mw3}
 export const GET = async (req, res) => {
   // TODO: fetch user files and compute storage usage
   res.json({ files: [], total: 0, storageUsed: 0 });
@@ -2094,26 +2215,26 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'File uploaded', file: { id: 'new-id' } });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'files', `index.${ext}`),
-    filesListContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'files', `index.${ext}`),
+      filesListContent,
+    );
 
-  // files/[id].ts
-  const fileByIdMeta = mkMeta(opts, {
-    GET: {
-      description: 'Get a download/preview URL for a single file by ID.',
-      params: `{ id: 'file_01HXZ' }`,
-      response: `{ file: { id: 'file_01HXZ', url: 'https://example.com/files/file_01HXZ' } }`,
-    },
-    DELETE: {
-      description: 'Delete a file from storage.',
-      params: `{ id: 'file_01HXZ' }`,
-      response: `{ message: 'File file_01HXZ deleted' }`,
-    },
-  });
-  const fileByIdContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // files/[id].ts
+    const fileByIdMeta = mkMeta(opts, {
+      GET: {
+        description: 'Get a download/preview URL for a single file by ID.',
+        params: `{ id: 'file_01HXZ' }`,
+        response: `{ file: { id: 'file_01HXZ', url: 'https://example.com/files/file_01HXZ' } }`,
+      },
+      DELETE: {
+        description: 'Delete a file from storage.',
+        params: `{ id: 'file_01HXZ' }`,
+        response: `{ message: 'File file_01HXZ deleted' }`,
+      },
+    });
+    const fileByIdContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${fileByIdMeta}${mw3}
 export const GET = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -2127,7 +2248,7 @@ export const DELETE = async (req: Request, res: Response) => {
   res.json({ message: \`File \${id} deleted\` });
 };
 `
-    : `${RA}${fileByIdMeta}${mw3}
+      : `${RA}${fileByIdMeta}${mw3}
 export const GET = async (req, res) => {
   const { id } = req.params;
   // TODO: stream or redirect to file download/preview URL
@@ -2140,26 +2261,26 @@ export const DELETE = async (req, res) => {
   res.json({ message: \`File \${id} deleted\` });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'files', `[id].${ext}`),
-    fileByIdContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'files', `[id].${ext}`),
+      fileByIdContent,
+    );
 
-  // favorites/index.ts
-  const favListMeta = mkMeta(opts, {
-    GET: {
-      description: 'List favorites for the authenticated user.',
-      response: `{ favorites: [] }`,
-    },
-    POST: {
-      description: "Add an entity to the authenticated user's favorites.",
-      request: `{ entityId: 'post_01HXZ', entityType: 'post' }`,
-      response: `{ message: 'Added to favorites' }`,
-      status: 201,
-    },
-  });
-  const favListContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // favorites/index.ts
+    const favListMeta = mkMeta(opts, {
+      GET: {
+        description: 'List favorites for the authenticated user.',
+        response: `{ favorites: [] }`,
+      },
+      POST: {
+        description: "Add an entity to the authenticated user's favorites.",
+        request: `{ entityId: 'post_01HXZ', entityType: 'post' }`,
+        response: `{ message: 'Added to favorites' }`,
+        status: 201,
+      },
+    });
+    const favListContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${favListMeta}${mw3}
 export const GET = async (req: Request, res: Response) => {
   // TODO: fetch user favorites
@@ -2173,7 +2294,7 @@ export const POST = async (req: Request, res: Response) => {
   res.status(201).json({ message: 'Added to favorites' });
 };
 `
-    : `${RA}${favListMeta}${mw3}
+      : `${RA}${favListMeta}${mw3}
 export const GET = async (req, res) => {
   // TODO: fetch user favorites
   res.json({ favorites: [] });
@@ -2186,21 +2307,21 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'Added to favorites' });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'favorites', `index.${ext}`),
-    favListContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'favorites', `index.${ext}`),
+      favListContent,
+    );
 
-  // favorites/[id].ts
-  const favByIdMeta = mkMeta(opts, {
-    DELETE: {
-      description: 'Remove an entity from the authenticated user favorites.',
-      params: `{ id: 'fav_01HXZ' }`,
-      response: `{ message: 'Removed favorite fav_01HXZ' }`,
-    },
-  });
-  const favByIdContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // favorites/[id].ts
+    const favByIdMeta = mkMeta(opts, {
+      DELETE: {
+        description: 'Remove an entity from the authenticated user favorites.',
+        params: `{ id: 'fav_01HXZ' }`,
+        response: `{ message: 'Removed favorite fav_01HXZ' }`,
+      },
+    });
+    const favByIdContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${favByIdMeta}${mw3}
 export const DELETE = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -2208,33 +2329,33 @@ export const DELETE = async (req: Request, res: Response) => {
   res.json({ message: \`Removed favorite \${id}\` });
 };
 `
-    : `${RA}${favByIdMeta}${mw3}
+      : `${RA}${favByIdMeta}${mw3}
 export const DELETE = async (req, res) => {
   const { id } = req.params;
   // TODO: remove from favorites
   res.json({ message: \`Removed favorite \${id}\` });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'favorites', `[id].${ext}`),
-    favByIdContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'favorites', `[id].${ext}`),
+      favByIdContent,
+    );
 
-  // bookmarks/index.ts
-  const bkListMeta = mkMeta(opts, {
-    GET: {
-      description: 'List bookmarks for the authenticated user.',
-      response: `{ bookmarks: [] }`,
-    },
-    POST: {
-      description: 'Save a new bookmark for the authenticated user.',
-      request: `{ url: 'https://example.com', title: 'Example' }`,
-      response: `{ message: 'Bookmark saved' }`,
-      status: 201,
-    },
-  });
-  const bkListContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // bookmarks/index.ts
+    const bkListMeta = mkMeta(opts, {
+      GET: {
+        description: 'List bookmarks for the authenticated user.',
+        response: `{ bookmarks: [] }`,
+      },
+      POST: {
+        description: 'Save a new bookmark for the authenticated user.',
+        request: `{ url: 'https://example.com', title: 'Example' }`,
+        response: `{ message: 'Bookmark saved' }`,
+        status: 201,
+      },
+    });
+    const bkListContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${bkListMeta}${mw3}
 export const GET = async (req: Request, res: Response) => {
   // TODO: fetch user bookmarks
@@ -2248,7 +2369,7 @@ export const POST = async (req: Request, res: Response) => {
   res.status(201).json({ message: 'Bookmark saved' });
 };
 `
-    : `${RA}${bkListMeta}${mw3}
+      : `${RA}${bkListMeta}${mw3}
 export const GET = async (req, res) => {
   // TODO: fetch user bookmarks
   res.json({ bookmarks: [] });
@@ -2261,21 +2382,21 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'Bookmark saved' });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'bookmarks', `index.${ext}`),
-    bkListContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'bookmarks', `index.${ext}`),
+      bkListContent,
+    );
 
-  // bookmarks/[id].ts
-  const bkByIdMeta = mkMeta(opts, {
-    DELETE: {
-      description: 'Delete a bookmark by ID.',
-      params: `{ id: 'bm_01HXZ' }`,
-      response: `{ message: 'Bookmark bm_01HXZ removed' }`,
-    },
-  });
-  const bkByIdContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // bookmarks/[id].ts
+    const bkByIdMeta = mkMeta(opts, {
+      DELETE: {
+        description: 'Delete a bookmark by ID.',
+        params: `{ id: 'bm_01HXZ' }`,
+        response: `{ message: 'Bookmark bm_01HXZ removed' }`,
+      },
+    });
+    const bkByIdContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${bkByIdMeta}${mw3}
 export const DELETE = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -2283,28 +2404,28 @@ export const DELETE = async (req: Request, res: Response) => {
   res.json({ message: \`Bookmark \${id} removed\` });
 };
 `
-    : `${RA}${bkByIdMeta}${mw3}
+      : `${RA}${bkByIdMeta}${mw3}
 export const DELETE = async (req, res) => {
   const { id } = req.params;
   // TODO: delete bookmark
   res.json({ message: \`Bookmark \${id} removed\` });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'bookmarks', `[id].${ext}`),
-    bkByIdContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'bookmarks', `[id].${ext}`),
+      bkByIdContent,
+    );
 
-  // search.ts
-  const searchMeta = mkMeta(opts, {
-    GET: {
-      description: 'Search with filters, sort, and pagination.',
-      query: `{ q: 'query', filter: 'active', sort: 'newest', page: '1', limit: '20' }`,
-      response: `{ results: [], total: 0, page: 1, limit: 20 }`,
-    },
-  });
-  const searchContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // search.ts
+    const searchMeta = mkMeta(opts, {
+      GET: {
+        description: 'Search with filters, sort, and pagination.',
+        query: `{ q: 'query', filter: 'active', sort: 'newest', page: '1', limit: '20' }`,
+        response: `{ results: [], total: 0, page: 1, limit: 20 }`,
+      },
+    });
+    const searchContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${searchMeta}${mw2}
 export const GET = async (req: Request, res: Response) => {
   const { q, filter, sort, page = 1, limit = 20 } = req.query;
@@ -2312,29 +2433,32 @@ export const GET = async (req: Request, res: Response) => {
   res.json({ results: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `
-    : `${RA}${searchMeta}${mw2}
+      : `${RA}${searchMeta}${mw2}
 export const GET = async (req, res) => {
   const { q, filter, sort, page = 1, limit = 20 } = req.query;
   // TODO: implement search
   res.json({ results: [], total: 0, page: Number(page), limit: Number(limit) });
 };
 `;
-  await fs.outputFile(path.join(dest, 'src', 'api', 'user', `search.${ext}`), searchContent);
+    await fs.outputFile(path.join(dest, 'src', 'api', 'user', `search.${ext}`), searchContent);
   }
 
   // api-keys/index.ts
   if (uf.apiAndBilling) {
-  const akListMeta = mkMeta(opts, {
-    GET: { description: 'List API keys for the authenticated user.', response: `{ apiKeys: [] }` },
-    POST: {
-      description: 'Generate a new API key for the authenticated user.',
-      request: `{ name: 'CI key' }`,
-      response: `{ message: 'API key created', key: 'efc_...' }`,
-      status: 201,
-    },
-  });
-  const akListContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    const akListMeta = mkMeta(opts, {
+      GET: {
+        description: 'List API keys for the authenticated user.',
+        response: `{ apiKeys: [] }`,
+      },
+      POST: {
+        description: 'Generate a new API key for the authenticated user.',
+        request: `{ name: 'CI key' }`,
+        response: `{ message: 'API key created', key: 'efc_...' }`,
+        status: 201,
+      },
+    });
+    const akListContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${akListMeta}${mw3}
 export const GET = async (req: Request, res: Response) => {
   // TODO: fetch api keys for user
@@ -2348,7 +2472,7 @@ export const POST = async (req: Request, res: Response) => {
   res.status(201).json({ message: 'API key created', key: 'efc_...' });
 };
 `
-    : `${RA}${akListMeta}${mw3}
+      : `${RA}${akListMeta}${mw3}
 export const GET = async (req, res) => {
   // TODO: fetch api keys for user
   res.json({ apiKeys: [] });
@@ -2361,21 +2485,21 @@ export const POST = async (req, res) => {
   res.status(201).json({ message: 'API key created', key: 'efc_...' });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'api-keys', `index.${ext}`),
-    akListContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'api-keys', `index.${ext}`),
+      akListContent,
+    );
 
-  // api-keys/[id].ts
-  const akByIdMeta = mkMeta(opts, {
-    DELETE: {
-      description: 'Revoke and delete an API key by ID.',
-      params: `{ id: 'key_01HXZ' }`,
-      response: `{ message: 'API key key_01HXZ revoked' }`,
-    },
-  });
-  const akByIdContent = ts
-    ? `${RA}import type { Request, Response } from 'express';
+    // api-keys/[id].ts
+    const akByIdMeta = mkMeta(opts, {
+      DELETE: {
+        description: 'Revoke and delete an API key by ID.',
+        params: `{ id: 'key_01HXZ' }`,
+        response: `{ message: 'API key key_01HXZ revoked' }`,
+      },
+    });
+    const akByIdContent = ts
+      ? `${RA}import type { Request, Response } from 'express';
 ${akByIdMeta}${mw3}
 export const DELETE = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -2383,17 +2507,17 @@ export const DELETE = async (req: Request, res: Response) => {
   res.json({ message: \`API key \${id} revoked\` });
 };
 `
-    : `${RA}${akByIdMeta}${mw3}
+      : `${RA}${akByIdMeta}${mw3}
 export const DELETE = async (req, res) => {
   const { id } = req.params;
   // TODO: revoke and delete API key
   res.json({ message: \`API key \${id} revoked\` });
 };
 `;
-  await fs.outputFile(
-    path.join(dest, 'src', 'api', 'user', 'api-keys', `[id].${ext}`),
-    akByIdContent,
-  );
+    await fs.outputFile(
+      path.join(dest, 'src', 'api', 'user', 'api-keys', `[id].${ext}`),
+      akByIdContent,
+    );
   }
 }
 
@@ -3719,6 +3843,53 @@ ${roleGuard}  const { status, page = 1, limit = 20 } = req.query;
   }
 }
 
+// defineTable apps: one import that registers every model (so `include` can reach any of
+// them) and, in TypeScript, the `Tables` map that types what `include` returns.
+async function writeModelIndex(dest: string, opts: ScaffoldOptions): Promise<void> {
+  const ts = opts.language === 'typescript';
+  const ext = ts ? 'ts' : 'js';
+  const names = [...generatedModels(opts)].sort();
+  if (names.length === 0) return;
+  const exports = names.map((n) => `export { ${n} } from './${n}.js';`).join('\n');
+  const tables = ts
+    ? `
+${names.map((n) => `import type { ${n} } from './${n}.js';`).join('\n')}
+
+// Types \`include\` results: relations name models by string, this maps the names to models.
+declare module 'express-file-cluster' {
+  interface Tables {
+${names.map((n) => `    ${n}: typeof ${n};`).join('\n')}
+  }
+}
+`
+    : '';
+  const content = `// Every model, in one import: \`import { User } from '../model/index.js'\` also registers the
+// models its relations reach, which \`include\` needs.
+${exports}
+${tables}`;
+  await fs.outputFile(path.join(dest, 'src', 'model', `index.${ext}`), content);
+}
+
+// Tables before the tables that reference them (create in this order, drop in reverse).
+const MODEL_ORDER = [
+  'User',
+  'Admin',
+  'Plan',
+  'Category',
+  'Role',
+  'FAQ',
+  'Coupon',
+  'Session',
+  'Notification',
+  'File',
+  'SupportTicket',
+  'AuditLog',
+  'Subscription',
+  'Invoice',
+  'ApiKey',
+  'Blog',
+];
+
 // Creates every generated model's table/collection (plus indexes) on `efc db migrate`.
 // Required on PostgreSQL before first boot; on MongoDB it builds the unique indexes.
 async function writeInitMigration(dest: string, opts: ScaffoldOptions): Promise<void> {
@@ -3726,10 +3897,12 @@ async function writeInitMigration(dest: string, opts: ScaffoldOptions): Promise<
   if (!(await fs.pathExists(modelDir))) return;
   const ts = opts.language === 'typescript';
   const ext = ts ? 'ts' : 'js';
+  const rank = (n: string) =>
+    MODEL_ORDER.includes(n) ? MODEL_ORDER.indexOf(n) : MODEL_ORDER.length;
   const names = (await fs.readdir(modelDir))
-    .filter((f) => f.endsWith(`.${ext}`))
+    .filter((f) => f.endsWith(`.${ext}`) && f !== `index.${ext}`)
     .map((f) => f.slice(0, -(ext.length + 1)))
-    .sort();
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   if (names.length === 0) return;
 
   const imports = names.map((n) => `import { ${n} } from '../model/${n}.js';`).join('\n');
