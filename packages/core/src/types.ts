@@ -264,7 +264,11 @@ export interface FieldDefinition {
    * May be async. Runs on create and on update of this field.
    */
   validate?: (value: unknown) => boolean | string | Promise<boolean | string>;
-  /** Model name to reference. Valid on `objectId` types (bare or as an array's `of`). */
+  /**
+   * Model name to reference. Valid on `objectId` types (bare or as an array's `of`); on
+   * `defineTable`, a top-level field whose type matches the target's id (`uuid`/`objectId`,
+   * `integer` for `id: 'serial'`, `bigint` for `'bigserial'`) and becomes a foreign key.
+   */
   ref?: string;
   /**
    * Item type for `array` fields: a primitive (`of: 'string'`) or a nested schema for an
@@ -330,12 +334,21 @@ export interface TableFieldDefinition extends Omit<
   /** The column name, when it differs from the field name (top-level fields only). */
   column?: string;
   /**
+   * With `ref` (top-level fields): what deleting the referenced row does to this one —
+   * `'restrict'` (default) refuses the delete (409), `'cascade'` deletes this row too,
+   * `'setNull'` clears the field. Enforced by a real foreign key.
+   */
+  onDelete?: ReferentialAction;
+  /**
    * Item type for `array` fields. A scalar type becomes a native PostgreSQL array
    * (`text[]`, `integer[]`, …); a nested schema is stored as `jsonb`.
    */
   of?: TablePrimitiveFieldType | TableSchema;
   fields?: TableSchema;
 }
+
+/** `onDelete` behaviour of a `defineTable` foreign key. */
+export type ReferentialAction = 'restrict' | 'cascade' | 'setNull';
 
 export type TableSchemaField =
   | TableFieldDefinition

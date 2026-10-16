@@ -208,7 +208,9 @@ await Post.findMany({
 await Post.create({ data: { title, author: { connect: { id } }, tags: { connectOrCreate: [...] } } });
 ```
 - Real `REFERENCES … ON DELETE` (`restrict` default | `cascade` | `setNull`), added by sync
-  `NOT VALID` and validated separately so dirty data can't block a deploy.
+  `NOT VALID` and validated separately so dirty data can't block a deploy. **Done (M3a)** —
+  scalar refs; target tables synced first; 400/409 error mapping. m:n join tables, `relations`,
+  `include`, filters and nested writes remain.
 - m:n → auto-managed join tables with FKs; records keep `tags: string[]`.
 - `include` → one statement (`LEFT JOIN LATERAL … json_agg`), any depth; included fields typed.
 - Relation filters `is/isNot/some/every/none` → `EXISTS` sub-queries; nested writes in one transaction.
