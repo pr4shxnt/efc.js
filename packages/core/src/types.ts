@@ -60,6 +60,24 @@ export interface LoggingConfig {
   pretty?: boolean;
   /** Log one line per completed request (method, url, status, duration). Default: true. */
   requests?: boolean;
+  /**
+   * Model operation logging: model, operation, duration, statement count, request ID.
+   * `true` logs every operation; an object logs only slow ones unless `all: true`.
+   * Operations slower than `slowMs` warn either way. Default: off.
+   */
+  queries?: boolean | QueryLogConfig;
+}
+
+export interface QueryLogConfig {
+  /** Log every operation (info), not just slow ones. Default: false (true with `queries: true`). */
+  all?: boolean;
+  /** Operations taking at least this long are logged as warnings. Default: 500. */
+  slowMs?: number;
+  /**
+   * Warn (once, naming the calling line) when one request runs the same model operation
+   * this many times — the N+1 pattern. `false` turns it off. Default: 10.
+   */
+  nPlusOne?: number | false;
 }
 
 export interface CorsConfig {

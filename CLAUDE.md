@@ -13,7 +13,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - Background tasks via BullMQ (Redis) or pg-boss (PostgreSQL), with cron and dead-letter tooling
 - JWT auth (http-only cookie or Bearer token)
 - `defineModel` on MongoDB (mongoose) and PostgreSQL (Drizzle) — one API
-- Structured logging (pino) with request IDs
+- Structured logging (pino) with request IDs; opt-in query logging (`logging.queries`: per-operation duration + statement count, slow queries, N+1 warnings)
 - Cache (`cache`, `cacheResponse`) on Redis or memory, also used as the JWT session-revocation store
 - CLI (`efc` binary) incl. migrations, seeds and a read-only studio
 
