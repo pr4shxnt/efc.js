@@ -21,9 +21,11 @@ export async function transaction<T>(fn: () => Promise<T>): Promise<T> {
 
   if (getDbEngine() === 'postgresql') {
     let result!: T;
+    const afterCommit: (() => void)[] = [];
     await getOrm().transaction(async (tx: unknown) => {
-      result = await runInTx({ engine: 'postgresql', tx }, fn);
+      result = await runInTx({ engine: 'postgresql', tx, afterCommit }, fn);
     });
+    for (const run of afterCommit) run();
     return result;
   }
 

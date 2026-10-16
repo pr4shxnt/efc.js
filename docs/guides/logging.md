@@ -13,6 +13,7 @@ ignite({
     level: 'info',      // trace | debug | info | warn | error | fatal | silent
     pretty: undefined,  // default: true in a non-production TTY, JSON otherwise
     requests: true,     // one line per completed request
+    queries: false,     // model operation logging — see "Query logging" below
   },
 });
 ```
@@ -56,6 +57,43 @@ In production the same record is JSON:
 ```
 
 `worker` is `primary` or `w<N>` for cluster worker N, so interleaved output from many workers stays attributable.
+
+---
+
+## Query logging
+
+`logging.queries` reports model operations — every `defineModel` and `defineTable` call — with the model, operation, duration, how many database statements it issued, and the request ID:
+
+```ts
+logging: { queries: true }                                   // every operation, plus slow-query warnings
+logging: { queries: { slowMs: 200 } }                        // only operations taking ≥ 200 ms (production)
+logging: { queries: { all: true, slowMs: 200, nPlusOne: 5 } }
+```
+
+| Option | Default | |
+|---|---|---|
+| `all` | `true` with `queries: true`, else `false` | log every operation at `info` |
+| `slowMs` | `500` | operations at least this slow log at `warn` with `slow=true` |
+| `nPlusOne` | `10` | warn when one request runs the same `Model.operation` this many times; `false` disables |
+
+```
+12:00:01 INFO  [w2] 3f9c2a1b Post.findMany 2.1ms model=Post op=findMany durationMs=2.1 statements=1
+12:00:01 WARN  [w2] 3f9c2a1b Slow query: Order.aggregate 812.4ms model=Order op=aggregate durationMs=812.4 statements=1 slow=true
+```
+
+`statements` counts the SQL statements (PostgreSQL) or MongoDB commands the call sent, including nested work such as `populate`; first-use auto-sync is not counted. An operation that throws is still logged, with `error`.
+
+### N+1 detection
+
+Querying inside a loop is the classic N+1 problem. When one request runs the same model operation `nPlusOne` times, EFC warns once for that request, naming the line that made the call:
+
+```
+12:00:01 WARN  [w2] 3f9c2a1b Possible N+1: User.findById ran 10 times in one request — load them in one query instead model=User op=findById count=10 site=GET (/app/src/api/posts.ts:14:30)
+```
+
+Load them together instead — `User.find({ id: { $in: ids } })`, `populate`, or `findMany({ where: { id: { in: ids } } })`. Only top-level calls count (not `populate`'s), and only inside a request.
+
+On MongoDB, query logging takes mongoose's `debug` hook (`mongoose.set('debug', …)`) to count commands, so it replaces any `debug` setting of your own while it is on.
 
 ---
 
