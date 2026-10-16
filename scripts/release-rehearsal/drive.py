@@ -10,6 +10,7 @@ steps = [
     ('Project name', name + ENTER),
     ('Language', (DOWN if lang == 'js' else '') + ENTER),
     ('Database', (DOWN if db == 'postgresql' else '') + ENTER),
+    *([('Models:', ENTER)] if db == 'postgresql' else []),  # default: defineTable
     ('Authentication strategy', ENTER),
     ('Features:', ENTER),                      # defaults: cluster, tasks, routeDocs, portals, rbac
     ('User portal features', ENTER),
