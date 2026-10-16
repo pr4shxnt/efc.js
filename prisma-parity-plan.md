@@ -214,6 +214,8 @@ await Post.create({ data: { title, author: { connect: { id } }, tags: { connectO
   table `<table>_<column>` (owner_id, ref_id, position); first sync backfills from the old
   array/jsonb column (kept). `relations`, `include`, filters and nested writes remain (M3b/c).
 - `include` → one statement (`LEFT JOIN LATERAL … json_agg`), any depth; included fields typed.
+  **Done (M3b)** — correlated jsonb subqueries, `relations: { hasMany | hasOne, foreignKey }`,
+  typed through a `Tables` declaration-merging registry.
 - Relation filters `is/isNot/some/every/none` → `EXISTS` sub-queries; nested writes in one transaction.
 
 **Exit criteria:** Prisma's relations guide (1:1, 1:n, m:n, self-relations, referential actions) as
