@@ -208,6 +208,9 @@ interface LoggingConfig {
   level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent'; // default 'info'
   pretty?: boolean;   // default: true in a non-production TTY, JSON otherwise
   requests?: boolean; // one line per completed request — default true
+  // Model operation logging (model, op, duration, statements, reqId) — default off.
+  // true = every operation; { slowMs } = only slow ones (unless all: true)
+  queries?: boolean | { all?: boolean; slowMs?: number /* 500 */; nPlusOne?: number | false /* 10 */ };
 }
 ```
 

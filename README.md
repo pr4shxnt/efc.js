@@ -637,7 +637,7 @@ ignite({
 | `tasks` | `TaskConfig \| false` | `false` | Background task runtime |
 | `cors` | `boolean \| CorsConfig` | `true` | CORS configuration |
 | `requestTimeout` | `number` | — | Request timeout in ms (408 on exceed) |
-| `logging` | `LoggingConfig \| false` | pretty in dev TTY, JSON otherwise | pino logging + per-request lines; request IDs always on |
+| `logging` | `LoggingConfig \| false` | pretty in dev TTY, JSON otherwise | pino logging + per-request lines; request IDs always on; `queries` adds model operation, slow-query and N+1 logging |
 | `globalMiddlewares` | `RequestHandler[]` | `[]` | Applied to every route |
 | `dashboard` | `boolean` | `true` in dev | Dev route dashboard at `/` |
 | `onWorkerReady` | `(id) => void` | — | Called when a worker boots |

@@ -92,7 +92,7 @@ to it; nothing is emulated across engines.
 | Introspect an existing DB | `prisma db pull` | — | M4 |
 | Push schema without migrations | `prisma db push` | `autoSync` / `efc db sync` ✅ | — |
 | Studio | Prisma Studio (edit) | read-only rows + structure ✅ | M6 |
-| Query logging / metrics | Prisma `log`, metrics | request logs only | M6 |
+| Query logging / metrics | Prisma `log`, metrics | `logging.queries` (ops, statements, slow, N+1) — metrics not yet | M6 |
 | Validation | none in Prisma | built in ✅ | — |
 | Interactive transactions | `$transaction(async tx => …)` | `transaction(fn)` ✅ (implicit) | — |
 
@@ -262,7 +262,8 @@ await Place.findOneAndUpdate(filter, update, { upsert: true, returnDocument: 'af
 ## M6 — Tooling, observability, performance (both engines)
 
 - **Query logging:** `logging.queries: true | { slowMs }` — model, operation, duration, `reqId`;
-  slow-query warnings; N+1 detector naming the call site.
+  slow-query warnings; N+1 detector naming the call site. **Done (M6a)** — also counts statements
+  per operation (`onQuery` in `db/query-log.ts`), which M3's one-statement tests assert on.
 - **Studio, editable:** opt-in `efc db studio --write` (localhost-only + CSRF token), writes go
   through the models so validation applies.
 - **Pool settings:** `database: { pool: { max, idleTimeoutMs } }`; prepared statements on PostgreSQL.

@@ -408,7 +408,7 @@ ignite({
 | `tasks` | `TaskConfig \| false` | `false` | Background task runtime |
 | `cors` | `boolean \| CorsConfig` | `true` | CORS — pass `origin` explicitly, not auto-read from env |
 | `requestTimeout` | `number` | — | Request timeout in ms (408 on exceed) |
-| `logging` | `LoggingConfig \| false` | pretty in dev TTY, JSON otherwise | pino logging; every request gets an `X-Request-Id` |
+| `logging` | `LoggingConfig \| false` | pretty in dev TTY, JSON otherwise | pino logging; every request gets an `X-Request-Id`; `queries` adds model operation, slow-query and N+1 logging |
 | `cache` | `CacheConfig \| false` | — | `{ backend: 'redis', url }` or `{ backend: 'memory' }` — enables `cache`, `cacheResponse()` and session revocation |
 | `globalMiddlewares` | `RequestHandler[]` | `[]` | Applied to every route |
 | `dashboard` | `boolean` | `true` in dev | Dev route dashboard at `/` |
