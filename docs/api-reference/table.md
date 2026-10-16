@@ -300,7 +300,21 @@ const next = await Order.findMany({ orderBy: { qty: 'desc' }, take: 20, cursor: 
 | strings | + `contains`, `startsWith`, `endsWith`, `mode: 'insensitive'` (ILIKE) |
 | native arrays | `has`, `hasEvery`, `hasSome`, `isEmpty`, `equals` |
 | objects / arrays of objects / `json` | `equals`, `not`, and with `path: ['a', 'b']`: `equals`, `string_contains`, `string_starts_with`, `string_ends_with`, `array_contains`, `gt`… |
+| relations, to-many (many-to-many fields, `hasMany`) | `some`, `every`, `none` — each a `where` on the related model |
+| relations, to-one (ref fields, `hasOne`) | `is`, `isNot` — a `where` on the related model, or `null` |
 | combinators | `AND`, `OR`, `NOT` (an object or an array) |
+
+```ts
+await User.findMany({ where: { posts: { some: { comments: { some: { approved: false } } } } } });
+await User.findMany({ where: { posts: { none: {} } } });                    // users without posts
+await Post.findMany({ where: { author: { is: { role: 'admin' } }, tags: { every: { public: true } } } });
+await Post.findMany({ where: { author: { is: null } } });                   // no author
+```
+
+Relation filters are `EXISTS` subqueries — the read stays one statement — and nest to any
+depth. They work wherever `where` does: reads, `count`, `include`, `updateMany`, `deleteMany`.
+`every` holds for records with no related records at all. A ref or many-to-many field still
+takes its own id filters (`author: id`, `tags: { has: id }`); a back-relation only these.
 
 `undefined` values are ignored. Filters on undeclared fields match nothing, as with
 `defineModel`. `LIKE` wildcards in `contains`, `startsWith` and `endsWith` are escaped.
@@ -351,6 +365,51 @@ await Order.update({
   (400); a duplicate unique value gives a 409. `updatedAt` is refreshed on every update.
   `increment`/`decrement` results are not re-checked against `min`/`max`.
 
+### Nested writes
+
+`create`, `update` and `upsert` can write related records in the same call:
+
+```ts
+await Post.create({
+  data: {
+    title: 'Hello',
+    author: { connect: { email: 'ann@x.io' } },                  // a ref: connect / create / connectOrCreate
+    tags: {                                                      // many-to-many
+      connect: [{ label: 'news' }],
+      connectOrCreate: [{ where: { label: 'tech' }, create: { label: 'tech' } }],
+      create: [{ label: 'launch' }],
+    },
+    comments: { create: [{ body: 'First!' }] },                  // a back-relation (hasMany)
+  },
+  include: { author: true, tags: true, comments: true },
+});
+
+await User.update({
+  where: { id },
+  data: {
+    posts: { connect: [{ id: p1 }], disconnect: [{ id: p2 }], deleteMany: { draft: true } },
+    profile: { create: { bio: 'hi' } },                          // hasOne: replaces the current one
+  },
+});
+```
+
+| Relation | `create` | `update` adds |
+|---|---|---|
+| ref field | `connect`, `create`, `connectOrCreate` (or the id) | `disconnect: true` |
+| many-to-many field | `connect`, `create`, `connectOrCreate` (or ids) | `disconnect`, `set`, `push`, `pull` |
+| `hasMany` | `connect`, `create` | `disconnect`, `set`, `delete`, `deleteMany` |
+| `hasOne` | `connect`, `create` | `disconnect: true`, `delete: true` |
+
+- `connect`, `disconnect`, `set` and `delete` take unique wheres (or ids); a list or a single one.
+  A `connect` that matches nothing is a **400** on the field.
+- Children created through a back-relation get their foreign key from the parent — leave it out.
+- The whole call runs in **one transaction**: anything failing rolls it all back.
+- `createMany` / `updateMany` write rows only; they refuse nested writes, as in Prisma.
+- `upsert` with nested writes reads first, then creates or updates, in the transaction (without
+  nested writes it stays a single `INSERT … ON CONFLICT`).
+- A model first used inside a transaction gets its table right away and its foreign keys once
+  the transaction commits, so the sync never waits on the transaction's own locks.
+
 ---
 
 ## Aggregation
@@ -395,5 +454,5 @@ Over an empty set, `_sum`, `_avg`, `_min` and `_max` are `null`. `aggregate` als
 - `raw()` returns the Drizzle `pgTable`, for anything EFC doesn't cover.
 - `sync({ dryRun })` / `drop()` work as with `defineModel`.
 - `transaction(async () => …)` covers `defineTable` calls too.
-- Foreign keys, many-to-many and `include` are in (above). Relation filters (`some`/`every`/
-  `none`/`is`) and nested writes are planned (M3), not implemented yet.
+- Relations are complete: foreign keys, many-to-many, `include`, relation filters and nested
+  writes (above).

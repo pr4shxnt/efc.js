@@ -217,6 +217,7 @@ await Post.create({ data: { title, author: { connect: { id } }, tags: { connectO
   **Done (M3b)** — correlated jsonb subqueries, `relations: { hasMany | hasOne, foreignKey }`,
   typed through a `Tables` declaration-merging registry.
 - Relation filters `is/isNot/some/every/none` → `EXISTS` sub-queries; nested writes in one transaction.
+  **Done (M3c)** — M3 complete.
 
 **Exit criteria:** Prisma's relations guide (1:1, 1:n, m:n, self-relations, referential actions) as
 tests; populate/include issues one statement per call (asserted via M6 query logging).

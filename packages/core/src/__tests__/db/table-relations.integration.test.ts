@@ -8,6 +8,7 @@ import { tableNameFor } from '../../db/pg-table.js';
 import { ModelValidationError } from '../../db/schema.js';
 import { HttpError } from '../../errors.js';
 import { configureLogger } from '../../logger.js';
+import { transaction } from '../../db/transaction.js';
 
 // defineTable relations, M3a: `ref` fields are real foreign keys with referential actions,
 // added NOT VALID and validated after the sync. Follows Prisma's referential-actions guide
@@ -257,6 +258,28 @@ describe.skipIf(!available)('defineTable relations — foreign keys', () => {
     );
     await defineTable(K, { note: { type: 'string' } }).sync();
     expect(await foreignKeysOf(table)).toMatchObject([{ column: 'legacy' }]);
+  });
+
+  it('adds the keys after commit when a model is first used inside a transaction', async () => {
+    // The transaction writes to the parent table, then a child model is used for the first
+    // time: its sync must not wait on that transaction's lock (it would hang forever).
+    const PARENT = name('RTxParent');
+    const CHILD = name('RTxChild');
+    const Parent = defineTable(PARENT, { name: { type: 'string' } });
+    const Child = defineTable(CHILD, { parent: { type: 'uuid', ref: PARENT, required: true } });
+    await Parent.sync();
+    const child = await transaction(async () => {
+      const p = await Parent.create({ data: { name: 'p' } });
+      return Child.create({ data: { parent: p.id } });
+    });
+    expect(child.parent).toBeDefined();
+    await vi.waitFor(
+      async () =>
+        expect(await foreignKeysOf(tableNameFor(CHILD))).toMatchObject([
+          { column: 'parent', target: tableNameFor(PARENT), valid: true },
+        ]),
+      { timeout: 3000 },
+    );
   });
 
   it('explains a ref whose type does not match the target id', async () => {

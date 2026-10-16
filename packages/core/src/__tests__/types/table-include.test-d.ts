@@ -30,7 +30,7 @@ const Post = defineTable(
   },
   { id: 'serial' },
 );
-const Tag = defineTable('TTag', { label: { type: 'string', required: true } });
+const Tag = defineTable('TTag', { label: { type: 'string', required: true, unique: true } });
 
 declare module '../../index.js' {
   interface Tables {
@@ -105,4 +105,55 @@ async function checks() {
   await User.findMany({ include: { posts: { where: { nope: 1 } } } });
   // @ts-expect-error — a to-one include has no list options
   await Post.findMany({ include: { author: { take: 1 } } });
+
+  // ── M3c: relation filters ──
+  await User.findMany({ where: { posts: { some: { title: { startsWith: 'a' } } } } });
+  await User.findMany({ where: { posts: { every: { tags: { none: { label: 'x' } } } } } });
+  await User.findMany({
+    where: { profile: { is: null }, NOT: { profile: { isNot: { bio: 'x' } } } },
+  });
+  await Post.findMany({
+    where: { author: { is: { email: 'a' } }, tags: { some: { label: 'x' } } },
+  });
+  await Post.findMany({ where: { author: 'id', tags: { has: 'id' } } }); // plain filters still work
+  // @ts-expect-error — a to-one relation takes is / isNot, not some
+  await Post.findMany({ where: { author: { some: {} } } });
+  // @ts-expect-error — fields inside a relation filter are the target's
+  await User.findMany({ where: { posts: { some: { nope: 1 } } } });
+
+  // ── M3c: nested writes ──
+  await Post.create({
+    data: {
+      title: 't',
+      editor: { connect: { email: 'a' } },
+      author: { create: { email: 'b', posts: { create: [{ title: 'nested', editor: 'u' }] } } },
+      tags: { connect: [{ label: 'x' }], create: [{ label: 'y' }] },
+    },
+  });
+  await User.create({
+    data: {
+      email: 'c',
+      posts: { create: { title: 'p', editor: 'u' } },
+      profile: { create: { bio: 'b' } },
+    },
+  });
+  await Post.update({
+    where: { id: 1 },
+    data: { author: { disconnect: true }, tags: { disconnect: [{ label: 'x' }], pull: 'id' } },
+  });
+  await User.update({
+    where: { email: 'c' },
+    data: { posts: { set: [{ id: 1 }], deleteMany: { title: 'x' } }, profile: { delete: true } },
+  });
+  await Post.upsert({
+    where: { id: 1 },
+    create: { title: 't', editor: { connect: { email: 'a' } } },
+    update: { tags: { connect: { label: 'x' } } },
+  });
+  // @ts-expect-error — disconnect is for updates
+  await Post.create({ data: { title: 't', editor: { disconnect: true } } });
+  // A back-relation child gets its key from the parent: Profile.user is required, yet
+  // `profile.create` above compiles without it.
+  // @ts-expect-error — createMany takes rows only
+  await Post.createMany({ data: [{ title: 't', editor: { connect: { email: 'a' } } }] });
 }

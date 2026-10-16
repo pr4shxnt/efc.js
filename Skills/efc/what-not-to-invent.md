@@ -39,7 +39,7 @@ defineTable()          // ← EXISTS (PostgreSQL-only, Prisma-style) — see api
 defineCollection()     // ← NOT YET — planned (MongoDB-native API, prisma-parity-plan M5)
 Model.findMany() / findUnique() / groupBy()   // ← only on defineTable, NOT on defineModel
 Table.find() / findById() / $gt / $inc        // ← defineModel vocabulary, NOT on defineTable
-Table.findMany({ include })                   // ← EXISTS (M3b); relation filters `where: { posts: { some } }` and nested writes `{ connect }` do NOT yet
+Table.findMany({ include })                   // ← EXISTS; so do relation filters `{ posts: { some } }` and nested writes `{ connect }` (defineTable only)
 defineModel(..., { type: 'integer' | 'bigint' | 'decimal' | 'uuid' | 'json' })  // ← defineTable-only types
 Model.updateOne(f, u, { upsert: true })       // ← no options arg; use Model.upsert(filter, create, update)
 getModel()             // ← does NOT exist as a public export
