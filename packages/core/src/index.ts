@@ -14,6 +14,8 @@ export type {
   TableWhere,
   TableWhereUnique,
   TableUpdateData,
+  TableCreateData,
+  TableUpdateInput,
   TableOrderBy,
   TableSelect,
   TableInclude,

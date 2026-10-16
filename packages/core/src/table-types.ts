@@ -130,12 +130,17 @@ type FieldWhere<Kd, V> = Kd extends 'json'
       : ScalarFilter<V> | V | null;
 
 export type TableWhere<S, O = object> = {
-  [K in keyof TableRecord<S, O>]?: FieldWhere<KindOf<S, O, K>, Inputs<S, O>[K]> | undefined;
-} & {
-  AND?: TableWhere<S, O> | TableWhere<S, O>[];
-  OR?: TableWhere<S, O>[];
-  NOT?: TableWhere<S, O> | TableWhere<S, O>[];
-};
+  [K in keyof TableRecord<S, O>]?:
+    | FieldWhere<KindOf<S, O, K>, Inputs<S, O>[K]>
+    | (K extends keyof RelationsOf<S, O> ? RelationWhere<RelationsOf<S, O>[K]> : never)
+    | undefined;
+} & (O extends { relations: infer R }
+  ? { [K in keyof R]?: RelationWhere<RelationsOf<S, O>[K & keyof RelationsOf<S, O>]> }
+  : unknown) & {
+    AND?: TableWhere<S, O> | TableWhere<S, O>[];
+    OR?: TableWhere<S, O>[];
+    NOT?: TableWhere<S, O> | TableWhere<S, O>[];
+  };
 
 type UniqueFields<S> = { [K in keyof S]: S[K] extends { unique: true } ? K : never }[keyof S];
 type CompoundUniques<O> = O extends { indexes: readonly (infer X)[] }
@@ -256,6 +261,114 @@ type ManyArgs<N> = [Registered<N>] extends [never]
         skip?: number;
       }
     : never;
+
+type BackRelationKeys<O> = O extends { relations: infer R } ? keyof R : never;
+
+/** Relation filters: `some` / `every` / `none` on lists, `is` / `isNot` on one record. */
+type RelationWhere<Rel> = Rel extends { many: infer N }
+  ? { some?: TargetWhere<N>; every?: TargetWhere<N>; none?: TargetWhere<N> }
+  : Rel extends { one: infer N }
+    ? { is?: TargetWhere<N> | null; isNot?: TargetWhere<N> | null }
+    : never;
+
+type TargetWhere<N> = [Registered<N>] extends [never]
+  ? Record<string, unknown>
+  : Registered<N> extends { s: infer S; o: infer O }
+    ? TableWhere<S, O>
+    : never;
+
+/** A unique where on the target, or its id. */
+type TargetUnique<N> = [Registered<N>] extends [never]
+  ? Record<string, unknown> | string | number | bigint
+  : Registered<N> extends { s: infer S; o: infer O }
+    ? TableWhereUnique<S, O> | TableRecord<S, O>['id']
+    : never;
+
+/** Create data for the target (nested writes allowed), minus the fields set for you. */
+type TargetCreate<N, Without extends PropertyKey = never> = [Registered<N>] extends [never]
+  ? Record<string, unknown>
+  : Registered<N> extends { s: infer S; o: infer O }
+    ? Omit<TableCreateData<S, O>, Without>
+    : never;
+
+type OneOrMany<T> = T | T[];
+
+/** A ref field in create data: its id, or a nested write. */
+type NestedOne<N> = {
+  connect?: TargetUnique<N>;
+  create?: TargetCreate<N>;
+  connectOrCreate?: { where: TargetUnique<N>; create: TargetCreate<N> };
+};
+type NestedMany<N> = {
+  connect?: OneOrMany<TargetUnique<N>>;
+  create?: OneOrMany<TargetCreate<N>>;
+  connectOrCreate?: OneOrMany<{ where: TargetUnique<N>; create: TargetCreate<N> }>;
+};
+
+type BackDef<O, K> = O extends { relations: infer R } ? (K extends keyof R ? R[K] : never) : never;
+type BackFk<O, K> = BackDef<O, K> extends { foreignKey: infer F extends string } ? F : never;
+
+/** Back-relations in create data: children created or connected with their key set. */
+type BackCreate<O> = O extends { relations: unknown } ? BackCreateOf<O> : unknown;
+type BackUpdate<O> = O extends { relations: unknown } ? BackUpdateOf<O> : unknown;
+type BackCreateOf<O> = {
+  [K in BackRelationKeys<O>]?: BackDef<O, K> extends { hasMany: infer N }
+    ? {
+        create?: OneOrMany<TargetCreate<N, BackFk<O, K>>>;
+        connect?: OneOrMany<TargetUnique<N>>;
+      }
+    : BackDef<O, K> extends { hasOne: infer N }
+      ? { create?: TargetCreate<N, BackFk<O, K>>; connect?: TargetUnique<N> }
+      : never;
+};
+type BackUpdateOf<O> = {
+  [K in BackRelationKeys<O>]?: BackDef<O, K> extends { hasMany: infer N }
+    ? {
+        create?: OneOrMany<TargetCreate<N, BackFk<O, K>>>;
+        connect?: OneOrMany<TargetUnique<N>>;
+        disconnect?: OneOrMany<TargetUnique<N>>;
+        set?: TargetUnique<N>[];
+        delete?: OneOrMany<TargetUnique<N>>;
+        deleteMany?: OneOrMany<TargetWhere<N>>;
+      }
+    : BackDef<O, K> extends { hasOne: infer N }
+      ? {
+          create?: TargetCreate<N, BackFk<O, K>>;
+          connect?: TargetUnique<N>;
+          disconnect?: true;
+          delete?: true;
+        }
+      : never;
+};
+
+/** Own relation fields' targets: `{ author: 'User' }`-style, many-to-many flagged. */
+type OwnTarget<S, K> = K extends keyof S ? RefName<S[K]> : never;
+type IsMany<S, K> = K extends keyof S ? (S[K] extends { type: 'array' } ? true : false) : false;
+
+/** `create` data: values, plus nested writes on relations. */
+export type TableCreateData<S, O = object> = {
+  [K in keyof TableCreateInput<S>]: [OwnTarget<S, K>] extends [never]
+    ? TableCreateInput<S>[K]
+    : IsMany<S, K> extends true
+      ? TableCreateInput<S>[K] | NestedMany<OwnTarget<S, K>>
+      : TableCreateInput<S>[K] | NestedOne<OwnTarget<S, K>>;
+} & BackCreate<O>;
+
+/** `update` data: values and operations, plus nested writes on relations. */
+export type TableUpdateInput<S, O = object> = {
+  [K in keyof TableUpdateData<S, O>]?: [OwnTarget<S, K>] extends [never]
+    ? TableUpdateData<S, O>[K]
+    : IsMany<S, K> extends true
+      ?
+          | TableUpdateData<S, O>[K]
+          | (NestedMany<OwnTarget<S, K>> & {
+              disconnect?: OneOrMany<TargetUnique<OwnTarget<S, K>>>;
+              set?: TargetUnique<OwnTarget<S, K>>[];
+              push?: OneOrMany<TargetUnique<OwnTarget<S, K>>>;
+              pull?: OneOrMany<TargetUnique<OwnTarget<S, K>>>;
+            })
+      : TableUpdateData<S, O>[K] | (NestedOne<OwnTarget<S, K>> & { disconnect?: true });
+} & BackUpdate<O>;
 
 /** `include`: `true` or options per relation (`where`/`orderBy`/`take`/`skip` on lists). */
 export type TableInclude<S, O = object> = {
@@ -481,7 +594,7 @@ export interface TableModel<S, O = object> {
       } & TableAggregateResult<S, O, A>
     >[]
   >;
-  create<const A extends { data: TableCreateInput<S> } & Projection<S, O>>(
+  create<const A extends { data: TableCreateData<S, O> } & Projection<S, O>>(
     args: A,
   ): Promise<TableResult<S, O, A>>;
   /** Inserts many rows in one statement; `skipDuplicates` → `ON CONFLICT DO NOTHING`. */
@@ -501,7 +614,7 @@ export interface TableModel<S, O = object> {
   ): Promise<TableResult<S, O, A>[]>;
   /** Updates the record `where` names; 404 if there is none. */
   update<
-    const A extends { where: TableWhereUnique<S, O>; data: TableUpdateData<S, O> } & Projection<
+    const A extends { where: TableWhereUnique<S, O>; data: TableUpdateInput<S, O> } & Projection<
       S,
       O
     >,
@@ -524,8 +637,8 @@ export interface TableModel<S, O = object> {
   upsert<
     const A extends {
       where: TableWhereUnique<S, O>;
-      create: TableCreateInput<S>;
-      update: TableUpdateData<S, O>;
+      create: TableCreateData<S, O>;
+      update: TableUpdateInput<S, O>;
     } & Projection<S, O>,
   >(
     args: A,
