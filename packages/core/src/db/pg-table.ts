@@ -754,7 +754,21 @@ export function pgTable(
     syncing.set(table, mine);
     try {
       const deferred = new Set<string>();
+      // First used inside a transaction: adding a foreign key locks the referenced table,
+      // which that transaction may already have written to — the sync (on its own
+      // connection) and the transaction would wait for each other forever. Create the
+      // tables now; add the keys once the transaction has committed.
+      const tx = currentTx();
+      if (tx?.engine === 'postgresql' && fks.length) {
+        for (const fk of fks) deferred.add(fk.name);
+        tx.afterCommit.push(() => {
+          reconcile(false).catch((err: unknown) =>
+            getLogger().error({ err }, `${name}: adding foreign keys to "${table}" failed`),
+          );
+        });
+      }
       for (const fk of fks) {
+        if (deferred.has(fk.name)) continue;
         if (fk.targetTable === table || (await tableExists(fk.targetTable))) continue;
         const running = syncing.get(fk.targetTable);
         if (running) {
