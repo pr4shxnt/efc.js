@@ -83,6 +83,7 @@ interface TableOptions {
   timestamps?: boolean | { createdAt?: string | false; updatedAt?: string | false };
   indexes?: { fields: Record<string, 1 | -1 | 'text'>; unique?: boolean; name?: string }[];
   collection?: string;                     // table name
+  relations?: Record<string, { hasMany: string; foreignKey: string } | { hasOne: string; foreignKey: string }>;  // see Include
 }
 ```
 
@@ -97,6 +98,154 @@ never drops columns or rows. On top of that:
   keeping the data.
 
 Preview the changes with `efc db sync --dry-run`.
+
+### Foreign keys
+
+A top-level `ref` field is a real foreign key to the referenced model's `id`:
+
+```ts
+export const Author = defineTable('Author', { name: { type: 'string', required: true } });
+export const Category = defineTable('Category', {
+  name:   { type: 'string', required: true },
+  parent: { type: 'integer', ref: 'Category', onDelete: 'setNull' },   // self-relation
+}, { id: 'serial' });
+
+export const Post = defineTable('Post', {
+  title:    { type: 'string', required: true },
+  author:   { type: 'uuid', ref: 'Author', required: true, onDelete: 'cascade' },
+  reviewer: { type: 'uuid', ref: 'Author' },                            // onDelete: 'restrict'
+  category: { type: 'integer', ref: 'Category' },
+});
+```
+
+| `onDelete` | Deleting the referenced record… |
+|---|---|
+| `'restrict'` (default) | is refused with a **409** while records point at it |
+| `'cascade'` | deletes the records pointing at it too |
+| `'setNull'` | clears the field on those records (not allowed on `required` fields) |
+
+- The field's `type` must match the target's id: `uuid` (or `objectId`) for `id: 'uuid'`,
+  `integer` for `'serial'`, `bigint` for `'bigserial'`. A mismatch fails at first use, saying
+  which type to declare.
+- Writing an id that doesn't exist is a **400** on that field (`author: Author not found`).
+- Ref columns get an index (`<table>_<column>_idx`) unless `index: false`.
+- The referenced model must be defined (imported) before the model that references it is used.
+- The value is still the id: `post.author` is a string (or number). Loading the referenced
+  record with `include` comes next (M3b).
+
+Sync creates a missing target table first, then adds the key `NOT VALID` (instant, and existing
+rows can't fail the deploy) and validates it right after the commit. If old rows point at
+records that no longer exist, validation is skipped with a warning naming the count. The key
+still applies to new writes; fix the rows and run `efc db sync` to validate it. Changing
+`onDelete` replaces the key, and removing `ref` drops it. Foreign keys on columns the model
+doesn't declare are left alone.
+
+`defineModel` keeps `ref` portable: on PostgreSQL it stays a plain column with no foreign key,
+the same as on MongoDB.
+
+### Many-to-many
+
+An array of refs is a many-to-many relation:
+
+```ts
+export const Tag = defineTable('Tag', { label: { type: 'string', required: true, unique: true } });
+export const Post = defineTable('Post', {
+  title: { type: 'string', required: true },
+  tags:  { type: 'array', of: 'uuid', ref: 'Tag' },          // of: matches Tag's id type
+});
+
+const post = await Post.create({ data: { title: 'Hello', tags: [news, tech] } });
+post.tags;                                                   // [news, tech] — ids, in order
+await Post.findMany({ where: { tags: { has: tech } } });
+await Post.update({ where: { id: post.id }, data: { tags: { push: launch } } });
+await Post.update({ where: { id: post.id }, data: { tags: { set: [tech] } } });
+```
+
+- Records keep the list of ids (`string[]`, `number[]` or `bigint[]`), in the order written, without
+  duplicates. New records start with `[]`.
+- Filters are the list filters: `has`, `hasSome`, `hasEvery`, `isEmpty`, `equals`. Updates take a
+  list, `{ set: [...] }` or `{ push: id | [...] }` (ids already linked are left in place).
+  `select` / `omit` work as for any field. Ordering, grouping and `_sum`-style aggregates on the
+  field are refused.
+- The links live in a join table, `<table>_<column>` (`posts_tags`): `owner_id`, `ref_id`,
+  `position`, primary key `(owner_id, ref_id)`, an index on `ref_id`, and foreign keys to both
+  tables with `ON DELETE CASCADE`. Deleting a post or a tag removes its links (a deleted tag
+  disappears from every post's `tags`). There is no `onDelete` option for these fields.
+- An id that doesn't exist is a **400** on the field, and nothing is written.
+- Reads stay one statement (the list is a subquery). A write that changes links runs in a
+  transaction: the row, then the links.
+- Self-relations work (`friends: { type: 'array', of: 'uuid', ref: 'Person' }`).
+
+**Moving from an array column.** If the table already stores the field as an array (`uuid[]`,
+or `jsonb` from `defineModel`), the first sync copies it into the join table, keeping the order
+and skipping values that aren't ids. The old column stays (sync never drops columns) but is no
+longer read or written, so a `defineModel` over the same table won't see later changes to the
+list.
+
+### Include
+
+`include` loads related records into the result: a `ref` field becomes the record it points at,
+a many-to-many field the list of records, and back-relations — declared with `relations` —
+the records pointing here.
+
+```ts
+export const User = defineTable('User', { email: { type: 'string', required: true, unique: true } }, {
+  relations: {
+    posts:   { hasMany: 'Post', foreignKey: 'author' },     // Post.author refs User
+    profile: { hasOne: 'Profile', foreignKey: 'user' },     // Profile.user refs User, unique
+  },
+});
+export const Tag = defineTable('Tag', { label: { type: 'string', required: true } }, {
+  relations: { posts: { hasMany: 'Post', foreignKey: 'tags' } },  // through Post.tags (m:n)
+});
+
+const users = await User.findMany({
+  include: {
+    profile: true,
+    posts: {
+      where: { published: true },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { title: true },
+      include: { tags: { select: { label: true } } },
+    },
+  },
+});
+// [{ id, email, …, profile: { … } | null, posts: [{ title, tags: [{ label }] }] }]
+
+await Post.findUnique({ where: { id }, include: { author: true } });   // author: { … } | null
+```
+
+| Relation | Declared as | `include` gives |
+|---|---|---|
+| belongs to | `author: { type: 'uuid', ref: 'User' }` | the record, or `null` (never `null` when `required`) |
+| many-to-many | `tags: { type: 'array', of: 'uuid', ref: 'Tag' }` | the records, in link order |
+| has many | `relations: { posts: { hasMany: 'Post', foreignKey: 'author' } }` | the records (by `id` unless `orderBy`) |
+| has one | `relations: { profile: { hasOne: 'Profile', foreignKey: 'user' } }` | the record or `null` — `foreignKey` must be `unique` |
+
+- `true`, or options: `select`, `omit`, a nested `include` (any depth), and on lists `where`,
+  `orderBy`, `take`, `skip`. `false` leaves the relation out.
+- `foreignKey` names the field on the other model that refs this one: a scalar `ref` or a
+  many-to-many array.
+- **One statement per call**, whatever the depth: each relation is a correlated subquery
+  building `jsonb`. Included records read exactly like direct reads (`bigint`s, decimals as
+  strings, dates).
+- `findMany`, `findFirst`, `findUnique` (and `…OrThrow`), `create`, `update`, `upsert` and
+  `delete` take `include`. Writes read the record back with its relations after writing;
+  `delete` reads it first.
+- Self-relations work both ways (`parent` ref + `children: { hasMany: 'Category', foreignKey: 'parent' }`).
+
+**Types.** Relations name models by string, so register your models once for typed includes:
+
+```ts
+declare module 'express-file-cluster' {
+  interface Tables { User: typeof User; Post: typeof Post; Tag: typeof Tag; Profile: typeof Profile }
+}
+```
+
+Included records are then typed (`select` / `omit` / nested `include` applied), and `include`
+keys, nested `where` and `orderBy` are checked. A relation to an unregistered model still works,
+typed as `Record<string, unknown>`.
 
 ---
 
@@ -151,7 +300,21 @@ const next = await Order.findMany({ orderBy: { qty: 'desc' }, take: 20, cursor: 
 | strings | + `contains`, `startsWith`, `endsWith`, `mode: 'insensitive'` (ILIKE) |
 | native arrays | `has`, `hasEvery`, `hasSome`, `isEmpty`, `equals` |
 | objects / arrays of objects / `json` | `equals`, `not`, and with `path: ['a', 'b']`: `equals`, `string_contains`, `string_starts_with`, `string_ends_with`, `array_contains`, `gt`… |
+| relations, to-many (many-to-many fields, `hasMany`) | `some`, `every`, `none` — each a `where` on the related model |
+| relations, to-one (ref fields, `hasOne`) | `is`, `isNot` — a `where` on the related model, or `null` |
 | combinators | `AND`, `OR`, `NOT` (an object or an array) |
+
+```ts
+await User.findMany({ where: { posts: { some: { comments: { some: { approved: false } } } } } });
+await User.findMany({ where: { posts: { none: {} } } });                    // users without posts
+await Post.findMany({ where: { author: { is: { role: 'admin' } }, tags: { every: { public: true } } } });
+await Post.findMany({ where: { author: { is: null } } });                   // no author
+```
+
+Relation filters are `EXISTS` subqueries — the read stays one statement — and nest to any
+depth. They work wherever `where` does: reads, `count`, `include`, `updateMany`, `deleteMany`.
+`every` holds for records with no related records at all. A ref or many-to-many field still
+takes its own id filters (`author: id`, `tags: { has: id }`); a back-relation only these.
 
 `undefined` values are ignored. Filters on undeclared fields match nothing, as with
 `defineModel`. `LIKE` wildcards in `contains`, `startsWith` and `endsWith` are escaped.
@@ -202,6 +365,51 @@ await Order.update({
   (400); a duplicate unique value gives a 409. `updatedAt` is refreshed on every update.
   `increment`/`decrement` results are not re-checked against `min`/`max`.
 
+### Nested writes
+
+`create`, `update` and `upsert` can write related records in the same call:
+
+```ts
+await Post.create({
+  data: {
+    title: 'Hello',
+    author: { connect: { email: 'ann@x.io' } },                  // a ref: connect / create / connectOrCreate
+    tags: {                                                      // many-to-many
+      connect: [{ label: 'news' }],
+      connectOrCreate: [{ where: { label: 'tech' }, create: { label: 'tech' } }],
+      create: [{ label: 'launch' }],
+    },
+    comments: { create: [{ body: 'First!' }] },                  // a back-relation (hasMany)
+  },
+  include: { author: true, tags: true, comments: true },
+});
+
+await User.update({
+  where: { id },
+  data: {
+    posts: { connect: [{ id: p1 }], disconnect: [{ id: p2 }], deleteMany: { draft: true } },
+    profile: { create: { bio: 'hi' } },                          // hasOne: replaces the current one
+  },
+});
+```
+
+| Relation | `create` | `update` adds |
+|---|---|---|
+| ref field | `connect`, `create`, `connectOrCreate` (or the id) | `disconnect: true` |
+| many-to-many field | `connect`, `create`, `connectOrCreate` (or ids) | `disconnect`, `set`, `push`, `pull` |
+| `hasMany` | `connect`, `create` | `disconnect`, `set`, `delete`, `deleteMany` |
+| `hasOne` | `connect`, `create` | `disconnect: true`, `delete: true` |
+
+- `connect`, `disconnect`, `set` and `delete` take unique wheres (or ids); a list or a single one.
+  A `connect` that matches nothing is a **400** on the field.
+- Children created through a back-relation get their foreign key from the parent — leave it out.
+- The whole call runs in **one transaction**: anything failing rolls it all back.
+- `createMany` / `updateMany` write rows only; they refuse nested writes, as in Prisma.
+- `upsert` with nested writes reads first, then creates or updates, in the transaction (without
+  nested writes it stays a single `INSERT … ON CONFLICT`).
+- A model first used inside a transaction gets its table right away and its foreign keys once
+  the transaction commits, so the sync never waits on the transaction's own locks.
+
 ---
 
 ## Aggregation
@@ -246,5 +454,5 @@ Over an empty set, `_sum`, `_avg`, `_min` and `_max` are `null`. `aggregate` als
 - `raw()` returns the Drizzle `pgTable`, for anything EFC doesn't cover.
 - `sync({ dryRun })` / `drop()` work as with `defineModel`.
 - `transaction(async () => …)` covers `defineTable` calls too.
-- Relations (`include`, foreign keys, relation filters, nested writes) are planned (M3), not
-  implemented yet.
+- Relations are complete: foreign keys, many-to-many, `include`, relation filters and nested
+  writes (above).

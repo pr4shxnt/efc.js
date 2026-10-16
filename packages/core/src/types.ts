@@ -60,6 +60,24 @@ export interface LoggingConfig {
   pretty?: boolean;
   /** Log one line per completed request (method, url, status, duration). Default: true. */
   requests?: boolean;
+  /**
+   * Model operation logging: model, operation, duration, statement count, request ID.
+   * `true` logs every operation; an object logs only slow ones unless `all: true`.
+   * Operations slower than `slowMs` warn either way. Default: off.
+   */
+  queries?: boolean | QueryLogConfig;
+}
+
+export interface QueryLogConfig {
+  /** Log every operation (info), not just slow ones. Default: false (true with `queries: true`). */
+  all?: boolean;
+  /** Operations taking at least this long are logged as warnings. Default: 500. */
+  slowMs?: number;
+  /**
+   * Warn (once, naming the calling line) when one request runs the same model operation
+   * this many times — the N+1 pattern. `false` turns it off. Default: 10.
+   */
+  nPlusOne?: number | false;
 }
 
 export interface CorsConfig {
@@ -246,7 +264,11 @@ export interface FieldDefinition {
    * May be async. Runs on create and on update of this field.
    */
   validate?: (value: unknown) => boolean | string | Promise<boolean | string>;
-  /** Model name to reference. Valid on `objectId` types (bare or as an array's `of`). */
+  /**
+   * Model name to reference. Valid on `objectId` types (bare or as an array's `of`); on
+   * `defineTable`, a top-level field whose type matches the target's id (`uuid`/`objectId`,
+   * `integer` for `id: 'serial'`, `bigint` for `'bigserial'`) and becomes a foreign key.
+   */
   ref?: string;
   /**
    * Item type for `array` fields: a primitive (`of: 'string'`) or a nested schema for an
@@ -312,12 +334,21 @@ export interface TableFieldDefinition extends Omit<
   /** The column name, when it differs from the field name (top-level fields only). */
   column?: string;
   /**
+   * With `ref` (top-level fields): what deleting the referenced row does to this one —
+   * `'restrict'` (default) refuses the delete (409), `'cascade'` deletes this row too,
+   * `'setNull'` clears the field. Enforced by a real foreign key.
+   */
+  onDelete?: ReferentialAction;
+  /**
    * Item type for `array` fields. A scalar type becomes a native PostgreSQL array
    * (`text[]`, `integer[]`, …); a nested schema is stored as `jsonb`.
    */
   of?: TablePrimitiveFieldType | TableSchema;
   fields?: TableSchema;
 }
+
+/** `onDelete` behaviour of a `defineTable` foreign key. */
+export type ReferentialAction = 'restrict' | 'cascade' | 'setNull';
 
 export type TableSchemaField =
   | TableFieldDefinition
@@ -382,7 +413,20 @@ export interface TableOptions extends ModelOptions {
    * `column` overrides it. Default: columns are named like the fields.
    */
   naming?: 'snake_case';
+  /**
+   * Back-relations, loaded with `include`: records of another model that reference this one
+   * through `foreignKey` — a `ref` field on that model (scalar, or a many-to-many array).
+   * `hasOne` needs that field to be `unique`.
+   *
+   * @example relations: { comments: { hasMany: 'Comment', foreignKey: 'post' } }
+   */
+  relations?: Record<string, TableRelation>;
 }
+
+/** A back-relation of a `defineTable` model (see `TableOptions.relations`). */
+export type TableRelation =
+  | { hasMany: string; foreignKey: string; hasOne?: never }
+  | { hasOne: string; foreignKey: string; hasMany?: never };
 
 /** Comparison operators accepted in filters (the MongoDB query subset both engines support). */
 export interface FilterOperators<V> {

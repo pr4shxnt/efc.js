@@ -42,7 +42,9 @@ export type SchemaMode = 'model' | 'table';
 
 const MODEL_TYPES = new Set(['string', 'number', 'boolean', 'date', 'object', 'objectId', 'array']);
 const TABLE_ONLY_TYPES = new Set(['integer', 'bigint', 'decimal', 'uuid', 'json']);
-const TABLE_ONLY_OPTIONS = ['precision', 'scale', 'nativeEnum', 'column'] as const;
+const TABLE_ONLY_OPTIONS = ['precision', 'scale', 'nativeEnum', 'column', 'onDelete'] as const;
+const REFERENTIAL_ACTIONS = new Set(['restrict', 'cascade', 'setNull']);
+const FOREIGN_KEY_TYPES = new Set(['objectId', 'uuid', 'integer', 'bigint']);
 
 export function isFieldDefinition(value: unknown): value is AnyFieldDefinition {
   if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -87,6 +89,38 @@ class SchemaBuilder {
     }
     if (def.column !== undefined && !topLevel) {
       this.fail(path, `'column' only applies to top-level fields`);
+    }
+    if (def.onDelete !== undefined) {
+      if (def.ref === undefined) this.fail(path, `'onDelete' needs 'ref'`);
+      if (!REFERENTIAL_ACTIONS.has(def.onDelete)) {
+        this.fail(path, `onDelete must be 'restrict', 'cascade' or 'setNull'`);
+      }
+      if (def.onDelete === 'setNull' && def.required) {
+        this.fail(path, `onDelete: 'setNull' can't clear a required field`);
+      }
+    }
+    // A scalar ref is a foreign key, an array of refs a many-to-many join table: both
+    // top-level and typed like the target's id.
+    if (def.ref !== undefined) {
+      const many = def.type === 'array';
+      if (!topLevel) this.fail(path, `'ref' only applies to top-level fields`);
+      if (!FOREIGN_KEY_TYPES.has(many ? String(def.of) : def.type)) {
+        this.fail(
+          path,
+          many
+            ? `a many-to-many 'ref' needs of: objectId, uuid, integer or bigint`
+            : `'ref' needs an id type: objectId, uuid, integer or bigint`,
+        );
+      }
+      if (many && def.onDelete !== undefined) {
+        this.fail(
+          path,
+          `'onDelete' doesn't apply to many-to-many refs — links are always removed with either record`,
+        );
+      }
+      if (many && (def.unique || def.index)) {
+        this.fail(path, `many-to-many refs are indexed already; 'unique' / 'index' don't apply`);
+      }
     }
   }
 

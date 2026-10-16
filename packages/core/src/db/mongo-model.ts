@@ -11,6 +11,7 @@ import {
 import { currentTx, isAutoSync } from './engine.js';
 import { notInstalled } from './postgres.js';
 import { getLogger } from '../logger.js';
+import { countStatement, untracked, whenQueryTracking } from './query-log.js';
 
 type AnyRecord = Record<string, unknown>;
 /** What each engine adapter implements; `defineModel` adds `name`, `upsert` and the `distinct` rules. */
@@ -23,6 +24,12 @@ let mongoosePromise: Promise<typeof MongooseNS> | undefined;
 export function loadMongoose(): Promise<typeof MongooseNS> {
   mongoosePromise ??= import('mongoose')
     .then((mod) => ((mod as { default?: typeof MongooseNS }).default ?? mod) as typeof MongooseNS)
+    .then((mg) => {
+      // Count each collection call for query logging. mongoose has a single debug hook,
+      // so it is only taken while query logging (or a test listener) is on.
+      whenQueryTracking(() => mg.set('debug', countStatement));
+      return mg;
+    })
     .catch((err: unknown) => {
       mongoosePromise = undefined;
       throw notInstalled(err, 'mongoose', 'npm install mongoose');
@@ -218,51 +225,55 @@ export function mongoModel<T extends object>(
 ): EngineModel<T> {
   let compiled: Promise<MongooseNS.Model<AnyRecord>> | undefined;
 
+  // Compiled outside the calling operation, so collection/index creation isn't counted
+  // as that operation's statements (as on PostgreSQL, where sync uses its own client).
   const model = (): Promise<MongooseNS.Model<AnyRecord>> =>
-    (compiled ??= loadMongoose().then(async (mg) => {
-      if (mg.models[name]) return mg.models[name] as MongooseNS.Model<AnyRecord>;
-      const schema = new mg.Schema(buildTree(tree, mg) as MongooseNS.SchemaDefinition, {
-        timestamps: options.timestamps ?? true,
-        // autoSync: false hands collection and index creation to migrations, on MongoDB too.
-        autoIndex: isAutoSync(),
-        autoCreate: isAutoSync(),
-        ...(options.collection !== undefined && { collection: options.collection }),
-      });
-      for (const idx of options.indexes ?? []) {
-        schema.index(idx.fields as Record<string, 1 | -1 | 'text'>, {
-          ...(idx.unique !== undefined && { unique: idx.unique }),
-          ...(idx.expireAfterSeconds !== undefined && {
-            expireAfterSeconds: idx.expireAfterSeconds,
-          }),
-          ...(idx.name !== undefined && { name: idx.name }),
+    (compiled ??= untracked(() =>
+      loadMongoose().then(async (mg) => {
+        if (mg.models[name]) return mg.models[name] as MongooseNS.Model<AnyRecord>;
+        const schema = new mg.Schema(buildTree(tree, mg) as MongooseNS.SchemaDefinition, {
+          timestamps: options.timestamps ?? true,
+          // autoSync: false hands collection and index creation to migrations, on MongoDB too.
+          autoIndex: isAutoSync(),
+          autoCreate: isAutoSync(),
+          ...(options.collection !== undefined && { collection: options.collection }),
         });
-      }
-      const sequences = sequenceFields(name, tree);
-      if (sequences.length > 0) {
-        // pre('validate'), not pre('save'): required checks run before save hooks, so
-        // assigning here is the only way a sequence field can also be `required: true`.
-        schema.pre('validate', async function (this: MongooseNS.Document) {
-          if (!this.isNew) return;
-          for (const { path, key } of sequences) {
-            if (this.get(path) == null) this.set(path, await nextSequence(mg, key));
-          }
-        });
-      }
-      const M = mg.model<AnyRecord>(name, schema);
-      if (isAutoSync()) {
-        // Like PostgreSQL's first-use sync: queries wait until the collection and its
-        // indexes exist, so a unique index is enforced from the very first write. An index
-        // that can't be built (e.g. duplicates already stored) is logged, not fatal — the
-        // model keeps working as it did before, without that index.
-        await M.init().catch((err: unknown) => {
-          getLogger().warn(
-            { model: name, err: (err as Error).message },
-            `${name}: could not build its indexes — fix the data, then run efc db sync`,
-          );
-        });
-      }
-      return M;
-    }));
+        for (const idx of options.indexes ?? []) {
+          schema.index(idx.fields as Record<string, 1 | -1 | 'text'>, {
+            ...(idx.unique !== undefined && { unique: idx.unique }),
+            ...(idx.expireAfterSeconds !== undefined && {
+              expireAfterSeconds: idx.expireAfterSeconds,
+            }),
+            ...(idx.name !== undefined && { name: idx.name }),
+          });
+        }
+        const sequences = sequenceFields(name, tree);
+        if (sequences.length > 0) {
+          // pre('validate'), not pre('save'): required checks run before save hooks, so
+          // assigning here is the only way a sequence field can also be `required: true`.
+          schema.pre('validate', async function (this: MongooseNS.Document) {
+            if (!this.isNew) return;
+            for (const { path, key } of sequences) {
+              if (this.get(path) == null) this.set(path, await nextSequence(mg, key));
+            }
+          });
+        }
+        const M = mg.model<AnyRecord>(name, schema);
+        if (isAutoSync()) {
+          // Like PostgreSQL's first-use sync: queries wait until the collection and its
+          // indexes exist, so a unique index is enforced from the very first write. An index
+          // that can't be built (e.g. duplicates already stored) is logged, not fatal — the
+          // model keeps working as it did before, without that index.
+          await M.init().catch((err: unknown) => {
+            getLogger().warn(
+              { model: name, err: (err as Error).message },
+              `${name}: could not build its indexes — fix the data, then run efc db sync`,
+            );
+          });
+        }
+        return M;
+      }),
+    ));
 
   const session = (): { session?: MongooseNS.ClientSession } => {
     const tx = currentTx();

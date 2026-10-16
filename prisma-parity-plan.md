@@ -92,7 +92,7 @@ to it; nothing is emulated across engines.
 | Introspect an existing DB | `prisma db pull` | — | M4 |
 | Push schema without migrations | `prisma db push` | `autoSync` / `efc db sync` ✅ | — |
 | Studio | Prisma Studio (edit) | read-only rows + structure ✅ | M6 |
-| Query logging / metrics | Prisma `log`, metrics | request logs only | M6 |
+| Query logging / metrics | Prisma `log`, metrics | `logging.queries` (ops, statements, slow, N+1) — metrics not yet | M6 |
 | Validation | none in Prisma | built in ✅ | — |
 | Interactive transactions | `$transaction(async tx => …)` | `transaction(fn)` ✅ (implicit) | — |
 
@@ -208,10 +208,16 @@ await Post.findMany({
 await Post.create({ data: { title, author: { connect: { id } }, tags: { connectOrCreate: [...] } } });
 ```
 - Real `REFERENCES … ON DELETE` (`restrict` default | `cascade` | `setNull`), added by sync
-  `NOT VALID` and validated separately so dirty data can't block a deploy.
-- m:n → auto-managed join tables with FKs; records keep `tags: string[]`.
+  `NOT VALID` and validated separately so dirty data can't block a deploy. **Done (M3a)** —
+  scalar refs; target tables synced first; 400/409 error mapping.
+- m:n → auto-managed join tables with FKs; records keep `tags: string[]`. **Done (M3a-2)** — join
+  table `<table>_<column>` (owner_id, ref_id, position); first sync backfills from the old
+  array/jsonb column (kept). `relations`, `include`, filters and nested writes remain (M3b/c).
 - `include` → one statement (`LEFT JOIN LATERAL … json_agg`), any depth; included fields typed.
+  **Done (M3b)** — correlated jsonb subqueries, `relations: { hasMany | hasOne, foreignKey }`,
+  typed through a `Tables` declaration-merging registry.
 - Relation filters `is/isNot/some/every/none` → `EXISTS` sub-queries; nested writes in one transaction.
+  **Done (M3c)** — M3 complete.
 
 **Exit criteria:** Prisma's relations guide (1:1, 1:n, m:n, self-relations, referential actions) as
 tests; populate/include issues one statement per call (asserted via M6 query logging).
@@ -262,7 +268,8 @@ await Place.findOneAndUpdate(filter, update, { upsert: true, returnDocument: 'af
 ## M6 — Tooling, observability, performance (both engines)
 
 - **Query logging:** `logging.queries: true | { slowMs }` — model, operation, duration, `reqId`;
-  slow-query warnings; N+1 detector naming the call site.
+  slow-query warnings; N+1 detector naming the call site. **Done (M6a)** — also counts statements
+  per operation (`onQuery` in `db/query-log.ts`), which M3's one-statement tests assert on.
 - **Studio, editable:** opt-in `efc db studio --write` (localhost-only + CSRF token), writes go
   through the models so validation applies.
 - **Pool settings:** `database: { pool: { max, idleTimeoutMs } }`; prepared statements on PostgreSQL.

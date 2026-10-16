@@ -4,7 +4,7 @@
 
 EFC is an opinionated backend framework built on Express. Drop files in `src/api/` and they become routes. Every CPU core serves traffic automatically. Heavy work goes to a queue-backed task subsystem so requests stay fast.
 
-> **Status: v0.5.0 (Beta).** Router (incl. catch-all/optional segments and request validation), clustering, auth, structured logging, `defineModel` on MongoDB and PostgreSQL (types inferred from the schema), PostgreSQL-native `defineTable` with Prisma-style queries, BullMQ and pg-boss tasks with cron, and migrations are all implemented.
+> **Status: v0.7.0 (Beta).** Router (incl. catch-all/optional segments and request validation), clustering, auth, structured logging, `defineModel` on MongoDB and PostgreSQL (types inferred from the schema), PostgreSQL-native `defineTable` with Prisma-style queries and relations (foreign keys, many-to-many, `include`, relation filters, nested writes), query logging, BullMQ and pg-boss tasks with cron, and migrations are all implemented.
 
 ---
 
@@ -408,7 +408,7 @@ ignite({
 | `tasks` | `TaskConfig \| false` | `false` | Background task runtime |
 | `cors` | `boolean \| CorsConfig` | `true` | CORS — pass `origin` explicitly, not auto-read from env |
 | `requestTimeout` | `number` | — | Request timeout in ms (408 on exceed) |
-| `logging` | `LoggingConfig \| false` | pretty in dev TTY, JSON otherwise | pino logging; every request gets an `X-Request-Id` |
+| `logging` | `LoggingConfig \| false` | pretty in dev TTY, JSON otherwise | pino logging; every request gets an `X-Request-Id`; `queries` adds model operation, slow-query and N+1 logging |
 | `cache` | `CacheConfig \| false` | — | `{ backend: 'redis', url }` or `{ backend: 'memory' }` — enables `cache`, `cacheResponse()` and session revocation |
 | `globalMiddlewares` | `RequestHandler[]` | `[]` | Applied to every route |
 | `dashboard` | `boolean` | `true` in dev | Dev route dashboard at `/` |

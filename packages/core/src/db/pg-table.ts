@@ -4,7 +4,7 @@
 // layers on top of it — defineModel's MongoDB-style API (pg-model.ts) and defineTable's
 // Prisma-style API (table-model.ts) — so the same table reads and writes the same records.
 import { randomUUID } from 'node:crypto';
-import type { ModelOptions, TableOptions } from '../types.js';
+import type { ModelOptions, ReferentialAction, TableOptions } from '../types.js';
 import { HttpError } from '../errors.js';
 import {
   applyDefaults,
@@ -19,7 +19,7 @@ import {
   type ScalarType,
   type SchemaTree,
 } from './schema.js';
-import { currentTx, isAutoSync } from './engine.js';
+import { currentTx, getRegisteredModel, isAutoSync, registeredModels } from './engine.js';
 import { getOrm, getPool } from './postgres.js';
 import { getLogger } from '../logger.js';
 
@@ -61,6 +61,38 @@ const sequenceName = (key: string) => `efc_seq_${key.replace(/[^A-Za-z0-9_]/g, '
 const literal = (v: string | number) =>
   typeof v === 'number' ? String(v) : `'${v.replace(/'/g, "''")}'`;
 
+// Tables whose sync is running in this process, so a foreign key to one of them can wait
+// for it instead of syncing it again (A ↔ B references would otherwise recurse).
+const syncing = new Map<string, Promise<unknown>>();
+
+const ACTION_SQL: Record<ReferentialAction, string> = {
+  restrict: 'RESTRICT',
+  cascade: 'CASCADE',
+  setNull: 'SET NULL',
+};
+// pg_constraint.confdeltype
+const ACTION_CODE: Record<ReferentialAction, string> = {
+  restrict: 'r',
+  cascade: 'c',
+  setNull: 'n',
+};
+// The column kind (and the field type to declare) a reference to each id strategy needs.
+const ID_COLUMN = {
+  uuid: { kind: 'uuid', type: 'uuid' },
+  serial: { kind: 'integer', type: 'integer' },
+  bigserial: { kind: 'bigint', type: 'bigint' },
+} as const;
+
+/** The model owning a table, for messages. */
+const modelOfTable = (table: string) =>
+  registeredModels().find((m) => {
+    try {
+      return m.pgTarget?.().table === table;
+    } catch {
+      return false;
+    }
+  })?.name ?? table;
+
 // ── Columns ──────────────────────────────────────────────────────────────────
 
 export type ScalarKind =
@@ -97,6 +129,21 @@ export interface ColumnSpec {
   scale?: number;
   enumType?: string;
   enumValues?: string[];
+}
+
+/** A many-to-many `ref` array on defineTable, stored in a join table instead of a column. */
+export interface JoinSpec {
+  field: string;
+  /** The join table: `<table>_<column>`, holding (owner_id, ref_id, position). */
+  table: string;
+  /** Where the array lived before it had a join table (backfilled from on first sync). */
+  legacyColumn: string;
+  target: string;
+  /** Element kind: the target's id type. */
+  item: 'uuid' | 'integer' | 'bigint';
+  /** Array type of the ids (`uuid[]`, `integer[]`, `bigint[]`). */
+  ddl: string;
+  node: FieldNode;
 }
 
 type ScalarSpec = Pick<
@@ -174,6 +221,7 @@ export function pgTable(
   const refs = refFields(tree);
 
   const columns = new Map<string, ColumnSpec>();
+  const joins = new Map<string, JoinSpec>();
   const idSpec: ColumnSpec =
     idKind === 'uuid'
       ? { field: 'id', column: 'id', kind: 'uuid', ddl: 'uuid', formatted: 'uuid' }
@@ -214,6 +262,23 @@ export function pgTable(
       } else {
         columns.set(field, { ...base, ...scalarSpec(node.type, node.def, config.native) });
       }
+    } else if (
+      config.native &&
+      node.kind === 'array' &&
+      node.item.kind === 'scalar' &&
+      node.def.ref !== undefined
+    ) {
+      // Many-to-many: a join table, not a column.
+      const item = scalarSpec(node.item.type, node.item.def, false).kind as JoinSpec['item'];
+      joins.set(field, {
+        field,
+        table: `${table}_${column}`,
+        legacyColumn: column,
+        target: node.def.ref,
+        item,
+        ddl: `${item}[]`,
+        node,
+      });
     } else if (config.native && node.kind === 'array' && node.item.kind === 'scalar') {
       // Items are plain scalars: no varchar length, no enum type.
       const item = scalarSpec(node.item.type, node.item.def, false);
@@ -423,7 +488,12 @@ export function pgTable(
 
   // Undeclared fields are dropped silently on every write (mongoose's strict mode).
   const known = (data: AnyRecord): AnyRecord =>
-    Object.fromEntries(Object.entries(data).filter(([k]) => columns.has(k.split('.')[0]!)));
+    Object.fromEntries(
+      Object.entries(data).filter(([k]) => {
+        const top = k.split('.')[0]!;
+        return columns.has(top) || joins.has(top);
+      }),
+    );
 
   const prepareInsert = async (input: AnyRecord): Promise<AnyRecord> => {
     const { id, ...rest } = known(input);
@@ -446,8 +516,8 @@ export function pgTable(
       return await fn();
     } catch (err) {
       const e =
-        (err as { cause?: { code?: string; detail?: string; column?: string } }).cause ??
-        (err as { code?: string; detail?: string; column?: string });
+        (err as { cause?: { code?: string; detail?: string; column?: string; table?: string } })
+          .cause ?? (err as { code?: string; detail?: string; column?: string; table?: string });
       if (e?.code === '42P01') {
         throw new Error(
           `[EFC] ${name}: table "${table}" does not exist — autoSync is off, so create it with a migration (Model.sync() / efc db sync)`,
@@ -460,6 +530,26 @@ export function pgTable(
           .map((c) => fieldOfColumn(c.trim().replace(/"/g, '')))
           .join(', ');
         throw new HttpError(409, `${name} with this ${fields} already exists`);
+      }
+      // 23503 foreign_key_violation; 23001 restrict_violation (ON DELETE RESTRICT).
+      if (e?.code === '23503' || e?.code === '23001') {
+        const ref = /Key \(([^)]+)\)=\([^)]*\) is not present in table "([^"]+)"/.exec(
+          e.detail ?? '',
+        );
+        if (ref) {
+          throw new ModelValidationError(name, [
+            {
+              // In a join table: the many-to-many field it backs.
+              path: joinByTable.get(e.table ?? '') ?? fieldOfColumn(ref[1]!.replace(/"/g, '')),
+              message: `${modelOfTable(ref[2]!)} not found`,
+            },
+          ]);
+        }
+        const by = /is (?:still )?referenced from table "([^"]+)"/.exec(e.detail ?? '')?.[1];
+        throw new HttpError(
+          409,
+          `${name} is still referenced${by ? ` by ${modelOfTable(by)}` : ''} — delete or reassign those records first`,
+        );
       }
       if (e?.code === '23502')
         throw new ModelValidationError(name, [
@@ -511,6 +601,89 @@ export function pgTable(
   };
 
   const enumCheck = (column: string) => `${table}_${column}_enum`;
+
+  // ── Foreign keys (defineTable refs) ────────────────────────────────────────
+
+  interface ForeignKey {
+    field: string;
+    /** The table holding the constraint: this one, or one of its join tables. */
+    onTable: string;
+    column: string;
+    name: string;
+    target: string;
+    targetTable: string;
+    action: ReferentialAction;
+  }
+
+  const fkName = (column: string) => `${table}_${column}_fkey`;
+  const isForeignKey = (spec: ColumnSpec) =>
+    config.native && spec.node?.kind === 'scalar' && spec.node.def.ref !== undefined;
+
+  /** A `ref`'s target table, checked against the field's id type. */
+  function resolveTarget(field: string, targetName: string, kind: string, many: boolean) {
+    const target =
+      targetName === name ? { table, idKind } : getRegisteredModel(targetName)?.pgTarget?.();
+    if (!target) {
+      throw new Error(
+        `[EFC] ${name}.${field} references "${targetName}", which is not defined — import that model before using ${name}`,
+      );
+    }
+    const want = ID_COLUMN[target.idKind];
+    if (kind !== want.kind) {
+      const hint = many
+        ? `{ type: 'array', of: '${want.type}', ref: '${targetName}' }`
+        : `{ type: '${want.type}', ref: '${targetName}' }`;
+      throw new Error(
+        `[EFC] ${name}.${field} references ${targetName}, whose id is ${want.type} (id: '${target.idKind}') — declare it ${hint}`,
+      );
+    }
+    return target;
+  }
+
+  /**
+   * The foreign keys the model declares, resolved against their target models: one per
+   * scalar ref, and two per join table (to this table and to the target, both cascading).
+   */
+  function foreignKeys(): ForeignKey[] {
+    const out: ForeignKey[] = [];
+    for (const spec of columns.values()) {
+      if (!isForeignKey(spec)) continue;
+      const def = spec.node!.def;
+      const target = resolveTarget(spec.field, def.ref!, spec.kind, false);
+      out.push({
+        field: spec.field,
+        onTable: table,
+        column: spec.column,
+        name: fkName(spec.column),
+        target: def.ref!,
+        targetTable: target.table,
+        action: def.onDelete ?? 'restrict',
+      });
+    }
+    for (const join of joins.values()) {
+      const target = resolveTarget(join.field, join.target, join.item, true);
+      const base = { field: join.field, onTable: join.table, action: 'cascade' as const };
+      out.push(
+        {
+          ...base,
+          column: 'owner_id',
+          name: `${join.table}_owner_id_fkey`,
+          target: name,
+          targetTable: table,
+        },
+        {
+          ...base,
+          column: 'ref_id',
+          name: `${join.table}_ref_id_fkey`,
+          target: join.target,
+          targetTable: target.table,
+        },
+      );
+    }
+    return out;
+  }
+
+  const joinByTable = new Map([...joins.values()].map((j) => [j.table, j.field]));
   const managedIndexName = /_(key|idx)$/;
 
   function desiredIndexes(): Map<string, string> {
@@ -524,7 +697,8 @@ export function pgTable(
           `${table}_${col}_key`,
           `CREATE UNIQUE INDEX ${q(`${table}_${col}_key`)} ON ${q(table)} (${q(col)})`,
         );
-      } else if (def.index) {
+      } else if (def.index || (isForeignKey(spec) && def.index !== false)) {
+        // Foreign key columns are indexed (joins, ON DELETE lookups) unless index: false.
         out.set(
           `${table}_${col}_idx`,
           `CREATE INDEX ${q(`${table}_${col}_idx`)} ON ${q(table)} (${q(col)})`,
@@ -557,7 +731,72 @@ export function pgTable(
     return out;
   }
 
+  const tableExists = async (t: string) =>
+    (
+      await getPool().query(
+        `SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relname = $1 AND n.nspname = current_schema() AND c.relkind IN ('r', 'p')`,
+        [t],
+      )
+    ).rowCount! > 0;
+
+  /**
+   * Syncs the table. A foreign key needs its target table, so missing targets are synced
+   * first; one whose sync is already running here (A ↔ B references) is skipped this pass
+   * and added by a second pass once that sync finishes.
+   */
   async function reconcile(dryRun: boolean): Promise<string[]> {
+    const fks = foreignKeys();
+    if (dryRun) return reconcileTable(true, fks, new Set());
+    let release!: () => void;
+    const mine = new Promise<void>((resolve) => (release = resolve));
+    const prev = syncing.get(table);
+    syncing.set(table, mine);
+    try {
+      const deferred = new Set<string>();
+      // First used inside a transaction: adding a foreign key locks the referenced table,
+      // which that transaction may already have written to — the sync (on its own
+      // connection) and the transaction would wait for each other forever. Create the
+      // tables now; add the keys once the transaction has committed.
+      const tx = currentTx();
+      if (tx?.engine === 'postgresql' && fks.length) {
+        for (const fk of fks) deferred.add(fk.name);
+        tx.afterCommit.push(() => {
+          reconcile(false).catch((err: unknown) =>
+            getLogger().error({ err }, `${name}: adding foreign keys to "${table}" failed`),
+          );
+        });
+      }
+      for (const fk of fks) {
+        if (deferred.has(fk.name)) continue;
+        if (fk.targetTable === table || (await tableExists(fk.targetTable))) continue;
+        const running = syncing.get(fk.targetTable);
+        if (running) {
+          deferred.add(fk.name);
+          void running
+            .then(() => reconcile(false))
+            .catch((err: unknown) =>
+              getLogger().error({ err }, `${name}: adding foreign keys to "${table}" failed`),
+            );
+        } else {
+          await getRegisteredModel(fk.target)!.sync();
+        }
+      }
+      return await reconcileTable(false, fks, deferred);
+    } finally {
+      release();
+      if (syncing.get(table) === mine) {
+        if (prev) syncing.set(table, prev);
+        else syncing.delete(table);
+      }
+    }
+  }
+
+  async function reconcileTable(
+    dryRun: boolean,
+    fks: ForeignKey[],
+    deferred: Set<string>,
+  ): Promise<string[]> {
     const pool = getPool();
     const conn = await pool.connect();
     try {
@@ -594,7 +833,47 @@ export function pgTable(
         ).rows.map((r) => r.name),
       );
 
+      const liveFks = new Map(
+        (
+          await conn.query<{ name: string; target: string; action: string; valid: boolean }>(
+            `SELECT con.conname AS name, ft.relname AS target, con.confdeltype AS action, con.convalidated AS valid
+             FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+             JOIN pg_class ft ON ft.oid = con.confrelid
+             WHERE c.relname = ANY($1) AND n.nspname = current_schema() AND con.contype = 'f'`,
+            [[table, ...joinByTable.keys()]],
+          )
+        ).rows.map((r) => [r.name, r]),
+      );
+      const liveJoinTables = new Set(
+        (
+          await conn.query<{ name: string }>(
+            `SELECT c.relname AS name FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relname = ANY($1) AND n.nspname = current_schema() AND c.relkind IN ('r', 'p')`,
+            [[...joinByTable.keys()]],
+          )
+        ).rows.map((r) => r.name),
+      );
+
       const plan: string[] = [];
+      // Foreign keys on the model's fields that it no longer declares (or declares
+      // differently) go first, before any column type change. Constraints on columns the
+      // model doesn't declare are left alone.
+      const wantedFks = new Map(fks.map((fk) => [fk.name, fk]));
+      for (const [con, live] of liveFks) {
+        const want = wantedFks.get(con);
+        // Join tables are entirely EFC's.
+        const ours =
+          [...joinByTable.keys()].some((jt) => con.startsWith(`${jt}_`)) ||
+          [...columns.values()].some((c) => c.field !== 'id' && fkName(c.column) === con);
+        if (
+          ours &&
+          (!want || live.target !== want.targetTable || live.action !== ACTION_CODE[want.action])
+        ) {
+          const on = [...joinByTable.keys()].find((jt) => con.startsWith(`${jt}_`)) ?? table;
+          plan.push(`ALTER TABLE ${q(on)} DROP CONSTRAINT ${q(con)}`);
+          liveFks.delete(con);
+        }
+      }
       for (const { key } of sequences) {
         const seq = sequenceName(key);
         const found = await conn.query(
@@ -728,6 +1007,50 @@ export function pgTable(
       }
       for (const [idx, create] of wantedIndexes) if (!indexes.has(idx)) plan.push(create);
 
+      // Join tables for many-to-many refs: created once, filled from the array column the
+      // field used before (if any). That column is kept, as sync never drops columns.
+      const ownerDdl = idSpec.ddl;
+      for (const join of joins.values()) {
+        if (liveJoinTables.has(join.table)) continue;
+        const refDdl = join.item;
+        plan.push(
+          `CREATE TABLE IF NOT EXISTS ${q(join.table)} (\n  ${q('owner_id')} ${ownerDdl} NOT NULL,\n  ${q('ref_id')} ${refDdl} NOT NULL,\n  ${q('position')} integer NOT NULL DEFAULT 0,\n  PRIMARY KEY (${q('owner_id')}, ${q('ref_id')})\n)`,
+          `CREATE INDEX IF NOT EXISTS ${q(`${join.table}_ref_id_idx`)} ON ${q(join.table)} (${q('ref_id')})`,
+        );
+        const legacy = existing.get(join.legacyColumn)?.type;
+        if (legacy === 'jsonb' || legacy?.endsWith('[]')) {
+          const c = `o.${q(join.legacyColumn)}`;
+          const items =
+            legacy === 'jsonb'
+              ? `jsonb_array_elements_text(CASE WHEN jsonb_typeof(${c}) = 'array' THEN ${c} ELSE '[]'::jsonb END)`
+              : `unnest(${c}::text[])`;
+          const valid =
+            join.item === 'uuid'
+              ? `'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'`
+              : `'^-?[0-9]{1,18}$'`;
+          plan.push(
+            `INSERT INTO ${q(join.table)} (${q('owner_id')}, ${q('ref_id')}, ${q('position')}) SELECT o.${q('id')}, x.v::${refDdl}, x.n FROM ${q(table)} o, ${items} WITH ORDINALITY AS x(v, n) WHERE x.v ~ ${valid} ON CONFLICT DO NOTHING`,
+          );
+        }
+      }
+
+      // Added NOT VALID — instant, and existing rows can't fail the sync — then validated
+      // after the commit, where orphaned rows only produce a warning.
+      const toValidate: ForeignKey[] = [];
+      for (const fk of fks) {
+        if (deferred.has(fk.name)) continue;
+        const live = liveFks.get(fk.name);
+        if (!live) {
+          plan.push(
+            `ALTER TABLE ${q(fk.onTable)} ADD CONSTRAINT ${q(fk.name)} FOREIGN KEY (${q(fk.column)}) REFERENCES ${q(fk.targetTable)} (${q('id')}) ON DELETE ${ACTION_SQL[fk.action]} NOT VALID`,
+          );
+        }
+        if (!live?.valid) toValidate.push(fk);
+      }
+      const validations = toValidate.map(
+        (fk) => `ALTER TABLE ${q(fk.onTable)} VALIDATE CONSTRAINT ${q(fk.name)}`,
+      );
+
       if (!dryRun) {
         for (const stmt of plan) {
           try {
@@ -740,7 +1063,26 @@ export function pgTable(
         }
       }
       await conn.query(dryRun ? 'ROLLBACK' : 'COMMIT');
-      return plan;
+      if (!dryRun) {
+        for (const [i, fk] of toValidate.entries()) {
+          try {
+            await conn.query(validations[i]!);
+          } catch {
+            const orphans = await conn
+              .query<{ n: string }>(
+                `SELECT count(*) AS n FROM ${q(fk.onTable)} r WHERE ${q(fk.column)} IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM ${q(fk.targetTable)} t WHERE t.${q('id')} = r.${q(fk.column)})`,
+              )
+              .then((r) => r.rows[0]?.n ?? '?')
+              .catch(() => '?');
+            getLogger().warn(
+              { table, constraint: fk.name, orphans: Number(orphans) },
+              `${name}.${fk.field}: ${orphans} row(s) reference a missing ${fk.target} — the foreign key applies to new writes; fix those rows, then run efc db sync to validate it`,
+            );
+          }
+        }
+      }
+      return [...plan, ...validations];
     } catch (err) {
       await conn.query('ROLLBACK').catch(() => {});
       throw err;
@@ -760,6 +1102,7 @@ export function pgTable(
     tree,
     idKind,
     columns,
+    joins,
     ts,
     sequenceKeys,
     refs,

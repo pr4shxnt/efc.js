@@ -32,6 +32,10 @@ export interface RegisteredModel {
   drop(): Promise<void>;
   /** Records by id — what `populate` needs from a `ref` target. */
   findByIds(ids: unknown[]): Promise<Record<string, unknown>[]>;
+  /** PostgreSQL: its table and id strategy — what a foreign key to it needs. */
+  pgTarget?(): { table: string; idKind: 'uuid' | 'serial' | 'bigserial' };
+  /** defineTable only: its runtime, for `include` from other tables. */
+  tableRuntime?(): unknown;
 }
 
 // Every defined model by name, so `populate` can resolve a `ref` on either engine
@@ -55,7 +59,12 @@ export function registeredModels(): RegisteredModel[] {
 /** The open transaction for the current async scope: a mongoose session or a Drizzle tx. */
 export type TxHandle =
   | { engine: 'mongodb'; session: unknown }
-  | { engine: 'postgresql'; tx: unknown };
+  | {
+      engine: 'postgresql';
+      tx: unknown;
+      /** Work to run once the transaction has committed (e.g. deferred foreign keys). */
+      afterCommit: (() => void)[];
+    };
 
 const txStorage = new AsyncLocalStorage<TxHandle>();
 

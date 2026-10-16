@@ -51,7 +51,7 @@ function defineTable(name: string, schema: TableSchema, options?: TableOptions):
 //          arrays: has hasEvery hasSome isEmpty · jsonb: { path: [...], equals | string_contains | array_contains | gt… }
 //          AND / OR / NOT · undefined ignored · undeclared fields match nothing
 //   data ops: { increment | decrement | multiply | divide } (numbers), { push } (arrays), { set }, null unsets
-//   unique where: id | unique field | all fields of a unique index. No relations/include yet (M3).
+//   unique where: id | unique field | all fields of a unique index. Top-level `ref` = FK, `onDelete: 'restrict'|'cascade'|'setNull'`, ref type must match target id (uuid/objectId | integer for serial | bigint for bigserial). Array of refs `{ type: 'array', of: <id type>, ref }` = many-to-many (join table, record keeps id list, list filters, set/push). `include` loads refs, m:n and `options.relations` back-relations (hasMany/hasOne + foreignKey) in one statement; typed via `interface Tables` augmentation. Relation filters `some/every/none`, `is/isNot`; nested writes `connect/create/connectOrCreate/disconnect/set/delete/deleteMany` (one transaction; not in createMany/updateMany).
 
 class ModelValidationError extends HttpError { issues: { path: string; message: string }[] } // status 400
 
@@ -127,6 +127,7 @@ interface LoggingConfig {
   level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent'; // default 'info'
   pretty?: boolean;   // default: non-production TTY
   requests?: boolean; // default true
+  queries?: boolean | { all?: boolean; slowMs?: number; nPlusOne?: number | false }; // default off; slowMs 500, nPlusOne 10
 }
 ```
 

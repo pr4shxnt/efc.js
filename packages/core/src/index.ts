@@ -14,8 +14,13 @@ export type {
   TableWhere,
   TableWhereUnique,
   TableUpdateData,
+  TableCreateData,
+  TableUpdateInput,
   TableOrderBy,
   TableSelect,
+  TableInclude,
+  TableResult,
+  Tables,
   TableFindManyArgs,
   TableAggregateArgs,
   TableGroupByArgs,
@@ -37,6 +42,7 @@ import { setDbEngine, setAutoSync } from './db/engine.js';
 import { connectPostgres } from './db/postgres.js';
 import { runWithContext } from './context.js';
 import { configureLogger, getLogger, requestLogger } from './logger.js';
+import { configureQueryLog } from './db/query-log.js';
 import { scanTasks } from './tasks/scanner.js';
 import { initBullMQ, closeBullMQ } from './tasks/bullmq-backend.js';
 import { initPgBoss, closePgBoss } from './tasks/pgboss-backend.js';
@@ -97,6 +103,7 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   const clusterEnabled = config.cluster ?? process.env['NODE_ENV'] === 'production';
 
   configureLogger(config.logging);
+  configureQueryLog(config.logging);
 
   if (clusterEnabled && cluster.isPrimary) {
     // The memory cache lives in the primary so all workers share it (cache/ipc.ts).
@@ -331,6 +338,7 @@ export type {
   RouteMethodMeta,
   RouteSchema,
   LoggingConfig,
+  QueryLogConfig,
   CacheConfig,
   RequestSchema,
   Validator,
@@ -344,6 +352,7 @@ export type {
   TableSchemaField,
   TableFieldDefinition,
   TableOptions,
+  TableRelation,
   MigrationContext,
   SchemaField,
   Filter,
