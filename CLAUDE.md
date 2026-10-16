@@ -17,7 +17,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - Cache (`cache`, `cacheResponse`) on Redis or memory, also used as the JWT session-revocation store
 - CLI (`efc` binary) incl. migrations, seeds and a read-only studio
 
-**Status: v0.5.0 Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types + M2 `defineTable` + M3 relations — M3 unreleased).** See `README.md` and `docs/` for full documentation.
+**Status: v0.7.0 Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M6a query logging).** See `README.md` and `docs/` for full documentation.
 
 ---
 
