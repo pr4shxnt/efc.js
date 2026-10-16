@@ -99,11 +99,24 @@ class SchemaBuilder {
         this.fail(path, `onDelete: 'setNull' can't clear a required field`);
       }
     }
-    // A scalar ref is a foreign key: top-level, typed like the target's id.
-    if (def.ref !== undefined && def.type !== 'array') {
+    // A scalar ref is a foreign key, an array of refs a many-to-many join table: both
+    // top-level and typed like the target's id.
+    if (def.ref !== undefined) {
+      const many = def.type === 'array';
       if (!topLevel) this.fail(path, `'ref' only applies to top-level fields`);
-      if (!FOREIGN_KEY_TYPES.has(def.type)) {
-        this.fail(path, `'ref' needs an id type: objectId, uuid, integer or bigint`);
+      if (!FOREIGN_KEY_TYPES.has(many ? String(def.of) : def.type)) {
+        this.fail(
+          path,
+          many
+            ? `a many-to-many 'ref' needs of: objectId, uuid, integer or bigint`
+            : `'ref' needs an id type: objectId, uuid, integer or bigint`,
+        );
+      }
+      if (many && def.onDelete !== undefined) {
+        this.fail(path, `'onDelete' doesn't apply to many-to-many refs — links are always removed with either record`);
+      }
+      if (many && (def.unique || def.index)) {
+        this.fail(path, `many-to-many refs are indexed already; 'unique' / 'index' don't apply`);
       }
     }
   }

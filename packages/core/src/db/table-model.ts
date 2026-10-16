@@ -3,12 +3,14 @@
 // findMany({ where, orderBy, take, skip, cursor, select, distinct }), findUnique, upsert
 // (INSERT … ON CONFLICT), groupBy, aggregate. Every query is one parameterised statement,
 // compiled with Drizzle's `sql` against the shared pgTable (pg-table.ts).
+import { randomUUID } from 'node:crypto';
 import type { TableOptions, TableSchema } from '../types.js';
 import type { TableModel } from '../table-types.js';
 import { HttpError } from '../errors.js';
 import { ModelValidationError, normalizeSchema, type FieldIssue } from './schema.js';
 import { getDbEngine, registerModel } from './engine.js';
-import { pgTable, q, type ColumnSpec, type PgTable } from './pg-table.js';
+import { pgTable, q, type ColumnSpec, type JoinSpec, type PgTable } from './pg-table.js';
+import { transaction } from './transaction.js';
 import { traceOps } from './query-log.js';
 
 type AnyRecord = Record<string, any>;
@@ -28,10 +30,32 @@ const isPlainObject = (v: unknown): v is AnyRecord =>
 
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+/** A change to a many-to-many field: replace its links, or append to them. */
+interface JoinOp {
+  field: string;
+  mode: 'set' | 'push';
+  items: unknown[];
+}
+
+const relAlias = (field: string) => `efc_rel_${field}`;
+// Ids go to PostgreSQL as text (bigints included) and are cast there.
+const idText = (v: unknown) => (v == null ? v : String(v));
+const dedupe = (items: unknown[]) => {
+  const seen = new Set<string>();
+  return items.filter((v) => {
+    const k = String(v);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+};
+
 /** The runtime behind a `defineTable` model, compiled on first use. */
 class TableRuntime {
   readonly tbl: PgTable;
   private readonly uniqueSets: string[][];
+  /** Many-to-many fields as list columns, so filters and projections treat them alike. */
+  private readonly joinSpecs = new Map<string, ColumnSpec>();
 
   constructor(
     readonly name: string,
@@ -47,6 +71,17 @@ class TableRuntime {
     for (const idx of options.indexes ?? []) {
       if (idx.unique) this.uniqueSets.push(Object.keys(idx.fields));
     }
+    for (const j of this.tbl.joins.values()) {
+      this.joinSpecs.set(j.field, {
+        field: j.field,
+        column: j.field,
+        kind: 'array',
+        item: j.item,
+        ddl: j.ddl,
+        formatted: j.ddl,
+        node: j.node,
+      });
+    }
   }
 
   private fail(path: string, message: string): never {
@@ -54,16 +89,65 @@ class TableRuntime {
   }
 
   private spec(field: string): ColumnSpec | undefined {
-    return this.tbl.columns.get(field);
+    return this.tbl.columns.get(field) ?? this.joinSpecs.get(field);
+  }
+
+  private join(field: string): JoinSpec | undefined {
+    return this.tbl.joins.get(field);
+  }
+
+  /** A many-to-many field's ids, in order, for the row `owner` (a table name or alias). */
+  private joinExpr(sql: Sql, join: JoinSpec, owner: string): Sql {
+    return sql.raw(
+      `coalesce((select array_agg(efc_j.ref_id order by efc_j.position) from ${q(join.table)} efc_j where efc_j.owner_id = ${owner}.${q('id')}), '{}'::${join.ddl})`,
+    );
   }
 
   private col(sql: Sql, field: string, alias?: string): Sql {
+    const join = this.join(field);
+    if (join) return this.joinExpr(sql, join, alias ?? q(this.tbl.table));
     const spec = this.spec(field)!;
     return sql.raw(alias ? `${alias}.${q(spec.column)}` : q(spec.column));
   }
 
+  /** SELECT items for the many-to-many fields among `fields`, as text arrays. */
+  private joinColumns(sql: Sql, fields: string[], owner?: string): Sql[] {
+    return fields
+      .filter((f) => this.join(f))
+      .map((f) => sql`${this.col(sql, f, owner)}::text[] as ${sql.raw(q(relAlias(f)))}`);
+  }
+
+  /** `col` for SELECT lists: many-to-many fields come back as text arrays under an alias. */
+  private selectCols(sql: Sql, fields: string[], owner?: string): Sql {
+    return sql.join(
+      [
+        ...fields.filter((f) => !this.join(f)).map((f) => this.col(sql, f, owner)),
+        ...this.joinColumns(sql, fields, owner),
+      ],
+      sql`, `,
+    );
+  }
+
+  /** Ids as stored text → the record's type (string uuids, numbers, bigints). */
+  private joinValues(join: JoinSpec, items: unknown[]): unknown[] {
+    return items.map((v) =>
+      v == null
+        ? v
+        : join.item === 'bigint'
+          ? BigInt(String(v))
+          : join.item === 'integer'
+            ? Number(v)
+            : String(v),
+    );
+  }
+
   /** A value for `field`, encoded the way its Drizzle column does it. */
   private val(sql: Sql, t: any, field: string, value: unknown): Sql {
+    const join = this.join(field);
+    if (join) {
+      const items = Array.isArray(value) ? value.map(idText) : value;
+      return sql`${sql.param(items)}::${sql.raw(join.ddl)}`;
+    }
     return sql`${sql.param(this.tbl.toDb(field, value), t[field])}`;
   }
 
@@ -76,6 +160,10 @@ class TableRuntime {
 
   private fromRaw(t: any, row: AnyRecord): AnyRecord {
     const keyed: AnyRecord = {};
+    for (const join of this.tbl.joins.values()) {
+      const v = row[relAlias(join.field)];
+      if (Array.isArray(v)) keyed[join.field] = this.joinValues(join, v);
+    }
     for (const spec of this.tbl.columns.values()) {
       if (!(spec.column in row)) continue;
       const v = row[spec.column];
@@ -297,6 +385,7 @@ class TableRuntime {
     for (const entry of list as AnyRecord[]) {
       for (const [field, dir] of Object.entries(entry)) {
         if (dir === undefined || !this.spec(field)) continue; // undeclared: ignored
+        if (this.join(field)) this.fail(`orderBy.${field}`, "can't order by a many-to-many field");
         if (isPlainObject(dir))
           out.push({ field, desc: dir['sort'] === 'desc', nulls: dir['nulls'] });
         else out.push({ field, desc: dir === 'desc' });
@@ -320,7 +409,7 @@ class TableRuntime {
 
   /** The fields a result keeps, from `select` / `omit`. */
   private projection(args: AnyRecord): string[] {
-    const all = [...this.tbl.columns.keys()];
+    const all = [...this.tbl.columns.keys(), ...this.tbl.joins.keys()];
     if (args['select'] && args['omit']) this.fail('select', 'use either select or omit, not both');
     if (args['select']) {
       const keep = Object.entries(args['select'] as AnyRecord)
@@ -449,9 +538,12 @@ class TableRuntime {
     const { t, sql } = await this.tbl.ready();
     return this.tbl.guard(async () => {
       const fields = this.projection(args);
-      const cols = sql.join(
-        [...new Set(['id', ...fields])].map((f) => this.col(sql, f)),
-        sql`, `,
+      // A distinct read selects from a derived table, not the table itself.
+      const distinct = (args['distinct'] as string[] | undefined)?.some((f) => this.spec(f));
+      const cols = this.selectCols(
+        sql,
+        [...new Set(['id', ...fields])],
+        distinct ? 'efc_distinct' : undefined,
       );
       const { query, reversed } = this.readQuery(sql, t, args, cols);
       const rows = ((await this.tbl.client().execute(query)).rows as AnyRecord[]).map((r) =>
@@ -526,6 +618,9 @@ class TableRuntime {
         }
         const spec = this.spec(field);
         if (!spec) this.fail(`${agg}.${field}`, 'unknown field');
+        if (agg !== '_count' && this.join(field)) {
+          this.fail(`${agg}.${field}`, `${agg} doesn't apply to a many-to-many field`);
+        }
         if ((agg === '_sum' || agg === '_avg') && !NUMERIC_KINDS.has(spec.kind)) {
           this.fail(`${agg}.${field}`, `${agg} needs a numeric field`);
         }
@@ -630,7 +725,10 @@ class TableRuntime {
     return this.tbl.guard(async () => {
       const by = (Array.isArray(args['by']) ? args['by'] : [args['by']]) as string[];
       if (by.length === 0) this.fail('by', 'groupBy needs at least one field');
-      for (const f of by) if (!this.spec(f)) this.fail(`by.${f}`, 'unknown field');
+      for (const f of by) {
+        if (!this.spec(f)) this.fail(`by.${f}`, 'unknown field');
+        if (this.join(f)) this.fail(`by.${f}`, "can't group by a many-to-many field");
+      }
       const specs = this.aggregateSpec(args);
       const select = sql.join(
         [
@@ -686,9 +784,15 @@ class TableRuntime {
 
   // ── writes ─────────────────────────────────────────────────────────────────
 
-  /** Prisma update data → SET expressions, validated. */
-  private async setList(sql: Sql, t: any, data: AnyRecord, alias?: string): Promise<Sql[]> {
+  /** Prisma update data → SET expressions and many-to-many changes, validated. */
+  private async setList(
+    sql: Sql,
+    t: any,
+    data: AnyRecord,
+    alias?: string,
+  ): Promise<{ sets: Sql[]; joinOps: JoinOp[] }> {
     const sets: Sql[] = [];
+    const joinOps: JoinOp[] = [];
     const plain: AnyRecord = {};
     const issues: FieldIssue[] = [];
     const ref = (f: string) => this.col(sql, f, alias);
@@ -702,6 +806,21 @@ class TableRuntime {
         field === this.tbl.ts.updatedAt
       ) {
         continue; // undeclared / managed: ignored, as on writes everywhere
+      }
+      if (this.join(field)) {
+        // A list of ids, { set: [...] } or { push: id | [...] }.
+        const entries = isPlainObject(value) ? Object.entries(value) : [['set', value]];
+        for (const [op, v] of entries) {
+          if (v === undefined) continue;
+          if (op !== 'set' && op !== 'push') {
+            issues.push({ path: field, message: `unknown update operation "${op}"` });
+            continue;
+          }
+          const items = v === null ? [] : Array.isArray(v) ? v : op === 'push' ? [v] : v;
+          await this.tbl.validate({ [field]: items }, true);
+          joinOps.push({ field, mode: op, items: items as unknown[] });
+        }
+        continue;
       }
       const ops = isPlainObject(value) && spec.kind !== 'jsonb' ? value : undefined;
       if (!ops) {
@@ -751,12 +870,112 @@ class TableRuntime {
         sql`${this.col(sql, field)} = ${v === null ? sql`null` : this.val(sql, t, field, v)}`,
       );
     }
-    if (this.tbl.ts.updatedAt && sets.length) {
+    if (this.tbl.ts.updatedAt && (sets.length || joinOps.length)) {
       sets.push(
         sql`${this.col(sql, this.tbl.ts.updatedAt)} = ${this.val(sql, t, this.tbl.ts.updatedAt, new Date())}`,
       );
     }
-    return sets;
+    return { sets, joinOps };
+  }
+
+  // ── many-to-many links ─────────────────────────────────────────────────────
+
+  /** Splits an insert row into its columns and the `set` ops for its many-to-many fields. */
+  private splitJoins(row: AnyRecord): { row: AnyRecord; ops: JoinOp[] } {
+    if (this.tbl.joins.size === 0) return { row, ops: [] };
+    const out: AnyRecord = {};
+    const ops: JoinOp[] = [];
+    for (const [k, v] of Object.entries(row)) {
+      if (this.join(k)) ops.push({ field: k, mode: 'set', items: (v as unknown[] | null) ?? [] });
+      else out[k] = v;
+    }
+    return { row: out, ops };
+  }
+
+  private exec(query: Sql): Promise<{ rows: AnyRecord[]; rowCount?: number | null }> {
+    return this.tbl.client().execute(query);
+  }
+
+  /** Applies many-to-many changes for each owner id, in the current transaction. */
+  private async applyJoins(sql: Sql, ops: { id: unknown; ops: JoinOp[] }[]): Promise<void> {
+    const idDdl = this.tbl.columns.get('id')!.ddl;
+    const byField = new Map<string, { id: unknown; op: JoinOp }[]>();
+    for (const { id, ops: list } of ops) {
+      for (const op of list) {
+        const entry = byField.get(op.field) ?? [];
+        entry.push({ id, op });
+        byField.set(op.field, entry);
+      }
+    }
+    for (const [field, entries] of byField) {
+      const join = this.join(field)!;
+      const jt = sql.raw(q(join.table));
+      const sets = entries.filter((e) => e.op.mode === 'set');
+      if (sets.length) {
+        // Drop each owner's links that aren't in its new list (unnest pairs owner + list).
+        const owners = sets.map((e) => idText(e.id));
+        const lists = sets.map((e) => `{${dedupe(e.op.items).map(idText).join(',')}}`);
+        await this.exec(
+          sql`delete from ${jt} as efc_j using unnest(${sql.param(owners)}::${sql.raw(idDdl)}[], ${sql.param(lists)}::text[]) as w(owner, ids) where efc_j.owner_id = w.owner and not (efc_j.ref_id = any(w.ids::${sql.raw(join.ddl)}))`,
+        );
+      }
+      // One insert for every new link: (owner, ref, position).
+      const links: [unknown, unknown, number][] = [];
+      for (const { id, op } of entries) {
+        dedupe(op.items).forEach((ref, i) => links.push([id, ref, i + 1]));
+      }
+      if (links.length === 0) continue;
+      const pushes = new Set(entries.filter((e) => e.op.mode === 'push').map((e) => idText(e.id)));
+      const owners = sql`${sql.param(links.map((l) => idText(l[0])))}::${sql.raw(idDdl)}[]`;
+      const refs = sql`${sql.param(links.map((l) => idText(l[1])))}::${sql.raw(join.ddl)}`;
+      const pos = sql`${sql.param(links.map((l) => l[2]))}::integer[]`;
+      if (pushes.size === 0) {
+        await this.exec(
+          sql`insert into ${jt} (owner_id, ref_id, position) select * from unnest(${owners}, ${refs}, ${pos}) on conflict (owner_id, ref_id) do update set position = excluded.position`,
+        );
+      } else {
+        // Appended after the owner's current last link; ids it already has stay put.
+        await this.exec(
+          sql`insert into ${jt} (owner_id, ref_id, position) select l.o, l.r, coalesce((select max(efc_j.position) from ${jt} efc_j where efc_j.owner_id = l.o), 0) + l.p from unnest(${owners}, ${refs}, ${pos}) as l(o, r, p) on conflict (owner_id, ref_id) do nothing`,
+        );
+      }
+    }
+  }
+
+  /** The current links of `fields` for these owners, read in one statement. */
+  private async loadJoins(
+    sql: Sql,
+    ids: unknown[],
+    fields: string[],
+  ): Promise<Map<string, Map<string, unknown[]>>> {
+    const out = new Map<string, Map<string, unknown[]>>();
+    const joins = fields.map((f) => this.join(f)!).filter(Boolean);
+    if (joins.length === 0 || ids.length === 0) return out;
+    const idDdl = this.tbl.columns.get('id')!.ddl;
+    const owners = sql`${sql.param(ids.map(idText))}::${sql.raw(idDdl)}[]`;
+    const parts = joins.map(
+      (j) =>
+        sql`select ${sql.param(j.field)}::text as f, owner_id::text as o, array_agg(ref_id::text order by position) as ids from ${sql.raw(q(j.table))} where owner_id = any(${owners}) group by owner_id`,
+    );
+    const { rows } = await this.exec(sql.join(parts, sql` union all `));
+    for (const j of joins) out.set(j.field, new Map());
+    for (const r of rows) {
+      const join = this.join(r['f'] as string)!;
+      out.get(join.field)!.set(r['o'] as string, this.joinValues(join, r['ids'] as unknown[]));
+    }
+    return out;
+  }
+
+  /** Writes the loaded links into records (owners without any get an empty list). */
+  private attachJoins(records: AnyRecord[], loaded: Map<string, Map<string, unknown[]>>): void {
+    for (const [field, byOwner] of loaded) {
+      for (const r of records) r[field] = byOwner.get(String(r['id'])) ?? [];
+    }
+  }
+
+  /** Runs `fn` in a transaction when it changes links (main statement + link statements). */
+  private withLinks<R>(changesLinks: boolean, fn: () => Promise<R>): Promise<R> {
+    return changesLinks ? transaction(fn) : fn();
   }
 
   private insertSql(sql: Sql, t: any, rows: AnyRecord[]): { head: Sql; values: Sql } {
@@ -786,12 +1005,24 @@ class TableRuntime {
   async create(args: AnyRecord): Promise<AnyRecord> {
     const { t, sql } = await this.tbl.ready();
     return this.tbl.guard(async () => {
-      const row = await this.prepare(args['data']);
-      const { head, values } = this.insertSql(sql, t, [row]);
-      const [inserted] = (
-        await this.tbl.client().execute(sql`${head} values ${values} returning *`)
-      ).rows as AnyRecord[];
-      return this.project(this.fromRaw(t, inserted!), this.projection(args));
+      const { row, ops } = this.splitJoins(await this.prepare(args['data']));
+      return this.withLinks(
+        ops.some((o) => o.items.length),
+        async () => {
+          const { head, values } = this.insertSql(sql, t, [row]);
+          const [inserted] = (await this.exec(sql`${head} values ${values} returning *`)).rows;
+          const record = this.fromRaw(t, inserted!);
+          await this.applyJoins(sql, [
+            { id: record['id'], ops: ops.filter((o) => o.items.length) },
+          ]);
+          // A new record's links are exactly what was written.
+          for (const join of this.tbl.joins.values()) {
+            const op = ops.find((o) => o.field === join.field);
+            record[join.field] = this.joinValues(join, op ? dedupe(op.items).map(idText) : []);
+          }
+          return this.project(record, this.projection(args));
+        },
+      );
     });
   }
 
@@ -800,50 +1031,138 @@ class TableRuntime {
     return this.tbl.guard(async () => {
       const data = (Array.isArray(args['data']) ? args['data'] : [args['data']]) as AnyRecord[];
       if (data.length === 0) return returning ? [] : { count: 0 };
-      const rows = await Promise.all(data.map((d) => this.prepare(d)));
-      const { head, values } = this.insertSql(sql, t, rows);
-      const conflict = args['skipDuplicates'] ? sql` on conflict do nothing` : sql``;
-      const result = await this.tbl
-        .client()
-        .execute(sql`${head} values ${values}${conflict}${returning ? sql` returning *` : sql``}`);
-      if (!returning) return { count: result.rowCount ?? 0 };
-      const fields = this.projection(args);
-      return (result.rows as AnyRecord[]).map((r) => this.project(this.fromRaw(t, r), fields));
+      const split = (await Promise.all(data.map((d) => this.prepare(d)))).map((r) =>
+        this.splitJoins(r),
+      );
+      const linked = split.some((x) => x.ops.some((o) => o.items.length));
+      return this.withLinks(linked, async () => {
+        if (linked)
+          await this.assignIds(
+            sql,
+            split.map((x) => x.row),
+          );
+        const { head, values } = this.insertSql(
+          sql,
+          t,
+          split.map((x) => x.row),
+        );
+        const conflict = args['skipDuplicates'] ? sql` on conflict do nothing` : sql``;
+        const result = await this.exec(
+          sql`${head} values ${values}${conflict}${returning ? sql` returning *` : linked ? sql` returning ${this.col(sql, 'id')}` : sql``}`,
+        );
+        if (linked) {
+          // Only rows that were inserted (skipDuplicates may skip some) get links.
+          const inserted = new Set(result.rows.map((r) => String(r['id'])));
+          await this.applyJoins(
+            sql,
+            split
+              .filter((x) => inserted.has(String(x.row['id'])))
+              .map((x) => ({ id: x.row['id'], ops: x.ops.filter((o) => o.items.length) })),
+          );
+        }
+        if (!returning) return { count: linked ? result.rows.length : (result.rowCount ?? 0) };
+        const fields = this.projection(args);
+        const records = result.rows.map((r) => this.fromRaw(t, r));
+        if (this.tbl.joins.size) {
+          const ops = new Map(split.map((x) => [String(x.row['id']), x.ops]));
+          for (const record of records) {
+            for (const join of this.tbl.joins.values()) {
+              const op = ops.get(String(record['id']))?.find((o) => o.field === join.field);
+              record[join.field] = this.joinValues(join, op ? dedupe(op.items).map(idText) : []);
+            }
+          }
+        }
+        return records.map((r) => this.project(r, fields));
+      });
     });
+  }
+
+  /** Gives rows without an id one up front, so their links can name their owner. */
+  private async assignIds(sql: Sql, rows: AnyRecord[]): Promise<void> {
+    const missing = rows.filter((r) => r['id'] === undefined);
+    if (missing.length === 0) return;
+    if (this.tbl.idKind === 'uuid') {
+      for (const r of missing) r['id'] = randomUUID();
+      return;
+    }
+    const { rows: ids } = await this.exec(
+      sql`select nextval(pg_get_serial_sequence(${sql.param(q(this.tbl.table))}, 'id'))::text as id from generate_series(1, ${sql.param(missing.length)})`,
+    );
+    missing.forEach((r, i) => {
+      const id = ids[i]!['id'] as string;
+      r['id'] = this.tbl.idKind === 'bigserial' ? BigInt(id) : Number(id);
+    });
+  }
+
+  /** Reloads the links of the fields `ops` changed into `records`. */
+  private async refreshJoins(sql: Sql, records: AnyRecord[], ops: JoinOp[]): Promise<void> {
+    const fields = [...new Set(ops.map((o) => o.field))];
+    if (fields.length === 0 || records.length === 0) return;
+    this.attachJoins(
+      records,
+      await this.loadJoins(
+        sql,
+        records.map((r) => r['id']),
+        fields,
+      ),
+    );
   }
 
   async update(args: AnyRecord): Promise<AnyRecord> {
     this.uniqueKey(args['where'], 'update');
     const { t, sql } = await this.tbl.ready();
     return this.tbl.guard(async () => {
-      const sets = await this.setList(sql, t, args['data'] ?? {});
-      const where = this.where(sql, t, args['where'])!;
-      const query = sets.length
-        ? sql`update ${sql.raw(q(this.tbl.table))} set ${sql.join(sets, sql`, `)} where ${where} returning *`
-        : sql`select * from ${sql.raw(q(this.tbl.table))} where ${where} limit 1`;
-      const [row] = (await this.tbl.client().execute(query)).rows as AnyRecord[];
-      if (!row) throw new HttpError(404, `${this.name} not found`);
-      return this.project(this.fromRaw(t, row), this.projection(args));
+      const { sets, joinOps } = await this.setList(sql, t, args['data'] ?? {});
+      return this.withLinks(joinOps.length > 0, async () => {
+        const where = this.where(sql, t, args['where'])!;
+        const links = this.joinColumns(sql, [...this.tbl.joins.keys()]);
+        const extra = links.length ? sql`, ${sql.join(links, sql`, `)}` : sql``;
+        const query = sets.length
+          ? sql`update ${sql.raw(q(this.tbl.table))} set ${sql.join(sets, sql`, `)} where ${where} returning *${extra}`
+          : sql`select *${extra} from ${sql.raw(q(this.tbl.table))} where ${where} limit 1`;
+        const [row] = (await this.exec(query)).rows;
+        if (!row) throw new HttpError(404, `${this.name} not found`);
+        const record = this.fromRaw(t, row);
+        await this.applyJoins(sql, [{ id: record['id'], ops: joinOps }]);
+        await this.refreshJoins(sql, [record], joinOps);
+        return this.project(record, this.projection(args));
+      });
     });
   }
 
   async updateMany(args: AnyRecord, returning: boolean): Promise<{ count: number } | AnyRecord[]> {
     const { t, sql } = await this.tbl.ready();
     return this.tbl.guard(async () => {
-      const sets = await this.setList(sql, t, args['data'] ?? {});
-      if (sets.length === 0) {
+      const { sets, joinOps } = await this.setList(sql, t, args['data'] ?? {});
+      if (sets.length === 0 && joinOps.length === 0) {
         if (!returning) return { count: 0 };
         return this.findMany({ where: args['where'], select: args['select'], omit: args['omit'] });
       }
-      const where = this.where(sql, t, args['where']) ?? sql`true`;
-      const result = await this.tbl
-        .client()
-        .execute(
-          sql`update ${sql.raw(q(this.tbl.table))} set ${sql.join(sets, sql`, `)} where ${where}${returning ? sql` returning *` : sql``}`,
+      return this.withLinks(joinOps.length > 0, async () => {
+        const where = this.where(sql, t, args['where']) ?? sql`true`;
+        const links = returning ? this.joinColumns(sql, [...this.tbl.joins.keys()]) : [];
+        const list = returning
+          ? sql` returning *${links.length ? sql`, ${sql.join(links, sql`, `)}` : sql``}`
+          : joinOps.length
+            ? sql` returning ${this.col(sql, 'id')}`
+            : sql``;
+        // Only links change (no timestamps to touch): select the matching rows instead.
+        const result = await this.exec(
+          sets.length
+            ? sql`update ${sql.raw(q(this.tbl.table))} set ${sql.join(sets, sql`, `)} where ${where}${list}`
+            : sql`select ${returning ? sql`*${links.length ? sql`, ${sql.join(links, sql`, `)}` : sql``}` : this.col(sql, 'id')} from ${sql.raw(q(this.tbl.table))} where ${where}`,
         );
-      if (!returning) return { count: result.rowCount ?? 0 };
-      const fields = this.projection(args);
-      return (result.rows as AnyRecord[]).map((r) => this.project(this.fromRaw(t, r), fields));
+        const records = result.rows.map((r) => (returning ? this.fromRaw(t, r) : r));
+        await this.applyJoins(
+          sql,
+          records.map((r) => ({ id: r['id'], ops: joinOps })),
+        );
+        if (!returning)
+          return { count: joinOps.length ? result.rows.length : (result.rowCount ?? 0) };
+        await this.refreshJoins(sql, records, joinOps);
+        const fields = this.projection(args);
+        return records.map((r) => this.project(r, fields));
+      });
     });
   }
 
@@ -851,12 +1170,15 @@ class TableRuntime {
     const key = this.uniqueKey(args['where'], 'upsert');
     const { t, sql } = await this.tbl.ready();
     return this.tbl.guard(async () => {
-      const row = await this.prepare(args['create']);
+      const { row, ops: createOps } = this.splitJoins(await this.prepare(args['create']));
       for (const f of key) {
         if (row[f] === undefined) row[f] = this.tbl.toDb(f, args['where'][f]);
       }
       const { head, values } = this.insertSql(sql, t, [row]);
-      let sets = await this.setList(sql, t, args['update'] ?? {}, q(this.tbl.table));
+      const table = q(this.tbl.table);
+      const update = await this.setList(sql, t, args['update'] ?? {}, table);
+      const { joinOps } = update;
+      let { sets } = update;
       // Nothing to update: a no-op assignment still makes RETURNING yield the existing row.
       if (sets.length === 0)
         sets = [sql`${this.col(sql, key[0]!)} = excluded.${this.col(sql, key[0]!)}`];
@@ -868,15 +1190,30 @@ class TableRuntime {
       const cond = extra.length
         ? sql` where ${this.where(sql, t, Object.fromEntries(extra.map((f) => [f, args['where'][f]])))}`
         : sql``;
-      const [out] = (
-        await this.tbl
-          .client()
-          .execute(
-            sql`${head} values ${values} on conflict (${target}) do update set ${sql.join(sets, sql`, `)}${cond} returning *`,
-          )
-      ).rows as AnyRecord[];
-      if (!out) throw new HttpError(404, `${this.name} not found`);
-      return this.project(this.fromRaw(t, out), this.projection(args));
+      const linked = this.tbl.joins.size > 0;
+      const links = this.joinColumns(sql, [...this.tbl.joins.keys()], table);
+      const returning = linked
+        ? sql` returning *, (${sql.raw(table)}.xmax = 0) as efc_inserted, ${sql.join(links, sql`, `)}`
+        : sql` returning *`;
+      return this.withLinks(
+        createOps.some((o) => o.items.length) || joinOps.length > 0,
+        async () => {
+          const [out] = (
+            await this.exec(
+              sql`${head} values ${values} on conflict (${target}) do update set ${sql.join(sets, sql`, `)}${cond}${returning}`,
+            )
+          ).rows;
+          if (!out) throw new HttpError(404, `${this.name} not found`);
+          const record = this.fromRaw(t, out);
+          if (linked) {
+            // Inserted: its create lists; updated: the update's changes (set: [] clears).
+            const ops = out['efc_inserted'] ? createOps.filter((o) => o.items.length) : joinOps;
+            await this.applyJoins(sql, [{ id: record['id'], ops }]);
+            await this.refreshJoins(sql, [record], ops);
+          }
+          return this.project(record, this.projection(args));
+        },
+      );
     });
   }
 
@@ -885,11 +1222,13 @@ class TableRuntime {
     const { t, sql } = await this.tbl.ready();
     return this.tbl.guard(async () => {
       const where = this.where(sql, t, args['where'])!;
+      // RETURNING runs before ON DELETE CASCADE removes the links, so they're still there.
+      const links = this.joinColumns(sql, [...this.tbl.joins.keys()]);
       const [row] = (
-        await this.tbl
-          .client()
-          .execute(sql`delete from ${sql.raw(q(this.tbl.table))} where ${where} returning *`)
-      ).rows as AnyRecord[];
+        await this.exec(
+          sql`delete from ${sql.raw(q(this.tbl.table))} where ${where} returning *${links.length ? sql`, ${sql.join(links, sql`, `)}` : sql``}`,
+        )
+      ).rows;
       if (!row) throw new HttpError(404, `${this.name} not found`);
       return this.project(this.fromRaw(t, row), this.projection(args));
     });
