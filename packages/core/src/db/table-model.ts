@@ -8,7 +8,7 @@ import type { TableOptions, TableSchema } from '../types.js';
 import type { TableModel } from '../table-types.js';
 import { HttpError } from '../errors.js';
 import { ModelValidationError, normalizeSchema, type FieldIssue } from './schema.js';
-import { getDbEngine, registerModel } from './engine.js';
+import { getDbEngine, getRegisteredModel, registerModel } from './engine.js';
 import { pgTable, q, type ColumnSpec, type JoinSpec, type PgTable } from './pg-table.js';
 import { transaction } from './transaction.js';
 import { traceOps } from './query-log.js';
@@ -38,6 +38,19 @@ interface JoinOp {
 }
 
 const relAlias = (field: string) => `efc_rel_${field}`;
+const incAlias = (name: string) => `efc_inc_${name}`;
+const literal = (s: string) => `'${s.replace(/'/g, "''")}'`;
+// jsonb_build_object takes at most 100 arguments: build wide records in chunks.
+const JSON_PAIRS_PER_CALL = 50;
+
+/**
+ * Something `include` can load: a model's own `ref` field (scalar → one record,
+ * many-to-many → a list) or a back-relation from `options.relations`.
+ */
+type Relation =
+  | { name: string; kind: 'one'; via: 'fk'; target: string; column: string }
+  | { name: string; kind: 'many'; via: 'join'; target: string; join: JoinSpec }
+  | { name: string; kind: 'one' | 'many'; via: 'back'; target: string; foreignKey: string };
 // Ids go to PostgreSQL as text (bigints included) and are cast there.
 const idText = (v: unknown) => (v == null ? v : String(v));
 const dedupe = (items: unknown[]) => {
@@ -174,14 +187,15 @@ class TableRuntime {
 
   // ── where ──────────────────────────────────────────────────────────────────
 
-  where(sql: Sql, t: any, where: AnyRecord | undefined): Sql | undefined {
+  /** WHERE for `where`; `alias` qualifies the columns (subqueries, e.g. inside `include`). */
+  where(sql: Sql, t: any, where: AnyRecord | undefined, alias?: string): Sql | undefined {
     if (!where) return undefined;
     const parts: Sql[] = [];
     for (const [key, value] of Object.entries(where)) {
       if (value === undefined) continue;
       if (key === 'AND' || key === 'OR' || key === 'NOT') {
         const list = (Array.isArray(value) ? value : [value]) as AnyRecord[];
-        const subs = list.map((w) => this.where(sql, t, w) ?? sql`true`);
+        const subs = list.map((w) => this.where(sql, t, w, alias) ?? sql`true`);
         if (key === 'AND')
           parts.push(subs.length ? sql`(${sql.join(subs, sql` and `)})` : sql`true`);
         else if (key === 'OR')
@@ -196,17 +210,17 @@ class TableRuntime {
         parts.push(isNull ? sql`true` : sql`false`);
         continue;
       }
-      parts.push(this.fieldFilter(sql, t, spec, value));
+      parts.push(this.fieldFilter(sql, t, spec, value, alias));
     }
     if (parts.length === 0) return undefined;
     return parts.length === 1 ? parts[0] : sql`(${sql.join(parts, sql` and `)})`;
   }
 
-  private fieldFilter(sql: Sql, t: any, spec: ColumnSpec, filter: unknown): Sql {
-    const c = this.col(sql, spec.field);
+  private fieldFilter(sql: Sql, t: any, spec: ColumnSpec, filter: unknown, alias?: string): Sql {
+    const c = this.col(sql, spec.field, alias);
     if (filter === null) return sql`${c} is null`;
-    if (spec.kind === 'jsonb') return this.jsonFilter(sql, t, spec, filter);
-    if (spec.kind === 'array') return this.listFilter(sql, t, spec, filter);
+    if (spec.kind === 'jsonb') return this.jsonFilter(sql, t, spec, filter, alias);
+    if (spec.kind === 'array') return this.listFilter(sql, t, spec, filter, alias);
     if (!isPlainObject(filter)) return sql`${c} = ${this.val(sql, t, spec.field, filter)}`;
 
     const insensitive = filter['mode'] === 'insensitive';
@@ -228,7 +242,7 @@ class TableRuntime {
             v === null
               ? sql`${c} is not null`
               : isPlainObject(v)
-                ? sql`not (${this.fieldFilter(sql, t, spec, { ...v, ...(insensitive && { mode: 'insensitive' }) })})`
+                ? sql`not (${this.fieldFilter(sql, t, spec, { ...v, ...(insensitive && { mode: 'insensitive' }) }, alias)})`
                 : sql`not (${eq(v)})`,
           );
           break;
@@ -282,8 +296,8 @@ class TableRuntime {
   }
 
   /** Scalar lists (native arrays): has, hasEvery, hasSome, isEmpty, equals. */
-  private listFilter(sql: Sql, t: any, spec: ColumnSpec, filter: unknown): Sql {
-    const c = this.col(sql, spec.field);
+  private listFilter(sql: Sql, t: any, spec: ColumnSpec, filter: unknown, alias?: string): Sql {
+    const c = this.col(sql, spec.field, alias);
     if (!isPlainObject(filter)) return sql`${c} = ${this.val(sql, t, spec.field, filter)}`;
     const parts: Sql[] = [];
     for (const [op, v] of Object.entries(filter)) {
@@ -316,8 +330,8 @@ class TableRuntime {
   }
 
   /** jsonb fields (embedded objects / arrays of objects / json): Prisma's JSON filters. */
-  private jsonFilter(sql: Sql, t: any, spec: ColumnSpec, filter: unknown): Sql {
-    const c = this.col(sql, spec.field);
+  private jsonFilter(sql: Sql, t: any, spec: ColumnSpec, filter: unknown, alias?: string): Sql {
+    const c = this.col(sql, spec.field, alias);
     const json = (v: unknown) => sql`${sql.param(JSON.stringify(v))}::jsonb`;
     if (!isPlainObject(filter) || !Object.keys(filter).some((k) => JSON_OPS.has(k))) {
       return sql`${c} = ${json(filter)}`;
@@ -397,11 +411,12 @@ class TableRuntime {
   private orderSql(
     sql: Sql,
     list: { field: string; desc: boolean; nulls?: 'first' | 'last' }[],
+    alias?: string,
   ): Sql {
     return sql.join(
       list.map(
         (o) =>
-          sql`${this.col(sql, o.field)} ${sql.raw(o.desc ? 'desc' : 'asc')}${o.nulls ? sql.raw(` nulls ${o.nulls}`) : sql``}`,
+          sql`${this.col(sql, o.field, alias)} ${sql.raw(o.desc ? 'desc' : 'asc')}${o.nulls ? sql.raw(` nulls ${o.nulls}`) : sql``}`,
       ),
       sql`, `,
     );
@@ -545,11 +560,292 @@ class TableRuntime {
         [...new Set(['id', ...fields])],
         distinct ? 'efc_distinct' : undefined,
       );
-      const { query, reversed } = this.readQuery(sql, t, args, cols);
-      const rows = ((await this.tbl.client().execute(query)).rows as AnyRecord[]).map((r) =>
-        this.project(this.fromRaw(t, r), fields),
+      const include = this.includeArg(args);
+      const included = include
+        ? await this.includeColumns(sql, include, distinct ? 'efc_distinct' : q(this.tbl.table), 1)
+        : [];
+      const { query, reversed } = this.readQuery(
+        sql,
+        t,
+        args,
+        included.length ? sql`${cols}, ${sql.join(included, sql`, `)}` : cols,
       );
+      const rows = ((await this.tbl.client().execute(query)).rows as AnyRecord[]).map((r) => {
+        const record = this.project(this.fromRaw(t, r), fields);
+        if (include) this.attachIncludes(record, r, include);
+        return record;
+      });
       return reversed ? rows.reverse() : rows;
+    });
+  }
+
+  // ── include ────────────────────────────────────────────────────────────────
+
+  private relationCache?: Map<string, Relation>;
+
+  /** What `include` can name on this model. */
+  relations(): Map<string, Relation> {
+    if (this.relationCache) return this.relationCache;
+    const out = new Map<string, Relation>();
+    for (const spec of this.tbl.columns.values()) {
+      const ref = spec.node?.kind === 'scalar' ? spec.node.def.ref : undefined;
+      if (ref)
+        out.set(spec.field, {
+          name: spec.field,
+          kind: 'one',
+          via: 'fk',
+          target: ref,
+          column: spec.column,
+        });
+    }
+    for (const join of this.tbl.joins.values()) {
+      out.set(join.field, {
+        name: join.field,
+        kind: 'many',
+        via: 'join',
+        target: join.target,
+        join,
+      });
+    }
+    for (const [name, def] of Object.entries(this.options.relations ?? {})) {
+      out.set(name, {
+        name,
+        kind: def.hasOne ? 'one' : 'many',
+        via: 'back',
+        target: (def.hasOne ?? def.hasMany)!,
+        foreignKey: def.foreignKey,
+      });
+    }
+    return (this.relationCache = out);
+  }
+
+  private relation(name: string): Relation {
+    const rel = this.relations().get(name);
+    if (!rel) {
+      const known = [...this.relations().keys()];
+      this.fail(
+        `include.${name}`,
+        known.length
+          ? `not a relation of ${this.name} (relations: ${known.join(', ')})`
+          : `${this.name} has no relations — add a ref field or options.relations`,
+      );
+    }
+    return rel;
+  }
+
+  private includeArg(args: AnyRecord): AnyRecord | undefined {
+    const include = args['include'];
+    if (include === undefined) return undefined;
+    if (!isPlainObject(include)) this.fail('include', 'must be an object');
+    return Object.values(include).some(Boolean) ? include : undefined;
+  }
+
+  /** SELECT items loading `include` for rows of this table aliased `owner`. */
+  private async includeColumns(
+    sql: Sql,
+    include: AnyRecord,
+    owner: string,
+    depth: number,
+  ): Promise<Sql[]> {
+    const out: Sql[] = [];
+    for (const [name, arg] of Object.entries(include)) {
+      if (!arg) continue;
+      const expr = await this.relationExpr(sql, this.relation(name), relArgs(arg), owner, depth);
+      out.push(sql`${expr} as ${sql.raw(q(incAlias(name)))}`);
+    }
+    return out;
+  }
+
+  /**
+   * One relation as a correlated subquery yielding jsonb: a record (or null) for one, an
+   * array of records for many. Nested includes nest inside it, so a read is one statement.
+   */
+  private async relationExpr(
+    sql: Sql,
+    rel: Relation,
+    args: AnyRecord,
+    owner: string,
+    depth: number,
+  ): Promise<Sql> {
+    const T = runtimeOf(rel.target, `${this.name}.${rel.name}`);
+    const { t } = await T.tbl.ready();
+    const a = `efc_r${depth}`;
+    const obj = await T.jsonRecord(sql, t, args, a, depth + 1);
+    const target = `${q(T.tbl.table)} ${a}`;
+    const ownerId = `${owner}.${q('id')}`;
+    if (rel.via === 'fk') {
+      return sql`(select ${obj} from ${sql.raw(target)} where ${sql.raw(`${a}.${q('id')} = ${owner}.${q(rel.column)}`)})`;
+    }
+
+    let from: string;
+    let cond: string;
+    let defaultOrder: string;
+    if (rel.via === 'join') {
+      const j = `efc_j${depth}`;
+      from = `${q(rel.join.table)} ${j} join ${target} on ${a}.${q('id')} = ${j}.ref_id`;
+      cond = `${j}.owner_id = ${ownerId}`;
+      defaultOrder = `${j}.position`;
+    } else {
+      // A back-relation: the target's field pointing here — a column, or its join table.
+      const join = T.tbl.joins.get(rel.foreignKey);
+      const column = T.tbl.columns.get(rel.foreignKey);
+      const refs = join ? join.target : column?.node?.kind === 'scalar' && column.node.def.ref;
+      if (refs !== this.name) {
+        throw new Error(
+          `[EFC] ${this.name}.${rel.name}: ${rel.target}.${rel.foreignKey} must be a ref to ${this.name}`,
+        );
+      }
+      if (join) {
+        if (rel.kind === 'one') {
+          throw new Error(
+            `[EFC] ${this.name}.${rel.name}: ${rel.target}.${rel.foreignKey} is many-to-many — use hasMany`,
+          );
+        }
+        const j = `efc_j${depth}`;
+        from = `${q(join.table)} ${j} join ${target} on ${a}.${q('id')} = ${j}.owner_id`;
+        cond = `${j}.ref_id = ${ownerId}`;
+      } else {
+        if (rel.kind === 'one' && !column!.node!.def.unique) {
+          throw new Error(
+            `[EFC] ${this.name}.${rel.name}: hasOne needs ${rel.target}.${rel.foreignKey} to be unique (one ${rel.target} per ${this.name}) — or use hasMany`,
+          );
+        }
+        from = target;
+        cond = `${a}.${q(column!.column)} = ${ownerId}`;
+      }
+      defaultOrder = `${a}.${q('id')}`;
+    }
+    if (rel.kind === 'one') {
+      return sql`(select ${obj} from ${sql.raw(from)} where ${sql.raw(cond)} limit 1)`;
+    }
+
+    const where = T.where(sql, t, args['where'], a);
+    const order = args['orderBy']
+      ? T.orderSql(sql, T.orderList(args['orderBy']), a)
+      : sql.raw(defaultOrder);
+    const take = args['take'] as number | undefined;
+    if (take !== undefined && (!Number.isInteger(take) || take < 0)) {
+      this.fail(`include.${rel.name}.take`, 'must be a whole number ≥ 0 inside include');
+    }
+    const s = `efc_s${depth}`;
+    return sql`coalesce((select jsonb_agg(${sql.raw(`${s}.o order by ${s}.n`)}) from (select ${obj} as o, row_number() over (order by ${order}) as n from ${sql.raw(from)} where ${sql.raw(cond)}${where ? sql` and ${where}` : sql``} order by ${order}${take !== undefined ? sql` limit ${sql.param(take)}` : sql``}${args['skip'] ? sql` offset ${sql.param(args['skip'])}` : sql``}) ${sql.raw(s)}), '[]'::jsonb)`;
+  }
+
+  /** A record of this table (aliased `alias`) as jsonb, with its own includes. */
+  private async jsonRecord(
+    sql: Sql,
+    t: any,
+    args: AnyRecord,
+    alias: string,
+    depth: number,
+  ): Promise<Sql> {
+    const include = this.includeArg(args);
+    const pairs: Sql[] = [];
+    for (const f of this.projection(args)) {
+      if (include?.[f]) continue; // loaded as a relation instead
+      pairs.push(sql`${sql.raw(literal(f))}, ${this.jsonValue(sql, f, alias)}`);
+    }
+    for (const [name, arg] of Object.entries(include ?? {})) {
+      if (!arg) continue;
+      const expr = await this.relationExpr(sql, this.relation(name), relArgs(arg), alias, depth);
+      pairs.push(sql`${sql.raw(literal(name))}, ${expr}`);
+    }
+    if (pairs.length === 0) return sql`'{}'::jsonb`;
+    const chunks: Sql[] = [];
+    for (let i = 0; i < pairs.length; i += JSON_PAIRS_PER_CALL) {
+      chunks.push(
+        sql`jsonb_build_object(${sql.join(pairs.slice(i, i + JSON_PAIRS_PER_CALL), sql`, `)})`,
+      );
+    }
+    return sql.join(chunks, sql` || `);
+  }
+
+  // JSON can't hold bigints exactly, NaN/Infinity or decimals verbatim: send those as text.
+  private jsonValue(sql: Sql, field: string, alias: string): Sql {
+    const c = this.col(sql, field, alias);
+    const spec = this.spec(field)!;
+    if (this.join(field)) return sql`${c}::text[]`;
+    const textual = (k?: string) => k === 'bigint' || k === 'double' || k === 'numeric';
+    if (spec.kind === 'array') return textual(spec.item) ? sql`${c}::text[]` : c;
+    return textual(spec.kind) ? sql`${c}::text` : c;
+  }
+
+  /** A record from `jsonRecord` → the same record a direct read returns. */
+  private fromJson(json: AnyRecord, args: AnyRecord): AnyRecord {
+    const include = this.includeArg(args);
+    const keyed: AnyRecord = {};
+    for (const f of this.projection(args)) {
+      if (include?.[f]) continue;
+      const v = json[f];
+      const join = this.join(f);
+      if (v == null || join) {
+        keyed[f] = join && Array.isArray(v) ? this.joinValues(join, v) : v;
+        continue;
+      }
+      const spec = this.spec(f)!;
+      const one = (kind: string | undefined, x: unknown) =>
+        x == null
+          ? x
+          : kind === 'timestamptz'
+            ? new Date(x as string)
+            : kind === 'double'
+              ? Number(x)
+              : kind === 'bigint' && spec.bigintAs === 'number'
+                ? Number(x)
+                : x;
+      keyed[f] =
+        spec.kind === 'array' && Array.isArray(v)
+          ? v.map((x) => one(spec.item, x))
+          : spec.kind === 'array'
+            ? v
+            : one(spec.kind, v);
+    }
+    const record = this.tbl.fromRow(keyed);
+    for (const [name, arg] of Object.entries(include ?? {})) {
+      if (arg) record[name] = this.decodeRelation(this.relation(name), json[name], relArgs(arg));
+    }
+    return record;
+  }
+
+  private decodeRelation(rel: Relation, value: unknown, args: AnyRecord): unknown {
+    const T = runtimeOf(rel.target, `${this.name}.${rel.name}`);
+    if (rel.kind === 'one') return value == null ? null : T.fromJson(value as AnyRecord, args);
+    return ((value as AnyRecord[] | null) ?? []).map((v) => T.fromJson(v, args));
+  }
+
+  private attachIncludes(record: AnyRecord, row: AnyRecord, include: AnyRecord): void {
+    for (const [name, arg] of Object.entries(include)) {
+      if (!arg) continue;
+      record[name] = this.decodeRelation(this.relation(name), row[incAlias(name)], relArgs(arg));
+    }
+  }
+
+  /** A write with `include`: write, then read the record back with its relations. */
+  async withInclude(
+    args: AnyRecord,
+    write: (args: AnyRecord) => Promise<AnyRecord>,
+  ): Promise<AnyRecord> {
+    if (!this.includeArg(args ?? {})) return write(args);
+    const { include, select, omit, ...rest } = args;
+    const record = await write(rest);
+    const [full] = await this.findMany({ where: { id: record['id'] }, select, omit, include });
+    return full ?? record;
+  }
+
+  /** `delete` with `include`: read the record and its relations, then delete it. */
+  async deleteWithInclude(args: AnyRecord): Promise<AnyRecord> {
+    if (!this.includeArg(args)) return this.delete(args);
+    this.uniqueKey(args['where'], 'delete');
+    return transaction(async () => {
+      const [found] = await this.findMany({
+        where: args['where'],
+        select: args['select'],
+        omit: args['omit'],
+        include: args['include'],
+        take: 1,
+      });
+      await this.delete({ where: args['where'] });
+      return found!;
     });
   }
 
@@ -561,7 +857,12 @@ class TableRuntime {
 
   async findUnique(args: AnyRecord): Promise<AnyRecord | null> {
     this.uniqueKey(args['where'], 'findUnique');
-    return this.findFirst({ where: args['where'], select: args['select'], omit: args['omit'] });
+    return this.findFirst({
+      where: args['where'],
+      select: args['select'],
+      omit: args['omit'],
+      include: args['include'],
+    });
   }
 
   async orThrow<R>(p: Promise<R | null>): Promise<R> {
@@ -1246,6 +1547,24 @@ class TableRuntime {
   }
 }
 
+/** An include value: `true`, or its options. */
+function relArgs(arg: unknown): AnyRecord {
+  return isPlainObject(arg) ? arg : {};
+}
+
+/** The defineTable runtime of a model `include` reaches, by name. */
+function runtimeOf(name: string, from: string): TableRuntime {
+  const runtime = getRegisteredModel(name)?.tableRuntime?.() as TableRuntime | undefined;
+  if (!runtime) {
+    throw new Error(
+      getRegisteredModel(name)
+        ? `[EFC] ${from}: include needs ${name} to be a defineTable model`
+        : `[EFC] ${from}: "${name}" is not defined — import that model before including it`,
+    );
+  }
+  return runtime;
+}
+
 const JSON_OPS = new Set([
   'path',
   'equals',
@@ -1268,6 +1587,18 @@ const JSON_OPS = new Set([
 export function createTable(name: string, schema: TableSchema, options: TableOptions = {}) {
   // Schema errors surface at definition time; the runtime (Drizzle table) on first use.
   normalizeSchema(schema, 'table', name);
+  for (const [rel, def] of Object.entries(options.relations ?? {})) {
+    const where = `[EFC] ${name}.relations.${rel}`;
+    if (rel in schema) throw new Error(`${where}: a field already has this name`);
+    if (!def || (def.hasMany === undefined) === (def.hasOne === undefined)) {
+      throw new Error(`${where}: give either hasMany or hasOne (a model name)`);
+    }
+    if (typeof def.foreignKey !== 'string') {
+      throw new Error(
+        `${where}: foreignKey must name the ${def.hasMany ?? def.hasOne} field that references ${name}`,
+      );
+    }
+  }
   let runtime: TableRuntime | undefined;
   const rt = (): TableRuntime => {
     const engine = getDbEngine();
@@ -1291,14 +1622,14 @@ export function createTable(name: string, schema: TableSchema, options: TableOpt
     count: (args?: AnyRecord) => call((r) => r.count(args)),
     aggregate: (args?: AnyRecord) => call((r) => r.aggregate(args)),
     groupBy: (args: AnyRecord) => call((r) => r.groupBy(args)),
-    create: (args: AnyRecord) => call((r) => r.create(args)),
+    create: (args: AnyRecord) => call((r) => r.withInclude(args, (a) => r.create(a))),
     createMany: (args: AnyRecord) => call((r) => r.createMany(args, false)),
     createManyAndReturn: (args: AnyRecord) => call((r) => r.createMany(args, true)),
-    update: (args: AnyRecord) => call((r) => r.update(args)),
+    update: (args: AnyRecord) => call((r) => r.withInclude(args, (a) => r.update(a))),
     updateMany: (args: AnyRecord) => call((r) => r.updateMany(args, false)),
     updateManyAndReturn: (args: AnyRecord) => call((r) => r.updateMany(args, true)),
-    upsert: (args: AnyRecord) => call((r) => r.upsert(args)),
-    delete: (args: AnyRecord) => call((r) => r.delete(args)),
+    upsert: (args: AnyRecord) => call((r) => r.withInclude(args, (a) => r.upsert(a))),
+    delete: (args: AnyRecord) => call((r) => r.deleteWithInclude(args)),
     deleteMany: (args?: AnyRecord) => call((r) => r.deleteMany(args)),
     raw: () => call(async (r) => (await r.tbl.compile()).t),
     sync: (opts?: { dryRun?: boolean }) => call((r) => r.tbl.reconcile(opts?.dryRun ?? false)),
@@ -1315,6 +1646,7 @@ export function createTable(name: string, schema: TableSchema, options: TableOpt
     drop: model.drop,
     findByIds: (ids) => model.findMany({ where: { id: { in: ids } } }),
     pgTarget: () => ({ table: rt().tbl.table, idKind: rt().tbl.idKind }),
+    tableRuntime: () => rt(),
   });
   return model;
 }
