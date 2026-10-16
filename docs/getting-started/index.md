@@ -20,6 +20,7 @@ The interactive wizard walks through:
 ? Project name:            my-api
 ? Language:                TypeScript | JavaScript
 ? Database:                MongoDB | PostgreSQL
+? Models:                  defineTable | defineModel        (PostgreSQL only)
 ? Authentication strategy: http-only | localStorage
 ? Features: (space to toggle)
     ◉ Multi-core clustering
@@ -31,7 +32,7 @@ The interactive wizard walks through:
     ◯ Mailer
 ```
 
-Generated models and routes are identical for both databases — `defineModel` compiles to mongoose or Drizzle at runtime. See [Database](../guides/database.md).
+On **PostgreSQL**, models default to [`defineTable`](../api-reference/table.md): PostgreSQL-native, with real foreign keys between the generated models (a user's sessions, invoices, tickets…), `relations` for `include`, and Prisma-style queries in the generated routes. Pick **defineModel** instead for the portable API. On **MongoDB**, models are `defineModel`, which compiles to mongoose. See [Database](../guides/database.md).
 
 Depending on what you toggle on, you'll see follow-up questions:
 

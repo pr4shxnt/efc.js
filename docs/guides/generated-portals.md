@@ -2,7 +2,7 @@
 
 `create-efc-app`'s **User portal** and **Admin portal** feature options scaffold a large, ready-to-run set of models and routes — everything from auth extras (2FA, sessions, password reset) to admin content management (blogs, FAQs, coupons). This page is the complete inventory, so nothing you didn't ask for shows up as a surprise, and nothing you did enable goes undocumented.
 
-> On MongoDB, every model below is a real `defineModel`-backed collection and every route has working database logic. **On PostgreSQL, model files are commented-out Drizzle stubs and route bodies are `// TODO` placeholders** — the PostgreSQL adapter isn't implemented in the runtime yet. See [Database](./database.md).
+> Every model below is real on both databases. On MongoDB they're `defineModel` collections. On PostgreSQL they're [`defineTable`](../api-reference/table.md) models (or `defineModel`, if you picked it) linked by foreign keys — `Session`, `Notification`, `File`, `SupportTicket`, `Subscription`, `Invoice` and `ApiKey` reference `User` (deleted with it), `Subscription` references `Plan`, `Invoice` its `Subscription`, `AuditLog`, `Blog` and assigned tickets an `Admin` (cleared when it's deleted), and `Category` its parent — with matching `relations` (`user.sessions`, `plan.subscriptions`, `category.children`…) for `include`. A reference stays a plain id when its target model isn't generated. See [Database](./database.md).
 
 ---
 

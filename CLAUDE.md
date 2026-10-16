@@ -134,6 +134,7 @@ Do not suggest or generate code for these features.
 - `revokeToken` only clears the cookie — the JWT remains valid until expiry. `revokeSession(req, res?)` / `revokeAllSessions(userId)` actually revoke, but need `cache` configured. If the cache is unreachable, `requireAuth` answers 503 by default (`cache.onRevocationCheckError: 'allow'` passes requests instead); the revoke calls throw
 - The `memory` cache backend lives in the cluster primary and workers use it over IPC (shared per machine, lost on restart, not shared across instances) — use `redis` for multiple instances
 - Scaffolded apps set `cache` (Redis if `REDIS_URL`, else memory); their logout uses `revokeSession` and password reset calls `revokeAllSessions`
+- Scaffolded PostgreSQL apps use `defineTable` by default (prompt "Models:"; `ScaffoldOptions.modelApi: 'defineModel'` keeps the portable API): feature models reference `User`/`Admin`/`Plan`/… by FK with `relations`, and `src/model/index.ts` registers every model and declares `Tables`. Route code is generated through `orm(opts)` in scaffold.ts — never hand-write `User.findOne(...)` in templates
 - `cache` operations never throw on a Redis outage (misses / no-ops); they DO throw if no cache is configured
 - `efc.config.ts` is informational; `src/index.ts` is the actual runtime entrypoint
 - `efc build prod` transpiles `src/**` unbundled → `dist/src/**` (entry `dist/src/index.js`); routes/tasks must exist as files in `dist/` because they're discovered by filesystem scan
