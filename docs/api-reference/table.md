@@ -98,6 +98,50 @@ never drops columns or rows. On top of that:
 
 Preview the changes with `efc db sync --dry-run`.
 
+### Foreign keys
+
+A top-level `ref` field is a real foreign key to the referenced model's `id`:
+
+```ts
+export const Author = defineTable('Author', { name: { type: 'string', required: true } });
+export const Category = defineTable('Category', {
+  name:   { type: 'string', required: true },
+  parent: { type: 'integer', ref: 'Category', onDelete: 'setNull' },   // self-relation
+}, { id: 'serial' });
+
+export const Post = defineTable('Post', {
+  title:    { type: 'string', required: true },
+  author:   { type: 'uuid', ref: 'Author', required: true, onDelete: 'cascade' },
+  reviewer: { type: 'uuid', ref: 'Author' },                            // onDelete: 'restrict'
+  category: { type: 'integer', ref: 'Category' },
+});
+```
+
+| `onDelete` | Deleting the referenced record… |
+|---|---|
+| `'restrict'` (default) | is refused with a **409** while records point at it |
+| `'cascade'` | deletes the records pointing at it too |
+| `'setNull'` | clears the field on those records (not allowed on `required` fields) |
+
+- The field's `type` must match the target's id: `uuid` (or `objectId`) for `id: 'uuid'`,
+  `integer` for `'serial'`, `bigint` for `'bigserial'`. A mismatch fails at first use, saying
+  which type to declare.
+- Writing an id that doesn't exist is a **400** on that field (`author: Author not found`).
+- Ref columns get an index (`<table>_<column>_idx`) unless `index: false`.
+- The referenced model must be defined (imported) before the model that references it is used.
+- The value is still the id: `post.author` is a string (or number). Loading the referenced
+  record with `include` comes next (M3b).
+
+Sync creates a missing target table first, then adds the key `NOT VALID` (instant, and existing
+rows can't fail the deploy) and validates it right after the commit. If old rows point at
+records that no longer exist, validation is skipped with a warning naming the count. The key
+still applies to new writes; fix the rows and run `efc db sync` to validate it. Changing
+`onDelete` replaces the key, and removing `ref` drops it. Foreign keys on columns the model
+doesn't declare are left alone.
+
+`defineModel` keeps `ref` portable: on PostgreSQL it stays a plain column with no foreign key,
+the same as on MongoDB.
+
 ---
 
 ## Reading
@@ -246,5 +290,5 @@ Over an empty set, `_sum`, `_avg`, `_min` and `_max` are `null`. `aggregate` als
 - `raw()` returns the Drizzle `pgTable`, for anything EFC doesn't cover.
 - `sync({ dryRun })` / `drop()` work as with `defineModel`.
 - `transaction(async () => …)` covers `defineTable` calls too.
-- Relations (`include`, foreign keys, relation filters, nested writes) are planned (M3), not
-  implemented yet.
+- Foreign keys are in (above). `include`, many-to-many join tables, relation filters and nested
+  writes are planned (M3), not implemented yet.

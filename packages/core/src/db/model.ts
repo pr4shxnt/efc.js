@@ -11,6 +11,7 @@ import { normalizeSchema, timestampFields, type SchemaTree } from './schema.js';
 import { currentTx, getDbEngine, registerModel } from './engine.js';
 import { mongoModel, type EngineModel } from './mongo-model.js';
 import { pgModel } from './pg-model.js';
+import { tableNameFor } from './pg-table.js';
 import { traceOps } from './query-log.js';
 
 const ENGINE_LABEL: Record<DatabaseEngine, string> = {
@@ -155,6 +156,7 @@ export function createModel<T extends object, C = Partial<T>>(
     sync: model.sync,
     drop: model.drop,
     findByIds: (ids) => model.find({ id: { $in: ids as string[] } } as never),
+    pgTarget: () => ({ table: options.collection ?? tableNameFor(name), idKind: 'uuid' }),
   });
   return model;
 }
