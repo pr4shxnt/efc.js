@@ -83,6 +83,7 @@ interface TableOptions {
   timestamps?: boolean | { createdAt?: string | false; updatedAt?: string | false };
   indexes?: { fields: Record<string, 1 | -1 | 'text'>; unique?: boolean; name?: string }[];
   collection?: string;                     // table name
+  relations?: Record<string, { hasMany: string; foreignKey: string } | { hasOne: string; foreignKey: string }>;  // see Include
 }
 ```
 
@@ -180,6 +181,71 @@ or `jsonb` from `defineModel`), the first sync copies it into the join table, ke
 and skipping values that aren't ids. The old column stays (sync never drops columns) but is no
 longer read or written, so a `defineModel` over the same table won't see later changes to the
 list.
+
+### Include
+
+`include` loads related records into the result: a `ref` field becomes the record it points at,
+a many-to-many field the list of records, and back-relations — declared with `relations` —
+the records pointing here.
+
+```ts
+export const User = defineTable('User', { email: { type: 'string', required: true, unique: true } }, {
+  relations: {
+    posts:   { hasMany: 'Post', foreignKey: 'author' },     // Post.author refs User
+    profile: { hasOne: 'Profile', foreignKey: 'user' },     // Profile.user refs User, unique
+  },
+});
+export const Tag = defineTable('Tag', { label: { type: 'string', required: true } }, {
+  relations: { posts: { hasMany: 'Post', foreignKey: 'tags' } },  // through Post.tags (m:n)
+});
+
+const users = await User.findMany({
+  include: {
+    profile: true,
+    posts: {
+      where: { published: true },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { title: true },
+      include: { tags: { select: { label: true } } },
+    },
+  },
+});
+// [{ id, email, …, profile: { … } | null, posts: [{ title, tags: [{ label }] }] }]
+
+await Post.findUnique({ where: { id }, include: { author: true } });   // author: { … } | null
+```
+
+| Relation | Declared as | `include` gives |
+|---|---|---|
+| belongs to | `author: { type: 'uuid', ref: 'User' }` | the record, or `null` (never `null` when `required`) |
+| many-to-many | `tags: { type: 'array', of: 'uuid', ref: 'Tag' }` | the records, in link order |
+| has many | `relations: { posts: { hasMany: 'Post', foreignKey: 'author' } }` | the records (by `id` unless `orderBy`) |
+| has one | `relations: { profile: { hasOne: 'Profile', foreignKey: 'user' } }` | the record or `null` — `foreignKey` must be `unique` |
+
+- `true`, or options: `select`, `omit`, a nested `include` (any depth), and on lists `where`,
+  `orderBy`, `take`, `skip`. `false` leaves the relation out.
+- `foreignKey` names the field on the other model that refs this one: a scalar `ref` or a
+  many-to-many array.
+- **One statement per call**, whatever the depth: each relation is a correlated subquery
+  building `jsonb`. Included records read exactly like direct reads (`bigint`s, decimals as
+  strings, dates).
+- `findMany`, `findFirst`, `findUnique` (and `…OrThrow`), `create`, `update`, `upsert` and
+  `delete` take `include`. Writes read the record back with its relations after writing;
+  `delete` reads it first.
+- Self-relations work both ways (`parent` ref + `children: { hasMany: 'Category', foreignKey: 'parent' }`).
+
+**Types.** Relations name models by string, so register your models once for typed includes:
+
+```ts
+declare module 'express-file-cluster' {
+  interface Tables { User: typeof User; Post: typeof Post; Tag: typeof Tag; Profile: typeof Profile }
+}
+```
+
+Included records are then typed (`select` / `omit` / nested `include` applied), and `include`
+keys, nested `where` and `orderBy` are checked. A relation to an unregistered model still works,
+typed as `Record<string, unknown>`.
 
 ---
 
@@ -329,5 +395,5 @@ Over an empty set, `_sum`, `_avg`, `_min` and `_max` are `null`. `aggregate` als
 - `raw()` returns the Drizzle `pgTable`, for anything EFC doesn't cover.
 - `sync({ dryRun })` / `drop()` work as with `defineModel`.
 - `transaction(async () => …)` covers `defineTable` calls too.
-- Foreign keys and many-to-many are in (above). `include`, relation filters and nested writes
-  are planned (M3), not implemented yet.
+- Foreign keys, many-to-many and `include` are in (above). Relation filters (`some`/`every`/
+  `none`/`is`) and nested writes are planned (M3), not implemented yet.
