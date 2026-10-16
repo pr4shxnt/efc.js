@@ -975,6 +975,7 @@ export function createTable(name: string, schema: TableSchema, options: TableOpt
     sync: model.sync,
     drop: model.drop,
     findByIds: (ids) => model.findMany({ where: { id: { in: ids } } }),
+    pgTarget: () => ({ table: rt().tbl.table, idKind: rt().tbl.idKind }),
   });
   return model;
 }

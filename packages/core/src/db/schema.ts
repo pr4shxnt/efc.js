@@ -42,7 +42,9 @@ export type SchemaMode = 'model' | 'table';
 
 const MODEL_TYPES = new Set(['string', 'number', 'boolean', 'date', 'object', 'objectId', 'array']);
 const TABLE_ONLY_TYPES = new Set(['integer', 'bigint', 'decimal', 'uuid', 'json']);
-const TABLE_ONLY_OPTIONS = ['precision', 'scale', 'nativeEnum', 'column'] as const;
+const TABLE_ONLY_OPTIONS = ['precision', 'scale', 'nativeEnum', 'column', 'onDelete'] as const;
+const REFERENTIAL_ACTIONS = new Set(['restrict', 'cascade', 'setNull']);
+const FOREIGN_KEY_TYPES = new Set(['objectId', 'uuid', 'integer', 'bigint']);
 
 export function isFieldDefinition(value: unknown): value is AnyFieldDefinition {
   if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -87,6 +89,22 @@ class SchemaBuilder {
     }
     if (def.column !== undefined && !topLevel) {
       this.fail(path, `'column' only applies to top-level fields`);
+    }
+    if (def.onDelete !== undefined) {
+      if (def.ref === undefined) this.fail(path, `'onDelete' needs 'ref'`);
+      if (!REFERENTIAL_ACTIONS.has(def.onDelete)) {
+        this.fail(path, `onDelete must be 'restrict', 'cascade' or 'setNull'`);
+      }
+      if (def.onDelete === 'setNull' && def.required) {
+        this.fail(path, `onDelete: 'setNull' can't clear a required field`);
+      }
+    }
+    // A scalar ref is a foreign key: top-level, typed like the target's id.
+    if (def.ref !== undefined && def.type !== 'array') {
+      if (!topLevel) this.fail(path, `'ref' only applies to top-level fields`);
+      if (!FOREIGN_KEY_TYPES.has(def.type)) {
+        this.fail(path, `'ref' needs an id type: objectId, uuid, integer or bigint`);
+      }
     }
   }
 

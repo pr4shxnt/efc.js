@@ -32,6 +32,8 @@ export interface RegisteredModel {
   drop(): Promise<void>;
   /** Records by id — what `populate` needs from a `ref` target. */
   findByIds(ids: unknown[]): Promise<Record<string, unknown>[]>;
+  /** PostgreSQL: its table and id strategy — what a foreign key to it needs. */
+  pgTarget?(): { table: string; idKind: 'uuid' | 'serial' | 'bigserial' };
 }
 
 // Every defined model by name, so `populate` can resolve a `ref` on either engine
