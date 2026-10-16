@@ -5,6 +5,8 @@ export interface RequestContext {
   user?: Record<string, unknown> | undefined;
   requestId?: string;
   log?: Logger;
+  /** Model operations run so far in this request, by `Model.op` (N+1 detection). */
+  queryCounts?: Map<string, number>;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();

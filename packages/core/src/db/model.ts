@@ -11,6 +11,7 @@ import { normalizeSchema, timestampFields, type SchemaTree } from './schema.js';
 import { currentTx, getDbEngine, registerModel } from './engine.js';
 import { mongoModel, type EngineModel } from './mongo-model.js';
 import { pgModel } from './pg-model.js';
+import { traceOps } from './query-log.js';
 
 const ENGINE_LABEL: Record<DatabaseEngine, string> = {
   mongodb: 'MongoDB',
@@ -46,6 +47,26 @@ function distinctFields(tree: SchemaTree, options: ModelOptions): Set<string> {
   for (const [key, node] of Object.entries(tree)) if (node.kind === 'scalar') fields.add(key);
   return fields;
 }
+
+// The operations query logging reports (not raw/sync/drop).
+const MODEL_OPS = [
+  'find',
+  'findById',
+  'findOne',
+  'exists',
+  'distinct',
+  'create',
+  'createMany',
+  'update',
+  'updateOne',
+  'updateMany',
+  'upsert',
+  'delete',
+  'deleteOne',
+  'deleteMany',
+  'count',
+  'aggregate',
+] as const;
 
 const sortKey = (v: unknown) => (v instanceof Date ? v.getTime() : v) as string | number;
 
@@ -128,6 +149,7 @@ export function createModel<T extends object, C = Partial<T>>(
     sync: (opts) => call((m) => m.sync(opts)),
     drop: () => call((m) => m.drop()),
   };
+  traceOps(name, model, MODEL_OPS);
   registerModel({
     name,
     sync: model.sync,

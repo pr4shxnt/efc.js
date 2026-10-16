@@ -9,6 +9,7 @@ import { HttpError } from '../errors.js';
 import { ModelValidationError, normalizeSchema, type FieldIssue } from './schema.js';
 import { getDbEngine, registerModel } from './engine.js';
 import { pgTable, q, type ColumnSpec, type PgTable } from './pg-table.js';
+import { traceOps } from './query-log.js';
 
 type AnyRecord = Record<string, any>;
 type Sql = any;
@@ -964,6 +965,11 @@ export function createTable(name: string, schema: TableSchema, options: TableOpt
     sync: (opts?: { dryRun?: boolean }) => call((r) => r.tbl.reconcile(opts?.dryRun ?? false)),
     drop: () => call((r) => r.tbl.drop()),
   };
+  traceOps(
+    name,
+    model,
+    Object.keys(model).filter((op) => !['name', 'raw', 'sync', 'drop'].includes(op)),
+  );
   registerModel({
     name,
     sync: model.sync,
