@@ -1,0 +1,16 @@
+# EFC (express-file-cluster)
+
+> An opinionated backend framework on Express: files in src/api become routes, clustering uses every CPU core, src/tasks holds background jobs (BullMQ or pg-boss), and defineModel / defineTable give typed models on MongoDB and PostgreSQL. Started with one ignite() call.
+
+Install: `npx create-efc-app my-api`. Import paths: `express-file-cluster`, `express-file-cluster/auth`, `express-file-cluster/tasks` — no others exist.
+
+## Docs
+
+- [Documentation](https://efc.prashantadhikari7.com.np/docs.html): quick start, project structure, configuration, routing, handlers, middleware, errors, clustering, tasks, auth, RBAC, database, mailer, API dashboard, generated portals, CLI, environment variables
+- [Full reference on GitHub](https://github.com/pr4shxnt/efc.js/tree/main/docs)
+- [MCP server](https://www.npmjs.com/package/express-file-cluster-mcp): `npx -y express-file-cluster-mcp` serves these docs to coding agents
+
+## Project
+
+- [Source](https://github.com/pr4shxnt/efc.js)
+- [npm](https://www.npmjs.com/package/express-file-cluster)

@@ -2,6 +2,15 @@
   "name": "express-file-cluster",
   "version": "0.7.1",
   "description": "Enterprise-grade, zero-boilerplate backend framework with file-based routing and multi-core clustering",
+  "homepage": "https://efc.prashantadhikari7.com.np/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pr4shxnt/efc.js.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/pr4shxnt/efc.js/issues"
+  },
   "license": "MIT",
   "type": "module",
   "files": [
