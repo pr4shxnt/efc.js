@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://efc.prashantadhikari7.com.np/sitemap.xml

@@ -1,3 +1,140 @@
+/* ─── Base (moved from the old landing page's style.css) ─── */
+/* ─── RESET & TOKENS ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #080b0f;
+  --bg-card:    #0d1117;
+  --bg-raised:  #111820;
+  --border:     #1e2832;
+  --border-lit: #263040;
+  --text:       #e2e8f0;
+  --text-dim:   #64748b;
+  --text-muted: #334155;
+  --accent:     #F0A030;
+  --accent-dim: rgba(240,160,48,.12);
+  --accent-glow:rgba(240,160,48,.22);
+  --purple:     #a78bfa;
+  --blue:       #60a5fa;
+  --orange:     #fb923c;
+  --green:      #7AAE8E;
+  --radius:     10px;
+  --radius-lg:  16px;
+  --font-mono:  'JetBrains Mono', monospace;
+  --font-sans:  'Inter', sans-serif;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+/* Global grid overlay — sits behind everything */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: .28;
+  pointer-events: none;
+}
+
+/* Every direct section/nav sits above the grid */
+nav, section, footer { position: relative; z-index: 1; }
+section { scroll-margin-top: 80px; }
+
+a { text-decoration: none; color: inherit; }
+em { font-style: italic; }
+code {
+  font-family: var(--font-mono);
+  font-size: .85em;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--accent);
+}
+
+.container { max-width: 1140px; margin: 0 auto; padding: 0 24px; }
+
+/* ─── SCROLLBAR ─── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-lit); border-radius: 3px; }
+
+.logo { font-family: var(--font-mono); font-size: 1.15rem; font-weight: 600; letter-spacing: -.5px; display: flex; align-items: center; gap: 8px; }
+.logo-dot { color: var(--accent); }
+.logo-img { width: 24px; height: 24px; color: var(--accent); flex-shrink: 0; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--accent); color: #0d0d1a;
+  font-weight: 600; font-size: .85rem;
+  padding: 8px 18px; border-radius: 7px;
+  transition: opacity .2s, transform .15s;
+  white-space: nowrap;
+}
+.btn-primary:hover { opacity: .85; transform: translateY(-1px); }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border-lit); color: var(--text-dim);
+  font-size: .875rem; font-weight: 500;
+  padding: 8px 18px; border-radius: 7px;
+  transition: border-color .2s, color .2s;
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+.hamburger { display: none; flex-direction: column; gap: 5px; background: none; border: none; cursor: pointer; padding: 4px; }
+.hamburger span { display: block; width: 22px; height: 2px; background: var(--text-dim); border-radius: 2px; transition: .3s; }
+.hero-code-wrap {
+  max-width: 680px; margin: 0 auto;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0,0,0,.6), 0 0 0 1px var(--border);
+  text-align: left;
+}
+
+.code-bar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+.dot { width: 11px; height: 11px; border-radius: 50%; }
+.dot.r { background: #ff5f57; }
+.dot.y { background: #febc2e; }
+.dot.g { background: #28c840; }
+.code-bar-label { font-family: var(--font-mono); font-size: .72rem; color: var(--text-dim); margin-left: 6px; }
+
+pre {
+  font-family: var(--font-mono); font-size: .82rem;
+  line-height: 1.75; padding: 20px 24px;
+  overflow-x: auto; tab-size: 2;
+}
+
+/* syntax colors */
+.c-dim    { color: var(--text-muted); }
+.c-green  { color: var(--green); }
+.c-purple { color: var(--purple); }
+.c-blue   { color: var(--blue); }
+.c-orange { color: var(--orange); }
+.c-accent { color: var(--accent); }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+
 /* ─── WORKSPACE SIMULATION — VS Code-style dark IDE, themed with site tokens ─── */
 
 body.workspace-body {
@@ -451,7 +588,7 @@ body.workspace-body {
 }
 
 @media (max-width: 600px) {
-  .ws-topbar-label { display: none; }
+  .ws-topbar-label, .ws-topbar-note { display: none; }
   .panel { height: 180px; }
   .sb-right .sb-item:nth-child(3),
   .sb-right .sb-item:nth-child(4) { display: none; }
