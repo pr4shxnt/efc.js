@@ -2,6 +2,8 @@
 
 **Interactive scaffolder for Express File Cluster projects.**
 
+[Website](https://efc.prashantadhikari7.com.np/) · [Quick start](https://efc.prashantadhikari7.com.np/docs.html#quickstart) · [Generated portals](https://efc.prashantadhikari7.com.np/docs.html#portals)
+
 ## Quick Start
 
 ```bash

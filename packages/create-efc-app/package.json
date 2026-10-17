@@ -2,6 +2,15 @@
   "name": "create-efc-app",
   "version": "0.7.1",
   "description": "Interactive scaffolder for Express File Cluster projects",
+  "homepage": "https://efc.prashantadhikari7.com.np/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pr4shxnt/efc.js.git",
+    "directory": "packages/create-efc-app"
+  },
+  "bugs": {
+    "url": "https://github.com/pr4shxnt/efc.js/issues"
+  },
   "license": "MIT",
   "type": "module",
   "files": [
