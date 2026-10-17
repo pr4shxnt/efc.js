@@ -4,6 +4,8 @@ An [MCP](https://modelcontextprotocol.io) server that gives AI coding agents the
 **express-file-cluster (EFC)** documentation, ground rules and scaffolding tools — so they
 read the real API instead of guessing it.
 
+The same docs, for people: [efc.prashantadhikari7.com.np/docs.html](https://efc.prashantadhikari7.com.np/docs.html).
+
 The docs are bundled into the package at build time (`dist/docs`), so the server always serves
 the documentation of the version you installed. Transport: stdio.
 

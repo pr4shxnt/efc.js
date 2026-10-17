@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Documentation — EFC (express-file-cluster)</title>
+    <meta name="description" content="How to build with express-file-cluster: file-based routing, clustering, background tasks, auth, MongoDB and PostgreSQL models, the CLI and configuration." />
+    <link rel="canonical" href="https://efc.prashantadhikari7.com.np/docs.html" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="color-scheme" content="dark" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="EFC" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://efc.prashantadhikari7.com.np/docs.html" />
+    <meta property="og:title" content="EFC documentation" />
+    <meta property="og:description" content="How to build with express-file-cluster: file-based routing, clustering, background tasks, auth, MongoDB and PostgreSQL models, the CLI and configuration." />
+    <meta property="og:image" content="https://efc.prashantadhikari7.com.np/assets/og-docs.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="EFC documentation: routing, clustering, tasks, auth, models and the CLI." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="EFC documentation" />
+    <meta name="twitter:description" content="How to build with express-file-cluster: file-based routing, clustering, background tasks, auth, MongoDB and PostgreSQL models, the CLI and configuration." />
+    <meta name="twitter:image" content="https://efc.prashantadhikari7.com.np/assets/og-docs.png" />
+    <meta name="twitter:image:alt" content="EFC documentation: routing, clustering, tasks, auth, models and the CLI." />
+    <link rel="manifest" href="site.webmanifest" />
+    <script type="application/ld+json">
+{
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "TechArticle",
+          "headline": "EFC documentation",
+          "description": "How to build with express-file-cluster: file-based routing, clustering, background tasks, auth, MongoDB and PostgreSQL models, the CLI and configuration.",
+          "url": "https://efc.prashantadhikari7.com.np/docs.html",
+          "inLanguage": "en",
+          "image": "https://efc.prashantadhikari7.com.np/assets/og-docs.png",
+          "about": {
+            "@type": "SoftwareApplication",
+            "name": "express-file-cluster",
+            "url": "https://efc.prashantadhikari7.com.np/"
+          },
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "EFC",
+            "url": "https://efc.prashantadhikari7.com.np/"
+          },
+          "dependencies": "Node.js 18 or later",
+          "proficiencyLevel": "Beginner"
+        },
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "EFC",
+              "item": "https://efc.prashantadhikari7.com.np/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Documentation",
+              "item": "https://efc.prashantadhikari7.com.np/docs.html"
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
+    <link rel="alternate icon" href="assets/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
+    <meta name="theme-color" content="#07090c" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body class="docs-page">
+    <a class="skip" href="#doc">Skip to content</a>
+
+    <nav id="navbar" class="scrolled">
+      <div class="nav-inner">
+        <a href="index.html" class="logo" aria-label="efc.js home">
+          <svg class="logo-img" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor" />
+            <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85" />
+            <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor" />
+          </svg>
+          <span>efc<span class="logo-dot">.</span>js</span>
+          <span class="docs-badge">docs</span>
+        </a>
+        <div class="nav-links">
+          <a href="docs.html" aria-current="page">Docs</a>
+          <a href="workspace.html">Workspace</a>
+          <a href="index.html#changelog">Changelog</a>
+          <a href="https://github.com/pr4shxnt/efc.js" target="_blank" rel="noopener">GitHub</a>
+        </div>
+        <a href="index.html" class="btn-ghost nav-cta">Home</a>
+        <button class="hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobileMenu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+      <div class="mobile-menu" id="mobileMenu">
+        <a href="index.html">Home</a>
+        <a href="docs.html">Docs</a>
+        <a href="workspace.html">Workspace</a>
+        <a href="https://github.com/pr4shxnt/efc.js" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </nav>
+
+    <div class="docs container">
+      <!-- ─── SIDEBAR ─── -->
+      <aside class="side" id="side" aria-label="Documentation">
+        <button class="side-toggle" type="button" id="sideToggle" aria-expanded="false" aria-controls="sideNav">
+          <span class="mono">Menu</span><span id="sideCurrent">Quick Start</span>
+        </button>
+        <div class="side-inner" id="sideNav">
+          <label class="search">
+            <span class="sr-only">Search the docs</span>
+            <input type="search" id="search" placeholder="Search docs" autocomplete="off" spellcheck="false" />
+            <kbd>/</kbd>
+          </label>
+          <nav id="sideLinks">
+            <div class="group"><h2>Getting Started</h2>
+              <a href="#quickstart">Quick Start</a>
+              <a href="#structure">Project Structure</a>
+              <a href="#config">Configuration</a>
+            </div>
+            <div class="group"><h2>Core</h2>
+              <a href="#routing">File-Based Routing</a>
+              <a href="#handlers">Route Handlers</a>
+              <a href="#middleware">Middleware</a>
+              <a href="#errors">Error Handling</a>
+            </div>
+            <div class="group"><h2>Features</h2>
+              <a href="#clustering">Clustering</a>
+              <a href="#tasks">Background Tasks</a>
+              <a href="#auth">Authentication</a>
+              <a href="#rbac">RBAC</a>
+              <a href="#database">Database</a>
+              <a href="#mailer">Mailer</a>
+              <a href="#dashboard">API Dashboard</a>
+            </div>
+            <div class="group"><h2>Scaffolding</h2>
+              <a href="#portals">Generated Portals</a>
+            </div>
+            <div class="group"><h2>Reference</h2>
+              <a href="#cli">CLI Reference</a>
+              <a href="#envvars">Environment Variables</a>
+            </div>
+          </nav>
+          <p class="no-hits" id="noHits" hidden>No page matches.</p>
+        </div>
+      </aside>
+
+      <!-- ─── CONTENT ─── -->
+      <main class="doc" id="doc" tabindex="-1">
+
+<!-- ════════ GETTING STARTED ════════ -->
+<article data-page="quickstart" data-group="Getting Started" data-src="getting-started/index.md">
+<h1>Quick Start</h1>
+<p class="lead">Scaffold and run your first EFC API in under a minute. You need Node.js 18 or later; MongoDB, PostgreSQL or Redis only if you choose features that use them.</p>
+
+<h2>Create a project</h2>
+<pre data-file="terminal"><code data-lang="bash">$ npx create-efc-app my-api</code></pre>
+<p>The interactive wizard asks:</p>
+<pre data-file="create-efc-app"><code>? Project name:            my-api
+? Language:                TypeScript | JavaScript
+? Database:                MongoDB | PostgreSQL
+? Models:                  defineTable | defineModel        (PostgreSQL only)
+? Authentication strategy: http-only | localStorage
+? Features: (space to toggle)
+    ◉ Multi-core clustering
+    ◉ Background tasks
+    ◉ API route documentation
+    ◉ User portal
+    ◉ Admin portal
+    ◉ Role-based access control
+    ◯ Mailer</code></pre>
+<p>Some choices ask a follow-up:</p>
+<ul>
+  <li><strong>Background tasks</strong> → a queue backend: <code>BullMQ</code> (Redis) or <code>pg-boss</code> (stores jobs in your PostgreSQL — no Redis to run).</li>
+  <li><strong>Mailer</strong> → <code>Gmail</code> (preconfigured, App Password prompt) or a custom SMTP host. See <a href="#mailer">Mailer</a>.</li>
+  <li><strong>User / Admin portal</strong> → which sub-features to generate. See <a href="#portals">Generated Portals</a>.</li>
+  <li><strong>RBAC</strong> → a <code>Role</code> model and <code>requireAuth('role')</code> on protected routes. See <a href="#rbac">RBAC</a>.</li>
+</ul>
+<p>It then writes the project, generates <code>.env</code> with a real <code>JWT_SECRET</code>, and runs <code>npm install</code>.</p>
+
+<h2>Start the dev server</h2>
+<pre data-file="terminal"><code data-lang="bash">$ cd my-api
+$ npm run dev</code></pre>
+<p><code>npm run dev</code> runs <code>efc start dev</code>: one process with hot reload. Tables and indexes are created the first time a model is used, so there's no migration to run first. The scaffolded <code>src/api/health.ts</code> answers at <code>http://localhost:3000/v1/api/health</code> — <code>/v1/api</code> is the default <code>basePath</code>.</p>
+<p>In development, <code>http://localhost:3000/</code> shows the <a href="#dashboard">API dashboard</a>: every route, with its methods and documentation.</p>
+
+<h2>Add a route</h2>
+<pre data-file="terminal"><code data-lang="bash">$ efc generate route posts/[slug]
+# → Created src/api/posts/[slug].ts</code></pre>
+<p>That's it — the file is registered as <code>/posts/:slug</code> the next time the server reloads. Check the result any time with <code>efc routes</code>.</p>
+
+<h2>Next</h2>
+<ul>
+  <li><a href="#structure">Project Structure</a> — what every generated file is for.</li>
+  <li><a href="#routing">File-Based Routing</a> — the naming rules.</li>
+  <li><a href="#database">Database</a> — models on MongoDB and PostgreSQL.</li>
+</ul>
+</article>
+
+<article data-page="structure" data-group="Getting Started" data-src="getting-started/project-structure.md">
+<h1>Project Structure</h1>
+<p class="lead">Every EFC project follows the same layout. <code>src/api/</code> and <code>src/tasks/</code> are fixed conventions — there is no option to move them.</p>
+<pre data-file="my-api/"><code>my-api/
+├── src/
+│   ├── api/                       # HTTP routes — every file is a route
+│   │   ├── health.ts              # GET /health
+│   │   ├── auth/
+│   │   │   ├── login.ts           # POST /auth/login
+│   │   │   └── logout.ts          # POST /auth/logout
+│   │   └── users/
+│   │       ├── index.ts           # GET /users · POST /users
+│   │       └── [id].ts            # GET /users/:id · DELETE /users/:id
+│   ├── tasks/                     # background jobs (scanned non-recursively)
+│   │   └── SendEmail.ts           # task name: "SendEmail"
+│   ├── model/                     # models
+│   │   ├── User.ts
+│   │   └── Role.ts                # with the RBAC option
+│   ├── migrations/                # efc db migrate — run in filename order
+│   ├── seeds/                     # efc db seed
+│   └── index.ts                   # entry point — calls ignite()
+├── efc.config.ts                  # builds the config ignite() receives
+├── .env                           # secrets — gitignored
+├── .env.example                   # documented template — committed
+├── package.json
+└── tsconfig.json</code></pre>
+
+<h2>Conventions</h2>
+<ul>
+  <li>Every <code>.ts</code> / <code>.js</code> file in <code>src/api/</code> becomes a route; its path is the URL.</li>
+  <li><code>[brackets]</code> in a file or folder name become URL parameters.</li>
+  <li><code>index.ts</code> maps to its folder's path.</li>
+  <li>Every file directly inside <code>src/tasks/</code> registers a task named after the file. Subfolders are not scanned.</li>
+  <li><code>src/index.ts</code> is what runs. <code>efc.config.ts</code> only takes effect because <code>src/index.ts</code> imports it.</li>
+</ul>
+
+<h2>Production builds</h2>
+<p><code>efc build prod</code> transpiles every file under <code>src/</code> into <code>dist/src/</code> without bundling — routes and tasks are discovered by scanning the filesystem, so they must exist as files. <code>efc start prod</code> runs <code>dist/src/index.js</code>.</p>
+<p>Enabling <strong>User portal</strong> or <strong>Admin portal</strong> fills <code>src/model/</code> and <code>src/api/</code> out considerably — see <a href="#portals">Generated Portals</a>.</p>
+</article>
+
+<article data-page="config" data-group="Getting Started" data-src="api-reference/ignite.md">
+<h1>Configuration</h1>
+<p class="lead"><code>ignite()</code> takes one config object. It never reads <code>efc.config.ts</code> or <code>.env</code> by itself — you import the config and pass it in, so what you see is what runs.</p>
+
+<h2><code>efc.config.ts</code></h2>
+<p>The scaffolder generates a config that reads each environment variable explicitly:</p>
+<pre data-file="efc.config.ts"><code data-lang="ts">import type { EFCConfig } from 'express-file-cluster'
+
+const config: EFCConfig = {
+  port: process.env.PORT ? Number(process.env.PORT) : undefined,
+  databaseUrl: process.env.DATABASE_URL,
+  jwtSecret: process.env.JWT_SECRET,
+  authStrategy: 'http-only',
+  tasks: { backend: 'bullmq', redisUrl: process.env.REDIS_URL },
+  cache: { backend: 'redis', url: process.env.REDIS_URL },
+  globalMiddlewares: [],
+}
+
+export default config</code></pre>
+
+<h2><code>src/index.ts</code></h2>
+<pre data-file="src/index.ts"><code data-lang="ts">import { ignite, gracefulShutdown } from 'express-file-cluster'
+import config from '../efc.config.js'
+
+ignite({ ...config, cluster: true })
+  .then(gracefulShutdown)
+  .catch(console.error)</code></pre>
+
+<h2>Options</h2>
+<table>
+  <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>basePath</code></td><td><code>'/v1/api'</code></td><td>Prefix for every route. <code>'/'</code> mounts at the root.</td></tr>
+    <tr><td><code>port</code></td><td><code>3000</code></td><td>HTTP listen port.</td></tr>
+    <tr><td><code>cluster</code></td><td>on in production</td><td>Fork one worker per CPU. See <a href="#clustering">Clustering</a>.</td></tr>
+    <tr><td><code>workers</code></td><td>CPU count</td><td>Number of workers to fork.</td></tr>
+    <tr><td><code>database</code></td><td>from URL</td><td><code>'mongodb'</code> or <code>'postgresql'</code>; detected from <code>databaseUrl</code> when omitted.</td></tr>
+    <tr><td><code>databaseUrl</code></td><td>—</td><td>Connection string.</td></tr>
+    <tr><td><code>authStrategy</code></td><td><code>'http-only'</code></td><td><code>'http-only'</code> cookie or <code>'localStorage'</code> Bearer token.</td></tr>
+    <tr><td><code>jwtSecret</code></td><td>—</td><td>Enables auth. At least 32 random bytes in production.</td></tr>
+    <tr><td><code>jwtExpiresIn</code></td><td><code>'7d'</code></td><td>Token lifetime: <code>'15m'</code>, <code>'1h'</code>, <code>'30d'</code>…</td></tr>
+    <tr><td><code>tasks</code></td><td>off</td><td>Queue backend. See <a href="#tasks">Background Tasks</a>.</td></tr>
+    <tr><td><code>cache</code></td><td>off</td><td><code>{ backend: 'redis' | 'memory' }</code> — also the session-revocation store.</td></tr>
+    <tr><td><code>logging</code></td><td>on</td><td>pino options; <code>logging.queries</code> turns on query logging.</td></tr>
+    <tr><td><code>requestTimeout</code></td><td>—</td><td>Milliseconds before a request is answered <code>408</code>.</td></tr>
+    <tr><td><code>cors</code></td><td>—</td><td><code>true</code> or a CORS config.</td></tr>
+    <tr><td><code>globalMiddlewares</code></td><td><code>[]</code></td><td>Run before every route.</td></tr>
+    <tr><td><code>onError</code></td><td>built in</td><td>Replace the global error handler.</td></tr>
+    <tr><td><code>autoSync</code></td><td><code>true</code></td><td>Reconcile tables / collections on a model's first use.</td></tr>
+    <tr><td><code>dashboard</code></td><td>on in dev</td><td><code>false</code> disables the development <a href="#dashboard">API dashboard</a>.</td></tr>
+  </tbody>
+</table>
+</article>
+
+<!-- ════════ CORE ════════ -->
+<article data-page="routing" data-group="Core" data-src="core-concepts/file-based-routing.md">
+<h1>File-Based Routing</h1>
+<p class="lead">EFC scans <code>src/api/</code> at startup and builds the route map from the file tree. No registration — add a file, get a route.</p>
+
+<h2>Routing rules</h2>
+<p>Take the path relative to <code>src/api</code>, drop the extension and a trailing <code>/index</code>, then convert each segment:</p>
+<table>
+  <thead><tr><th>File</th><th>URL</th><th><code>req.params</code></th></tr></thead>
+  <tbody>
+    <tr><td><code>health.ts</code></td><td><code>/health</code></td><td>—</td></tr>
+    <tr><td><code>users/index.ts</code></td><td><code>/users</code></td><td>—</td></tr>
+    <tr><td><code>users/[id].ts</code></td><td><code>/users/:id</code></td><td><code>id: string</code></td></tr>
+    <tr><td><code>posts/[slug]/comments.ts</code></td><td><code>/posts/:slug/comments</code></td><td><code>slug: string</code></td></tr>
+    <tr><td><code>users/[[id]].ts</code></td><td><code>/users</code> and <code>/users/:id</code></td><td><code>id?: string</code></td></tr>
+    <tr><td><code>docs/[...slug].ts</code></td><td><code>/docs/a/b</code> (one or more)</td><td><code>slug: ['a', 'b']</code></td></tr>
+    <tr><td><code>docs/[[...slug]].ts</code></td><td><code>/docs</code>, <code>/docs/a/b</code> (zero or more)</td><td><code>slug: string[]</code></td></tr>
+  </tbody>
+</table>
+<p>Every route is mounted under <code>basePath</code> — <code>/v1/api</code> unless you change it. A catch-all must be the last segment; anything else is a startup error.</p>
+
+<h2>Specificity</h2>
+<p>Routes register most specific first, comparing one segment at a time: static, then <code>[id]</code>, then <code>[[id]]</code>, then <code>[...slug]</code>, then <code>[[...slug]]</code>. <code>users/me.ts</code> therefore always matches before <code>users/[id].ts</code>, regardless of file order.</p>
+
+<h2>Method dispatching</h2>
+<p>Export uppercase HTTP method names — <code>GET POST PUT PATCH DELETE HEAD OPTIONS</code>. A method the file doesn't export answers <strong>405 Method Not Allowed</strong> with an <code>Allow</code> header.</p>
+<pre data-file="src/api/users/[id].ts"><code data-lang="ts">export const GET    = async (req, res) => { /* ... */ }
+export const PUT    = async (req, res) => { /* ... */ }
+export const PATCH  = async (req, res) => { /* ... */ }
+export const DELETE = async (req, res) => { /* ... */ }</code></pre>
+
+<h2>Route metadata</h2>
+<p>Export a <code>meta</code> object to document the route in the <a href="#dashboard">API dashboard</a>. It is keyed by HTTP method, so every method gets its own description and examples. All fields are optional.</p>
+<pre data-file="src/api/users/[id].ts"><code data-lang="ts">export const meta = {
+  GET: {
+    description: 'Fetch a user by ID.',
+    request: { params: { id: 'usr_01HXZ' } },
+    response: {
+      status: 200,
+      body: { id: 'usr_01HXZ', name: 'Ada Lovelace', createdAt: '2026-01-01T00:00:00.000Z' },
+    },
+  },
+  DELETE: {
+    description: 'Delete a user by ID.',
+    response: { status: 204 },
+  },
+}</code></pre>
+</article>
+
+<article data-page="handlers" data-group="Core" data-src="guides/validation.md">
+<h1>Route Handlers</h1>
+<p class="lead">Handlers are plain Express <code>async (req, res) =&gt; {}</code> functions. Thrown errors and rejected promises are caught for you.</p>
+
+<h2>Static route</h2>
+<pre data-file="src/api/health.ts"><code data-lang="ts">// GET /health
+export const GET = async (req, res) => {
+  res.json({ status: 'OK', ts: new Date().toISOString() })
+}</code></pre>
+
+<h2>Dynamic route</h2>
+<pre data-file="src/api/users/[id].ts"><code data-lang="ts">// GET /users/:id
+import { HttpError } from 'express-file-cluster'
+import { User } from '../../model/User.js'
+
+export const GET = async (req, res) => {
+  const user = await User.findById(req.params.id)
+  if (!user) throw new HttpError(404, 'User not found')
+  res.json(user)
+}</code></pre>
+
+<h2>Validating input</h2>
+<p><code>export const schema</code> validates <code>params</code>, <code>query</code> and <code>body</code> with any <a href="https://standardschema.dev" target="_blank" rel="noopener">Standard Schema</a> validator — zod, valibot, arktype. It runs after the file's middlewares. Failures answer <strong>400</strong> with <code>issues</code>; on success the parsed output replaces the input, so coercions and defaults apply.</p>
+<pre data-file="src/api/products/[id].ts"><code data-lang="ts">import { z } from 'zod'
+
+// one schema for every method in the file…
+export const schema = {
+  params: z.object({ id: z.string().uuid() }),
+}
+
+// …or keyed by method
+export const schema = {
+  GET:   { query: z.object({ include: z.enum(['reviews', 'stock']).optional() }) },
+  PATCH: { body: z.object({ price: z.number().positive() }) },
+}</code></pre>
+<pre data-file="400 response"><code data-lang="json">{
+  "error": "Validation failed",
+  "statusCode": 400,
+  "issues": [{ "path": ["params", "id"], "message": "Invalid uuid" }]
+}</code></pre>
+</article>
+
+<article data-page="middleware" data-group="Core" data-src="core-concepts/middleware.md">
+<h1>Middleware</h1>
+<p class="lead">Three tiers, each with a clear scope. Pick the narrowest one that does the job.</p>
+
+<h2>1. Global middleware</h2>
+<p>Set in the config — runs before every route.</p>
+<pre data-file="efc.config.ts"><code data-lang="ts">import rateLimit from 'express-rate-limit'
+
+const config: EFCConfig = {
+  globalMiddlewares: [rateLimit({ windowMs: 60_000, max: 100 })],
+}</code></pre>
+<aside class="note">CORS is built in — use the <code>cors</code> option instead of adding <code>cors()</code> here, or you'll send duplicate headers.</aside>
+
+<h2>2. Route-level middleware</h2>
+<p>Export a <code>middlewares</code> array; it applies to every method in the file.</p>
+<pre data-file="src/api/admin/users.ts"><code data-lang="ts">import { requireAuth } from 'express-file-cluster/auth'
+
+export const middlewares = [requireAuth('admin')]
+
+export const GET = async (req, res) => { /* ... */ }
+export const DELETE = async (req, res) => { /* ... */ }</code></pre>
+
+<h2>3. Handler-level, with <code>compose()</code></h2>
+<p>For a guard that applies to one method only.</p>
+<pre data-file="src/api/users/index.ts"><code data-lang="ts">import { compose } from 'express-file-cluster'
+
+export const POST = compose(
+  checkQuota,
+  async (req, res) => {
+    res.status(201).json(await User.create(req.body))
+  },
+)</code></pre>
+
+<h2>Order</h2>
+<p>For one request: global middlewares → the file's <code>middlewares</code> → <code>schema</code> validation → the handler (including anything it <code>compose</code>s).</p>
+</article>
+
+<article data-page="errors" data-group="Core" data-src="guides/error-handling.md">
+<h1>Error Handling</h1>
+<p class="lead">Throw from any handler or middleware — EFC catches it and sends a clean JSON response.</p>
+
+<h2><code>HttpError</code></h2>
+<pre data-file="src/api/users/[id].ts"><code data-lang="ts">import { HttpError } from 'express-file-cluster'
+
+export const GET = async (req, res) => {
+  const user = await User.findById(req.params.id)
+  if (!user) throw new HttpError(404, 'User not found')
+  res.json(user)
+}</code></pre>
+<pre data-file="404 response"><code data-lang="json">{ "error": "User not found", "statusCode": 404 }</code></pre>
+<p>Any other thrown error becomes a <strong>500</strong> with <code>"Internal Server Error"</code> — the message is not leaked to the client.</p>
+
+<h2>Custom global handler</h2>
+<pre data-file="efc.config.ts"><code data-lang="ts">import { HttpError } from 'express-file-cluster'
+import type { ErrorRequestHandler } from 'express'
+
+const onError: ErrorRequestHandler = (err, req, res, _next) => {
+  const status = err instanceof HttpError ? err.statusCode : 500
+  res.status(status).json({
+    error: status === 500 ? 'Internal Server Error' : err.message,
+    requestId: req.headers['x-request-id'],
+  })
+}
+
+const config: EFCConfig = { onError }</code></pre>
+
+<h2>Response reference</h2>
+<table>
+  <thead><tr><th>Scenario</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td><code>throw new HttpError(n, msg)</code></td><td><code>n</code></td></tr>
+    <tr><td>Any other thrown error</td><td><code>500</code></td></tr>
+    <tr><td>Method not exported by the route file</td><td><code>405</code> + <code>Allow</code></td></tr>
+    <tr><td>Route <code>schema</code> validation failed</td><td><code>400</code> + <code>issues</code></td></tr>
+    <tr><td>Model validation failed (<code>ModelValidationError</code>)</td><td><code>400</code> + <code>issues</code></td></tr>
+    <tr><td>Unique constraint violated</td><td><code>409</code></td></tr>
+    <tr><td><code>requestTimeout</code> exceeded</td><td><code>408</code></td></tr>
+    <tr><td>Missing or invalid token</td><td><code>401</code></td></tr>
+    <tr><td>Role not allowed by <code>requireAuth('role')</code></td><td><code>403</code></td></tr>
+  </tbody>
+</table>
+</article>
+
+<!-- ════════ FEATURES ════════ -->
+<article data-page="clustering" data-group="Features" data-src="core-concepts/clustering.md">
+<h1>Clustering</h1>
+<p class="lead">With <code>cluster: true</code> — the default when <code>NODE_ENV=production</code> — the primary forks one worker per CPU. All workers share the port and the operating system spreads connections across them.</p>
+
+<h2>Pre-Flight, per worker</h2>
+<p>Every worker boots independently, in this order:</p>
+<ol>
+  <li>Configure logging (before the primary/worker split)</li>
+  <li>Create Express: request context and IDs, <code>requestTimeout</code>, CORS, JSON, cookies</li>
+  <li>Connect the database and set the model engine, then the cache</li>
+  <li>Configure auth (when <code>jwtSecret</code> is set)</li>
+  <li>Scan and register tasks from <code>src/tasks</code></li>
+  <li>Start the queue backend — cron schedules sync in the background</li>
+  <li>Scan routes from <code>src/api</code></li>
+  <li>Mount routes</li>
+  <li>Listen</li>
+</ol>
+
+<h2>Self-healing</h2>
+<p>When a worker exits unexpectedly, the primary calls <code>onWorkerCrash</code> and forks a replacement, which runs the full Pre-Flight before taking traffic.</p>
+<pre data-file="src/index.ts"><code data-lang="ts">ignite({
+  ...config,
+  cluster: true,
+  workers: 4, // default: CPU count
+  onWorkerReady: (id) => logger.info(`Worker ${id} ready`),
+  onWorkerCrash: (id, code) => alerting.send(`Worker ${id} crashed (${code})`),
+})</code></pre>
+
+<h2>Graceful shutdown</h2>
+<p><code>gracefulShutdown(server)</code> handles <code>SIGTERM</code> and <code>SIGINT</code>. A worker stops accepting connections, lets in-flight requests and task jobs finish, then exits (forced after 10 s). The primary stops respawning and relays the signal to every worker — so <code>docker stop</code> and Kubernetes, which signal only PID 1, don't hang.</p>
+<pre data-file="src/index.ts"><code data-lang="ts">ignite(config).then((server) => gracefulShutdown(server, 30_000)) // 30 s drain window</code></pre>
+<p>In development, <code>efc start dev</code> runs a single process with hot reload.</p>
+</article>
+
+<article data-page="tasks" data-group="Features" data-src="core-concepts/background-tasks.md">
+<h1>Background Tasks</h1>
+<p class="lead">Define tasks in <code>src/tasks/</code>, enqueue them from any route and respond immediately — the job runs off the request path.</p>
+
+<h2>Configure a backend</h2>
+<pre data-file="efc.config.ts"><code data-lang="ts">tasks: { backend: 'bullmq', redisUrl: process.env.REDIS_URL } // Redis
+tasks: { backend: 'pg-boss' }                                // your PostgreSQL (databaseUrl)</code></pre>
+
+<h2>Define a task</h2>
+<p>The task name is the file name, case-sensitive. A default export is required.</p>
+<pre data-file="src/tasks/SendEmail.ts"><code data-lang="ts">import { defineTask } from 'express-file-cluster/tasks'
+
+export default defineTask&lt;{ to: string; subject: string }&gt;(async (payload) => {
+  await mailer.send(payload)
+})</code></pre>
+
+<h2>CPU-bound work</h2>
+<p><code>thread: true</code> runs the handler in <code>worker_threads</code>, keeping the event loop free.</p>
+<pre data-file="src/tasks/ResizeImage.ts"><code data-lang="ts">export default defineTask&lt;{ key: string; width: number }&gt;(
+  { thread: true, retries: 5 },
+  async ({ key, width }) => {
+    const out = await sharp(await download(key)).resize(width).toBuffer()
+    await upload(`${key}@${width}`, out)
+  },
+)</code></pre>
+
+<h2>Enqueue</h2>
+<pre data-file="src/api/signup.ts"><code data-lang="ts">import { enqueue } from 'express-file-cluster/tasks'
+
+export const POST = async (req, res) => {
+  const user = await User.create(req.body)
+  await enqueue('SendEmail', { to: user.email, subject: 'Welcome' })
+  res.status(202).json({ id: user.id, queued: true })
+}</code></pre>
+<p><code>enqueue</code> rejects if no backend is configured, the task name doesn't exist, or the backend doesn't accept the job within <code>tasks.enqueueTimeout</code> (default 5000 ms) — it never hangs, so it's safe to answer 503.</p>
+
+<h2>Task options</h2>
+<table>
+  <thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>thread</code></td><td><code>false</code></td><td>Run in <code>worker_threads</code>.</td></tr>
+    <tr><td><code>retries</code></td><td><code>3</code></td><td>Re-runs after a failure — up to <code>retries + 1</code> attempts before dead-lettering.</td></tr>
+    <tr><td><code>backoff</code></td><td><code>'exponential'</code></td><td><code>'fixed'</code> or <code>'exponential'</code> (1 s, doubling).</td></tr>
+    <tr><td><code>concurrency</code></td><td><code>tasks.concurrency</code></td><td>Parallel jobs of this task.</td></tr>
+    <tr><td><code>schedule</code></td><td>—</td><td>Cron pattern; scheduled runs receive <code>{}</code>. Schedules reconcile on boot.</td></tr>
+    <tr><td><code>timezone</code></td><td>server time</td><td>IANA timezone for <code>schedule</code>.</td></tr>
+  </tbody>
+</table>
+
+<h2>Dead letters</h2>
+<pre data-file="terminal"><code data-lang="bash">$ efc tasks failed --name SendEmail   # error, attempts, payload
+$ efc tasks retry --all                 # re-queue
+$ efc tasks purge --all                 # delete failed jobs</code></pre>
+</article>
+
+<article data-page="auth" data-group="Features" data-src="guides/authentication.md">
+<h1>Authentication</h1>
+<p class="lead">JWT auth, configured by <code>jwtSecret</code> and <code>authStrategy</code>. The scaffolder asks for the strategy and puts a generated secret in <code>.env</code>.</p>
+
+<h2>http-only cookie (recommended for browsers)</h2>
+<p>The token travels in an <strong>HttpOnly + Secure + SameSite=Strict</strong> cookie named <code>efc_token</code>.</p>
+<pre data-file="src/api/auth/login.ts"><code data-lang="ts">import { issueToken } from 'express-file-cluster/auth'
+
+export const POST = async (req, res) => {
+  const user = await verifyCredentials(req.body)
+  await issueToken(res, { sub: user.id, role: user.role })
+  res.json({ message: 'Logged in' })
+}</code></pre>
+
+<h2>Bearer token (SPAs, mobile)</h2>
+<p>With <code>authStrategy: 'localStorage'</code>, return the token and send it back as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+<pre data-file="src/api/auth/login.ts"><code data-lang="ts">import { signToken } from 'express-file-cluster/auth'
+
+export const POST = async (req, res) => {
+  const user = await verifyCredentials(req.body)
+  res.json({ token: await signToken({ sub: user.id, role: user.role }) })
+}</code></pre>
+
+<h2>Protecting routes</h2>
+<pre data-file="src/api/users/index.ts"><code data-lang="ts">import { requireAuth, getCurrentUser } from 'express-file-cluster/auth'
+
+export const middlewares = [requireAuth] // 401 without a valid token
+
+export const GET = async (req, res) => {
+  res.json({ me: req.user, alsoMe: getCurrentUser() })
+}</code></pre>
+<p><code>getCurrentUser()</code> returns the token payload anywhere in the request — models and helpers included.</p>
+
+<h2>Logging out</h2>
+<table>
+  <thead><tr><th>Call</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>revokeToken(res)</code></td><td>Clears the cookie only. The token itself stays valid until it expires.</td></tr>
+    <tr><td><code>revokeSession(req, res?)</code></td><td>Rejects the current token from now on (and clears the cookie). Needs <code>cache</code>.</td></tr>
+    <tr><td><code>revokeAllSessions(userId)</code></td><td>Rejects every token issued to the user so far — "log out everywhere". Needs <code>cache</code>.</td></tr>
+  </tbody>
+</table>
+<aside class="note">If the cache is unreachable, <code>requireAuth</code> answers <strong>503</strong> by default; set <code>cache.onRevocationCheckError: 'allow'</code> to let requests through instead. The revoke calls throw.</aside>
+</article>
+
+<article data-page="rbac" data-group="Features" data-src="guides/rbac.md">
+<h1>Role-Based Access Control</h1>
+<p class="lead">Role checks are built into <code>requireAuth</code> — call it with role names instead of reaching for a separate middleware.</p>
+
+<h2><code>requireAuth(...roles)</code></h2>
+<pre data-file="src/api/admin/users.ts"><code data-lang="ts">import { requireAuth } from 'express-file-cluster/auth'
+
+// bare — authentication only
+export const middlewares = [requireAuth]
+
+// authentication + role — 403 unless payload.role is one of these
+export const middlewares = [requireAuth('admin')]
+export const middlewares = [requireAuth('user', 'admin')]</code></pre>
+
+<h2>Generated by the scaffolder</h2>
+<p>Toggle <strong>Role-based access control</strong> in <code>create-efc-app</code> and every protected route it generates uses this shorthand instead of an inline <code>user.role === 'admin'</code> check. It also generates a <code>Role</code> model and — with the Admin portal — a full <code>/admin/roles</code> CRUD API.</p>
+</article>
+
+<article data-page="database" data-group="Features" data-src="guides/database.md">
+<h1>Database</h1>
+<p class="lead">Two model APIs. <code>defineModel</code> runs unchanged on MongoDB (mongoose) and PostgreSQL (Drizzle). <code>defineTable</code> is PostgreSQL-native, with Prisma's query vocabulary and real relations.</p>
+<p>The engine follows <code>database</code>, or the <code>databaseUrl</code> scheme. Install <code>mongoose</code> for MongoDB, or <code>pg</code> and <code>drizzle-orm</code> for PostgreSQL.</p>
+
+<h2><code>defineModel</code></h2>
+<pre data-file="src/model/User.ts"><code data-lang="ts">import { defineModel, type InferRecord } from 'express-file-cluster'
+
+export const User = defineModel('User', {
+  name:  { type: 'string', required: true },
+  email: { type: 'string', required: true, unique: true },
+  role:  { type: 'string', enum: ['member', 'admin'], default: 'member' },
+})
+
+export type UserRecord = InferRecord&lt;typeof User&gt; // no interface to write</code></pre>
+
+<h3>Methods</h3>
+<table>
+  <thead><tr><th>Method</th><th>Returns</th></tr></thead>
+  <tbody>
+    <tr><td><code>find(filter?, { sort, limit, skip, select, populate })</code></td><td>records</td></tr>
+    <tr><td><code>findOne(filter)</code> · <code>findById(id)</code></td><td>record | null</td></tr>
+    <tr><td><code>count(filter?)</code> · <code>exists(filter)</code></td><td>number · boolean</td></tr>
+    <tr><td><code>distinct(field, filter?)</code></td><td>sorted, non-null values</td></tr>
+    <tr><td><code>create(data)</code> · <code>createMany(list)</code></td><td>record(s)</td></tr>
+    <tr><td><code>update(id, data)</code> · <code>updateOne(filter, data)</code></td><td>record | null</td></tr>
+    <tr><td><code>updateMany(filter, data)</code></td><td>number modified</td></tr>
+    <tr><td><code>upsert(filter, create, update)</code></td><td>record</td></tr>
+    <tr><td><code>delete(id)</code> · <code>deleteOne(filter)</code> · <code>deleteMany(filter)</code></td><td>void · record | null · number</td></tr>
+  </tbody>
+</table>
+<p>Filters <code>$eq $ne $gt $gte $lt $lte $in $nin $exists $regex $and $or</code>, dotted paths and array-contains behave the same on both engines; updates support <code>$set $unset $inc $push $pull</code>. Invalid fields throw <code>ModelValidationError</code> (400); a duplicate unique value is a 409.</p>
+
+<h2><code>defineTable</code> (PostgreSQL)</h2>
+<pre data-file="src/model/Post.ts"><code data-lang="ts">import { defineTable } from 'express-file-cluster'
+
+export const Post = defineTable('Post', {
+  title:  { type: 'string', required: true },
+  author: { type: 'uuid', ref: 'User', onDelete: 'cascade' }, // foreign key
+  tags:   { type: 'array', of: 'uuid', ref: 'Tag' },          // many-to-many
+})
+
+const posts = await Post.findMany({
+  where:   { tags: { some: { label: 'efc' } } },
+  include: { author: true, tags: true }, // one SQL statement, any depth
+  orderBy: { createdAt: 'desc' },
+  take:    20,
+})</code></pre>
+<p>Also <code>findUnique</code>, <code>upsert</code> (<code>INSERT … ON CONFLICT</code>), <code>groupBy</code>, <code>aggregate</code>, relation filters and nested writes. Full reference: <a href="https://github.com/pr4shxnt/efc.js/blob/main/docs/api-reference/table.md" target="_blank" rel="noopener">defineTable ↗</a>.</p>
+
+<h2>Schema sync</h2>
+<p>A model's table or collection — columns, indexes, foreign keys — is reconciled on first use (<code>autoSync</code>, default on). Sync adds and converts; it never drops a column or a row. Preview changes with <code>efc db sync --dry-run</code>, or set <code>autoSync: false</code> and use migrations.</p>
+
+<h2>Transactions</h2>
+<pre data-file="src/api/orders/index.ts"><code data-lang="ts">import { transaction } from 'express-file-cluster'
+
+await transaction(async () => {
+  const order = await Order.create({ customer, items })
+  await Stock.updateMany({ id: { $in: ids } }, { $inc: { count: -1 } })
+}) // a throw rolls everything back</code></pre>
+<aside class="note">MongoDB transactions need a replica set (Atlas, or <code>mongod --replSet</code>).</aside>
+
+<h2>Raw client</h2>
+<pre data-file="escape hatch"><code data-lang="ts">import { db } from 'express-file-cluster'
+// MongoDB: a mongoose Connection · PostgreSQL: a pg Pool
+const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [id])</code></pre>
+<p><code>db</code> is only available after Pre-Flight — don't touch it at module load time.</p>
+</article>
+
+<article data-page="mailer" data-group="Features" data-src="guides/mailer.md">
+<h1>Mailer</h1>
+<p class="lead">Toggle <strong>Mailer</strong> in the scaffolder for a working <code>nodemailer</code> transport, wired to environment variables, and a real <code>SendEmail</code> task.</p>
+
+<h2>Choose a provider</h2>
+<pre data-file="create-efc-app"><code>? Email provider:
+  ❯ Gmail                 smtp.gmail.com, preconfigured
+    Other (custom SMTP)   you'll provide host + port</code></pre>
+<p>With <strong>Gmail</strong> no host or port is asked — <code>SMTP_HOST</code> / <code>SMTP_PORT</code> are set to <code>smtp.gmail.com</code> / <code>465</code>. <strong>Other</strong> prompts for both.</p>
+
+<h2>Gmail needs an App Password</h2>
+<p>Google rejects your normal password over SMTP. The wizard accepts only a 16-character App Password:</p>
+<aside class="note">Google Account → Security → 2-Step Verification → App passwords. Enter it without spaces.</aside>
+
+<h2>The generated task</h2>
+<pre data-file="src/tasks/SendEmail.ts"><code data-lang="ts">import { defineTask } from 'express-file-cluster/tasks'
+import nodemailer from 'nodemailer'
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT ?? 587),
+  secure: Number(process.env.SMTP_PORT) === 465,
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+})
+
+export default defineTask(async (payload) => {
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.body,
+  })
+})</code></pre>
+<p>Send mail with <code>enqueue('SendEmail', payload)</code> — see <a href="#tasks">Background Tasks</a>. With the User portal enabled too, registration, password reset and email verification enqueue it for you.</p>
+</article>
+
+<article data-page="dashboard" data-group="Features" data-src="core-concepts/file-based-routing.md">
+<h1>API Dashboard</h1>
+<p class="lead">In development (<code>NODE_ENV=development</code>), <code>GET /</code> serves a live page listing every route — one card per HTTP method, with its description and request/response examples. No external tooling.</p>
+
+<h2>Turning it on and off</h2>
+<p>It is on by default in development and does not exist in production. Set <code>dashboard: false</code> to disable it in development too.</p>
+
+<h2>Documenting a route</h2>
+<p>The cards come from each file's <code>meta</code> export, keyed by method. A method without an entry still gets a card, marked undocumented.</p>
+<pre data-file="src/api/users/[id].ts"><code data-lang="ts">export const meta = {
+  GET: {
+    description: 'Fetch a user by ID.',
+    request: {
+      headers: { Authorization: 'Bearer &lt;token&gt;' },
+      params: { id: 'usr_01HXZ' },
+    },
+    response: {
+      status: 200,
+      body: { id: 'usr_01HXZ', name: 'Ada Lovelace', createdAt: '2026-01-01T00:00:00.000Z' },
+    },
+  },
+}</code></pre>
+
+<h2>Type rendering</h2>
+<p>Response bodies are shown as type names, not your sample values — examples stay readable without leaking data.</p>
+<table>
+  <thead><tr><th>Value in <code>meta</code></th><th>Shown as</th></tr></thead>
+  <tbody>
+    <tr><td><code>'Ada Lovelace'</code></td><td>String</td></tr>
+    <tr><td><code>42891</code></td><td>Number</td></tr>
+    <tr><td><code>true</code></td><td>Boolean</td></tr>
+    <tr><td><code>'2026-01-01T00:00:00.000Z'</code></td><td>Date (ISO strings are detected)</td></tr>
+  </tbody>
+</table>
+</article>
+
+<!-- ════════ SCAFFOLDING ════════ -->
+<article data-page="portals" data-group="Scaffolding" data-src="guides/generated-portals.md">
+<h1>Generated Portals</h1>
+<p class="lead">The <strong>User portal</strong> and <strong>Admin portal</strong> options scaffold a large, working set of models and routes — not stubs. You pick the sub-features you want, and only what they need is generated.</p>
+<p>Every model is real on both databases: <code>defineModel</code> collections on MongoDB; on PostgreSQL, <code>defineTable</code> models (or <code>defineModel</code>, if you chose it) linked by foreign keys, with <code>relations</code> such as <code>user.sessions</code> and <code>plan.subscriptions</code> ready for <code>include</code>.</p>
+
+<h2>Always generated</h2>
+<p><code>POST /auth/login</code>, <code>POST /auth/logout</code> and <code>src/model/User.ts</code>.</p>
+
+<h2>User portal</h2>
+<h3>Models</h3>
+<p><code>User</code>, <code>Session</code>, <code>Notification</code>, <code>File</code>, <code>SupportTicket</code>, <code>Subscription</code>, <code>Invoice</code>, <code>ApiKey</code></p>
+<h3>Routes</h3>
+<p>Registration, <code>me</code>, refresh tokens, email verification, password reset and change, 2FA, session listing; profile, avatar, settings and account deletion; notifications; file uploads; favourites and bookmarks; search; API keys; billing (plans, subscription, payment methods, invoices); support tickets.</p>
+
+<h2>Admin portal</h2>
+<h3>Models</h3>
+<p><code>Admin</code>, <code>SupportTicket</code>, <code>AuditLog</code>, <code>Plan</code>, <code>FAQ</code>, <code>Blog</code>, <code>Category</code>, <code>Coupon</code></p>
+<h3>Routes</h3>
+<p>Dashboard stats; user management (suspend, activate, verify, CSV export); analytics; admin management; notification broadcast; audit, activity and security logs; system health; ticket triage; content (FAQs, blog, categories); billing (plans, coupons, subscriptions) — plus <code>/admin/roles</code> when <a href="#rbac">RBAC</a> is on.</p>
+<p>Protected routes export <code>middlewares = [requireAuth]</code>, or <code>[requireAuth('admin')]</code> with RBAC. A <code>src/migrations/00000000000000_init</code> migration creates every generated table or collection.</p>
+</article>
+
+<!-- ════════ REFERENCE ════════ -->
+<article data-page="cli" data-group="Reference" data-src="cli/index.md">
+<h1>CLI Reference</h1>
+<p class="lead">The <code>efc</code> binary comes with <code>express-file-cluster</code>. A global <code>efc</code> run inside a project hands off to the project's own version.</p>
+
+<h2>Lifecycle</h2>
+<table>
+  <thead><tr><th>Command</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>efc start dev</code></td><td>Development server — single process, hot reload.</td></tr>
+    <tr><td><code>efc build prod</code></td><td>Type-check and transpile <code>src/</code> to <code>dist/src/</code>.</td></tr>
+    <tr><td><code>efc start prod</code></td><td>Run <code>dist/src/index.js</code>, clustered.</td></tr>
+    <tr><td><code>efc run tests</code></td><td>Vitest.</td></tr>
+  </tbody>
+</table>
+
+<h2>Code generation</h2>
+<table>
+  <thead><tr><th>Command</th><th>Creates</th></tr></thead>
+  <tbody>
+    <tr><td><code>efc generate route users/[id]</code></td><td>A route file with method stubs</td></tr>
+    <tr><td><code>efc generate task SendEmail</code></td><td>A background task</td></tr>
+    <tr><td><code>efc generate middleware authorize</code></td><td>A middleware file</td></tr>
+    <tr><td><code>efc generate migration add-orders</code></td><td>A timestamped migration</td></tr>
+    <tr><td><code>efc generate seed users</code></td><td>A seed script</td></tr>
+  </tbody>
+</table>
+
+<h2>Database</h2>
+<table>
+  <thead><tr><th>Command</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>efc db sync [--dry-run]</code></td><td>Reconcile tables / collections and indexes with your models.</td></tr>
+    <tr><td><code>efc db migrate</code></td><td>Run pending migrations as one batch.</td></tr>
+    <tr><td><code>efc db rollback [--steps 2]</code></td><td>Revert the last batch(es).</td></tr>
+    <tr><td><code>efc db status</code></td><td>Applied vs pending migrations.</td></tr>
+    <tr><td><code>efc db seed [name]</code></td><td>Run all seeds, or one.</td></tr>
+    <tr><td><code>efc db studio</code></td><td>Read-only database browser on 127.0.0.1.</td></tr>
+  </tbody>
+</table>
+
+<h2>Diagnostics and tasks</h2>
+<table>
+  <thead><tr><th>Command</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>efc routes</code></td><td>The resolved route table: path, file, methods.</td></tr>
+    <tr><td><code>efc tasks</code></td><td>Registered background tasks.</td></tr>
+    <tr><td><code>efc tasks failed | retry | purge</code></td><td>Inspect and act on dead-lettered jobs.</td></tr>
+    <tr><td><code>efc doctor</code></td><td>Check config, environment variables and project setup.</td></tr>
+    <tr><td><code>efc --version</code></td><td>Installed version.</td></tr>
+  </tbody>
+</table>
+</article>
+
+<article data-page="envvars" data-group="Reference" data-src="guides/environment-variables.md">
+<h1>Environment Variables</h1>
+<p class="lead"><code>ignite()</code> doesn't read <code>process.env</code> for configuration — the scaffolded <code>efc.config.ts</code> does, and passes the values in. <code>NODE_ENV</code> is the one variable the framework reads directly.</p>
+<p><code>create-efc-app</code> writes <code>.env</code> (gitignored, secrets filled in) and <code>.env.example</code> (committed, documented placeholders).</p>
+<table>
+  <thead><tr><th>Variable</th><th>Required</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>PORT</code></td><td>No — <code>3000</code></td><td>HTTP listen port</td></tr>
+    <tr><td><code>NODE_ENV</code></td><td>No</td><td><code>development</code> | <code>production</code> | <code>test</code>. Turns clustering on in production and the dashboard on in development.</td></tr>
+    <tr><td><code>DATABASE_URL</code></td><td>With a database</td><td><code>mongodb://…</code> or <code>postgres://…</code>; the scheme picks the engine. Also used by pg-boss and <code>efc db</code>.</td></tr>
+    <tr><td><code>JWT_SECRET</code></td><td>With auth</td><td>Signing key — generated by the scaffolder (<code>openssl rand -hex 64</code>).</td></tr>
+    <tr><td><code>JWT_EXPIRES_IN</code></td><td>No — <code>7d</code></td><td>Token lifetime: <code>15m</code>, <code>1h</code>, <code>7d</code>…</td></tr>
+    <tr><td><code>COOKIE_DOMAIN</code></td><td>No</td><td>Cookie domain for http-only auth; blank for localhost.</td></tr>
+    <tr><td><code>REDIS_URL</code></td><td>With BullMQ</td><td>Redis connection; <code>rediss://</code>, ACL users and <code>/db</code> supported.</td></tr>
+    <tr><td><code>CORS_ORIGINS</code></td><td>No</td><td>Comma-separated origins, e.g. <code>http://localhost:3000,https://app.com</code>.</td></tr>
+    <tr><td><code>APP_URL</code></td><td>With Mailer</td><td>Base URL for links in emails.</td></tr>
+    <tr><td><code>SMTP_HOST</code></td><td>With Mailer</td><td><code>smtp.gmail.com</code> or your SMTP host</td></tr>
+    <tr><td><code>SMTP_PORT</code></td><td>With Mailer</td><td><code>465</code> (Gmail, TLS) or typically <code>587</code></td></tr>
+    <tr><td><code>SMTP_USER</code></td><td>With Mailer</td><td>Sending address</td></tr>
+    <tr><td><code>SMTP_PASS</code></td><td>With Mailer</td><td>For Gmail, a 16-character App Password — <strong>not</strong> your account password</td></tr>
+    <tr><td><code>SMTP_FROM</code></td><td>No</td><td><code>From:</code> address; defaults to <code>SMTP_USER</code></td></tr>
+    <tr><td><code>EFC_DEBUG</code></td><td>No</td><td><code>1</code> prints full stack traces from <code>efc db</code> commands.</td></tr>
+  </tbody>
+</table>
+<aside class="note">Never commit <code>.env</code>, and use a different <code>JWT_SECRET</code> per environment — rotating it invalidates every issued token.</aside>
+</article>
+
+        <footer class="doc-foot">
+          <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+          <a class="edit" id="editLink" href="https://github.com/pr4shxnt/efc.js/tree/main/docs" target="_blank" rel="noopener">Full reference on GitHub ↗</a>
+        </footer>
+      </main>
+
+      <!-- ─── ON THIS PAGE ─── -->
+      <aside class="toc" aria-label="On this page">
+        <h2>On this page</h2>
+        <ol id="toc"></ol>
+      </aside>
+    </div>
+
+    <script src="docs.js"></script>
+  </body>
+</html>
