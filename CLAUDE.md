@@ -37,7 +37,7 @@ Skills/efc/              ← dense reference cards (/efc skill)
 ## Three import paths — nothing else
 
 ```ts
-import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, defineTable, transaction,
+import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, defineTable, defineCollection, transaction,
          ModelValidationError, logger, getLogger, cache, cacheResponse } from 'express-file-cluster'
 import { issueToken, revokeToken, revokeSession, revokeAllSessions, signToken, requireAuth,
          getCurrentUser } from 'express-file-cluster/auth'
@@ -91,6 +91,7 @@ src/api/docs/[...slug].ts    → /docs/a/b  (req.params.slug = ['a', 'b'])
 - Types are inferred from the schema literal (`InferRecord<typeof M>`, `InferCreate<typeof M>`) — don't write interfaces; `defineModel<T>()` still works (v0.4 behaviour, `create()` takes `Partial<T>`)
 - Portable extras on both engines: `exists`, `distinct` (scalar fields only, sorted, non-null), `updateOne`/`deleteOne` (first match, one statement, return the record), `upsert(filter, create, update)` (filter not merged into create; 409 on create retried once)
 - `defineTable(name, schema, options)` = PostgreSQL-only, Prisma vocabulary (`findMany({ where, orderBy, take, cursor, select })`, `findUnique`, `upsert` = INSERT … ON CONFLICT, `groupBy`, `aggregate`) and SQL types (`integer`, `bigint`→`bigint`, `decimal`→string, `uuid`, `json`, `varchar` via `maxLength`, native arrays, `nativeEnum`, `id: 'serial' | 'bigserial'`, `naming: 'snake_case'`). Throws on MongoDB at first use; defineModel ops on it don't compile. Shares pgTable (pg-table.ts) with defineModel's PostgreSQL adapter. Top-level `ref` = real FK (`onDelete: 'restrict'` default | `'cascade'` | `'setNull'`; type must match the target id — `uuid`/`objectId`, `integer` for serial, `bigint` for bigserial; auto-indexed; sync creates the target first, adds NOT VALID then VALIDATE; violations → 400 on the field / 409 on delete). Top-level array of refs = many-to-many via join table `<table>_<column>` (owner_id, ref_id, position; cascades both ways); records keep the id list; list filters + `set`/`push`; reads one statement, link writes in a transaction; first sync backfills from an old array/jsonb column (kept). `include` (own refs → record | null / m:n → list; back-relations via `options.relations: { x: { hasMany | hasOne: 'Model', foreignKey } }`, hasOne needs unique fk; options select/omit/include + where/orderBy/take/skip on lists; one SQL statement at any depth; writes re-read). Typed includes need `declare module 'express-file-cluster' { interface Tables { User: typeof User } }`. Relation filters in `where`: `some`/`every`/`none` (to-many) and `is`/`isNot` (to-one, `null` ok), EXISTS subqueries, any depth. Nested writes in create/update/upsert (one transaction): refs `connect`/`create`/`connectOrCreate` (+ `disconnect: true`), m:n + `disconnect`/`set`/`push`/`pull`, hasMany `connect`/`create`/`disconnect`/`set`/`delete`/`deleteMany`, hasOne `connect`/`create`/`disconnect`/`delete`; missing connect → 400; not in createMany/updateMany. A model first used inside `transaction()` gets its FKs after commit (avoids a lock wait) defineModel refs stay plain columns. `ignite()` serialises bigints in JSON as strings
+- `defineCollection(name, schema, options)` = MongoDB-only, mongoose vocabulary (`find(filter, { projection, sort, skip, limit, populate, collation })`, `findOneAndUpdate` (returns *before* unless `returnDocument: 'after'`), `updateOne/updateMany/replaceOne` → `{ matchedCount, modifiedCount, upsertedCount, upsertedId }`, `deleteOne/deleteMany` → `{ deletedCount }`, `bulkWrite`, `aggregate<T>`, `watch` (replica set), `countDocuments`, `estimatedDocumentCount`) and BSON types (`decimal128`→string, `long`→bigint, `geoPoint`, `binary`→Buffer; `index: '2dsphere' | 'text' | 'hashed'`, partial indexes). Throws on PostgreSQL at first use; SQL-only types refused at definition. Reuses defineModel's MongoDB adapter (`collection-model.ts` over `mongo-model.ts`) for compile, validation, sync, plan
 - Undeclared fields behave like mongoose on both engines: ignored on writes, treated as absent in filters, ignored in sort/select
 - `update()` / `updateMany()` validate changed fields; failures throw `ModelValidationError` (400), duplicate unique → `HttpError` 409
 - Shared filter subset: `$eq $ne $gt $gte $lt $lte $in $nin $exists $regex $and $or`, dotted paths, array contains; updates: `$set $unset $inc $push $pull`
@@ -119,7 +120,6 @@ src/api/docs/[...slug].ts    → /docs/a/b  (req.params.slug = ['a', 'b'])
 - WebSockets
 - OpenAPI generation, OpenTelemetry
 - `efc lint`, `efc deploy` commands
-- `defineCollection` (MongoDB-native) — planned in `prisma-parity-plan.md` (M5)
 
 Do not suggest or generate code for these features.
 
