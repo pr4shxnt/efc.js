@@ -53,7 +53,7 @@
           "applicationCategory": "DeveloperApplication",
           "applicationSubCategory": "Web framework",
           "operatingSystem": "Node.js 18+",
-          "softwareVersion": "0.7.1",
+          "softwareVersion": "0.9.0",
           "license": "https://opensource.org/licenses/MIT",
           "isAccessibleForFree": true,
           "offers": {
@@ -141,8 +141,8 @@
         <div class="hero-glow"></div>
       </div>
       <div class="container hero-inner">
-        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.7.1</span>defineTable
-          relations, now in the scaffolder</a>
+        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.9.0</span>Migrations
+          written from your models</a>
         <h1 class="hero-title">Express, but your folder <br />is your <span class="serif">router.</span></h1>
         <p class="hero-sub fade-up" style="--d: .2s">Drop a file in <code>src/api/</code> and it's a route. Clustering,
           background jobs and a typed data layer are already set up.</p>
@@ -464,6 +464,10 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
           <h2 class="h2">Recent releases.</h2>
         </header>
         <ol class="releases">
+          <li><span class="v">0.9.0</span><time datetime="2026-10-23">Oct 23</time>
+            <p><code>efc db generate</code> writes migrations from model changes. Plus <code>efc db pull</code>,
+              <code>efc import-prisma</code>, and <code>efc add</code> for features.</p>
+          </li>
           <li><span class="v">0.7.1</span><time datetime="2026-10-16">Oct 16</time>
             <p>The scaffolder generates <code>defineTable</code> models with foreign keys on PostgreSQL.</p>
           </li>
@@ -473,9 +477,6 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
           </li>
           <li><span class="v">0.5.0</span><time datetime="2026-10-15">Oct 15</time>
             <p>Types inferred from schemas, <code>defineTable</code>, and an MCP server for the docs.</p>
-          </li>
-          <li><span class="v">0.4.0</span><time datetime="2026-10-10">Oct 10</time>
-            <p>PostgreSQL, pg-boss, request validation, cron jobs and migrations.</p>
           </li>
         </ol>
         <p class="next"><b>Next:</b> <code>defineCollection</code> for MongoDB. After that, plugins, WebSockets and
@@ -548,7 +549,7 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
       </div>
       <div class="footer-bottom">
         <span>© 2026 EFC Contributors</span>
-        <span>v0.7.1 · Beta</span>
+        <span>v0.9.0 · Beta</span>
       </div>
     </div>
   </footer>
