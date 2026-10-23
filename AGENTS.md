@@ -32,7 +32,7 @@ Before changing or generating any code, read in this order:
 | Cache, logging, errors | `docs/guides/caching.md`, `docs/guides/logging.md`, `docs/guides/error-handling.md` |
 | Clustering, deployment, env vars | `docs/core-concepts/clustering.md`, `docs/guides/deployment.md`, `docs/guides/environment-variables.md` |
 | The CLI (`efc …`) | `docs/cli/index.md` and the page per command |
-| The scaffolder (`create-efc-app`) | `docs/getting-started/index.md`, `docs/guides/generated-portals.md` |
+| The scaffolder (`create-efc-app`), `efc add` registry | `docs/getting-started/index.md`, `docs/cli/add.md`, `docs/guides/generated-portals.md` |
 
 Search when unsure: `grep -rn "<term>" docs Skills/efc`.
 
