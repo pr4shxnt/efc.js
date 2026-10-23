@@ -24,6 +24,10 @@ npm install --save-dev express-file-cluster
 | `efc start prod` | Production server — runs `dist/` with clustering |
 | `efc build prod` | Type-check + transpile `src/` to `dist/src/` |
 | `efc run tests` | Run tests via Vitest |
+| `efc add <item...>` | Copy features (auth, portals, billing, mailer…) into the app from the registry |
+| `efc list` / `efc view <item>` | List registry items / print an item's files |
+| `efc diff [item]` | Compare installed features with the registry |
+| `efc init` | Write `efc.json` for an app made before 0.8 |
 | `efc generate route <path>` | Scaffold a route file |
 | `efc generate task <name>` | Scaffold a task file |
 | `efc generate middleware <name>` | Scaffold a middleware file |
@@ -43,6 +47,7 @@ npm install --save-dev express-file-cluster
 ## Detailed pages
 
 - [start / build / run](./start.md) — Lifecycle commands
+- [add](./add.md) — the feature registry: `add`, `list`, `view`, `diff`, `init`
 - [generate](./generate.md) — Code generation
 - [db](./db.md) — migrations, seeds, studio
 - [diagnostics](./diagnostics.md) — `routes`, `tasks` (incl. dead letters), `doctor`
