@@ -1,9 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type {
   DefaultOperator,
+  CollectionPrimitiveFieldType,
+  CollectionSchema,
   ModelSchema,
   ModelOptions,
   TableFieldDefinition,
+  TablePrimitiveFieldType,
   TableSchema,
   TableSchemaField,
 } from '../types.js';
@@ -24,10 +27,17 @@ export type ScalarType =
   | 'integer'
   | 'bigint'
   | 'decimal'
-  | 'uuid';
+  | 'uuid'
+  | 'decimal128'
+  | 'long'
+  | 'geoPoint'
+  | 'binary';
 
 /** Every field definition the tree holds (a superset of the portable `FieldDefinition`). */
-export type AnyFieldDefinition = TableFieldDefinition;
+export type AnyFieldDefinition = Omit<TableFieldDefinition, 'type' | 'index'> & {
+  type: TablePrimitiveFieldType | CollectionPrimitiveFieldType | 'array';
+  index?: boolean | '2dsphere' | 'text' | 'hashed';
+};
 
 export type FieldNode =
   | { kind: 'scalar'; type: ScalarType; def: AnyFieldDefinition }
@@ -38,10 +48,12 @@ export type FieldNode =
 export type SchemaTree = Record<string, FieldNode>;
 
 /** Which model API a schema belongs to — it decides the field types allowed. */
-export type SchemaMode = 'model' | 'table';
+export type SchemaMode = 'model' | 'table' | 'collection';
 
 const MODEL_TYPES = new Set(['string', 'number', 'boolean', 'date', 'object', 'objectId', 'array']);
 const TABLE_ONLY_TYPES = new Set(['integer', 'bigint', 'decimal', 'uuid', 'json']);
+const COLLECTION_ONLY_TYPES = new Set(['decimal128', 'long', 'geoPoint', 'binary']);
+const SPECIAL_INDEXES = new Set(['2dsphere', 'text', 'hashed']);
 const TABLE_ONLY_OPTIONS = ['precision', 'scale', 'nativeEnum', 'column', 'onDelete'] as const;
 const REFERENTIAL_ACTIONS = new Set(['restrict', 'cascade', 'setNull']);
 const FOREIGN_KEY_TYPES = new Set(['objectId', 'uuid', 'integer', 'bigint']);
@@ -49,7 +61,10 @@ const FOREIGN_KEY_TYPES = new Set(['objectId', 'uuid', 'integer', 'bigint']);
 export function isFieldDefinition(value: unknown): value is AnyFieldDefinition {
   if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
   const type = (value as { type?: unknown }).type;
-  return typeof type === 'string' && (MODEL_TYPES.has(type) || TABLE_ONLY_TYPES.has(type));
+  return (
+    typeof type === 'string' &&
+    (MODEL_TYPES.has(type) || TABLE_ONLY_TYPES.has(type) || COLLECTION_ONLY_TYPES.has(type))
+  );
 }
 
 const untyped = (): FieldNode => ({ kind: 'json', def: { type: 'object' } });
@@ -65,8 +80,11 @@ class SchemaBuilder {
   }
 
   private checkType(type: string, path: string) {
-    if (this.mode === 'model' && TABLE_ONLY_TYPES.has(type)) {
+    if (this.mode !== 'table' && TABLE_ONLY_TYPES.has(type)) {
       this.fail(path, `type '${type}' is PostgreSQL-only — use defineTable, or a portable type`);
+    }
+    if (this.mode !== 'collection' && COLLECTION_ONLY_TYPES.has(type)) {
+      this.fail(path, `type '${type}' is MongoDB-only — use defineCollection, or a portable type`);
     }
   }
 
@@ -75,7 +93,14 @@ class SchemaBuilder {
     if (def.renamedFrom !== undefined && !topLevel) {
       this.fail(path, `'renamedFrom' only applies to top-level fields`);
     }
-    if (this.mode === 'model') {
+    const index = def.index as unknown;
+    if (typeof index === 'string' && (this.mode !== 'collection' || !SPECIAL_INDEXES.has(index))) {
+      this.fail(
+        path,
+        `index must be true or false${this.mode === 'collection' ? `, '2dsphere', 'text' or 'hashed'` : ''}`,
+      );
+    }
+    if (this.mode !== 'table') {
       for (const opt of TABLE_ONLY_OPTIONS) {
         if (def[opt] !== undefined) this.fail(path, `'${opt}' is a defineTable option`);
       }
@@ -187,7 +212,7 @@ class SchemaBuilder {
  * options with an `[EFC]` error naming the field; `table` mode (defineTable) accepts them.
  */
 export function normalizeSchema(
-  schema: ModelSchema | TableSchema,
+  schema: ModelSchema | TableSchema | CollectionSchema,
   mode: SchemaMode = 'model',
   model = 'Model',
 ): SchemaTree {
@@ -353,6 +378,11 @@ function typeError(type: ScalarType, def: AnyFieldDefinition, value: unknown): s
       return typeof value === 'string' && UUID_RE.test(value) ? null : 'must be a valid id';
     case 'uuid':
       return typeof value === 'string' && UUID_RE.test(value) ? null : 'must be a UUID';
+    case 'decimal128':
+    case 'long':
+    case 'geoPoint':
+    case 'binary':
+      return null; // defineCollection only: mongoose casts and validates these
   }
 }
 

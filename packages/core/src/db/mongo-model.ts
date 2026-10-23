@@ -58,6 +58,29 @@ function ctor(type: string, mg: typeof MongooseNS): unknown {
       return Date;
     case 'objectId':
       return mg.Schema.Types.ObjectId;
+    // defineCollection only:
+    case 'decimal128':
+      return mg.Schema.Types.Decimal128;
+    case 'long':
+      return BigInt; // stored as a BSON Long (int64)
+    case 'binary':
+      return Buffer;
+    case 'geoPoint':
+      return new mg.Schema(
+        {
+          type: { type: String, enum: ['Point'], required: true },
+          coordinates: {
+            type: [Number],
+            required: true,
+            validate: {
+              validator: (c: number[]) =>
+                c.length === 2 && Math.abs(c[0]!) <= 180 && Math.abs(c[1]!) <= 90,
+              message: 'must be [longitude, latitude]',
+            },
+          },
+        },
+        { _id: false },
+      );
   }
   return mg.Schema.Types.Mixed;
 }
@@ -152,7 +175,7 @@ async function nextSequence(mg: typeof MongooseNS, key: string): Promise<number>
 
 // Plain objects carrying `_id` (the record, populated references, embedded array
 // items) get a string `id` too; ObjectIds, Dates and other class instances pass through.
-function normalise(value: unknown): unknown {
+export function normalise(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalise);
   if (
     value == null ||
@@ -167,7 +190,7 @@ function normalise(value: unknown): unknown {
   return out;
 }
 
-function translateError(model: string, err: unknown): never {
+export function translateError(model: string, err: unknown): never {
   const e = err as {
     name?: string;
     code?: number;
@@ -205,7 +228,7 @@ function isCastErrorOnId(err: unknown): boolean {
   return e?.name === 'CastError' && e.path === '_id';
 }
 
-function mapFilter(filter: AnyRecord | undefined): AnyRecord {
+export function mapFilter(filter: AnyRecord | undefined): AnyRecord {
   if (!filter) return {};
   const out: AnyRecord = {};
   for (const [k, v] of Object.entries(filter)) {
@@ -215,7 +238,7 @@ function mapFilter(filter: AnyRecord | undefined): AnyRecord {
   return out;
 }
 
-function mapSort(sort: FindOptions['sort']): Record<string, 1 | -1> | undefined {
+export function mapSort(sort: FindOptions['sort']): Record<string, 1 | -1> | undefined {
   if (!sort) return undefined;
   const out: Record<string, 1 | -1> = {};
   for (const [k, v] of Object.entries(sort))
@@ -246,12 +269,15 @@ export function mongoModel<T extends object>(
           ...(options.collection !== undefined && { collection: options.collection }),
         });
         for (const idx of options.indexes ?? []) {
-          schema.index(idx.fields as Record<string, 1 | -1 | 'text'>, {
+          schema.index(idx.fields as MongooseNS.IndexDefinition, {
             ...(idx.unique !== undefined && { unique: idx.unique }),
             ...(idx.expireAfterSeconds !== undefined && {
               expireAfterSeconds: idx.expireAfterSeconds,
             }),
             ...(idx.name !== undefined && { name: idx.name }),
+            ...(idx.partialFilterExpression !== undefined && {
+              partialFilterExpression: idx.partialFilterExpression,
+            }),
           });
         }
         const sequences = sequenceFields(name, tree);
