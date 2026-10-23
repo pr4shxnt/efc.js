@@ -7,7 +7,7 @@ import type {
   Simplify,
   SortDirection,
 } from '../types.js';
-import { normalizeSchema } from './schema.js';
+import { normalizeSchema, type FieldNode, type SchemaTree } from './schema.js';
 import { currentTx, getDbEngine, registerModel } from './engine.js';
 import { mongoModel, normalise, translateError, mapFilter, mapSort } from './mongo-model.js';
 import { traceOps } from './query-log.js';
@@ -87,7 +87,42 @@ function fromBson(value: unknown): unknown {
   return out;
 }
 
-const toRecord = (doc: unknown) => (doc == null ? null : (normalise(fromBson(doc)) as AnyRecord));
+/**
+ * The driver hands back int64 values that fit in 53 bits as numbers: `long` fields are
+ * bigints whatever their size, so cast them by the schema.
+ */
+function castLongs(value: unknown, node: FieldNode): unknown {
+  if (value == null) return value;
+  if (node.kind === 'scalar') {
+    return node.type === 'long' && typeof value === 'number' ? BigInt(value) : value;
+  }
+  if (node.kind === 'array' && Array.isArray(value))
+    return value.map((v) => castLongs(v, node.item));
+  if (node.kind === 'object' && typeof value === 'object') {
+    castTree(value as AnyRecord, node.fields);
+  }
+  return value;
+}
+
+function castTree(doc: AnyRecord, tree: SchemaTree): AnyRecord {
+  for (const [key, node] of Object.entries(tree)) {
+    if (key in doc) doc[key] = castLongs(doc[key], node);
+  }
+  return doc;
+}
+
+/** Whether the schema has a `long` anywhere (most don't: skip the walk). */
+function hasLong(tree: SchemaTree): boolean {
+  const walk = (n: FieldNode): boolean =>
+    n.kind === 'scalar'
+      ? n.type === 'long'
+      : n.kind === 'array'
+        ? walk(n.item)
+        : n.kind === 'object'
+          ? hasLong(n.fields)
+          : false;
+  return Object.values(tree).some(walk);
+}
 
 function writeResult(r: {
   matchedCount?: number;
@@ -115,6 +150,12 @@ function mapBulkOp(op: AnyRecord): AnyRecord {
 function createCollection(name: string, schema: CollectionSchema, options: CollectionOptions) {
   const tree = normalizeSchema(schema, 'collection', name);
   const base = mongoModel<AnyRecord>(name, tree, options);
+  const longs = hasLong(tree);
+  const toRecord = (doc: unknown): AnyRecord | null => {
+    if (doc == null) return null;
+    const rec = normalise(fromBson(doc)) as AnyRecord;
+    return longs ? castTree(rec, tree) : rec;
+  };
 
   const model = async (): Promise<MongooseNS.Model<AnyRecord>> => {
     const engine = getDbEngine();
