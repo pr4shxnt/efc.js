@@ -466,17 +466,28 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
         <ol class="releases">
           <li><span class="v">0.9.0</span><time datetime="2026-10-23">Oct 23</time>
             <p><code>efc db generate</code> writes migrations from model changes. Plus <code>efc db pull</code>,
-              <code>efc import-prisma</code>, and <code>efc add</code> for features.</p>
+              <code>efc import-prisma</code>, pool settings and a relations guide.</p>
+          </li>
+          <li><span class="v">0.8.0</span><time datetime="2026-10-23">Oct 23</time>
+            <p><code>efc add</code>: auth, portals, billing and more, copied into your app as source you own.</p>
           </li>
           <li><span class="v">0.7.1</span><time datetime="2026-10-16">Oct 16</time>
             <p>The scaffolder generates <code>defineTable</code> models with foreign keys on PostgreSQL.</p>
           </li>
           <li><span class="v">0.7.0</span><time datetime="2026-10-16">Oct 16</time>
-            <p>Relations for <code>defineTable</code>: foreign keys, many-to-many, <code>include</code>. Query logging.
-            </p>
+            <p>Relations for <code>defineTable</code>: foreign keys, many-to-many, <code>include</code>. Query logging.</p>
           </li>
           <li><span class="v">0.5.0</span><time datetime="2026-10-15">Oct 15</time>
             <p>Types inferred from schemas, <code>defineTable</code>, and an MCP server for the docs.</p>
+          </li>
+          <li><span class="v">0.3</span><time datetime="2026-07-02">Jul 2</time>
+            <p>Auth routes and <code>requireAuth('role')</code>, typed schema fields, default operators and sequences.</p>
+          </li>
+          <li><span class="v">0.2</span><time datetime="2026-06-23">Jun 23</time>
+            <p>User and admin portals, RBAC, the route docs dashboard and the mailer in the scaffolder.</p>
+          </li>
+          <li><span class="v">0.1</span><time datetime="2026-06-22">Jun 22</time>
+            <p>First release: file-based routing, clustering, background tasks and JWT auth.</p>
           </li>
         </ol>
         <p class="next"><b>Next:</b> <code>defineCollection</code> for MongoDB. After that, plugins, WebSockets and
