@@ -365,6 +365,46 @@ export interface TableFieldDefinition extends Omit<
   fields?: TableSchema;
 }
 
+// ── defineCollection (MongoDB-native) schema ─────────────────────────────────
+
+/** Field types `defineCollection` accepts: the portable ones plus BSON-native types. */
+export type CollectionPrimitiveFieldType =
+  | PrimitiveFieldType
+  /** `Decimal128` — exact; values are decimal `string`s. */
+  | 'decimal128'
+  /** `Long` (int64) — a JS `bigint`. */
+  | 'long'
+  /** A GeoJSON point, `{ type: 'Point', coordinates: [lng, lat] }`. Index it with `'2dsphere'`. */
+  | 'geoPoint'
+  /** Binary data — a `Buffer`. */
+  | 'binary';
+
+/** A GeoJSON point: longitude first. */
+export interface GeoPoint {
+  type: 'Point';
+  coordinates: [number, number];
+}
+
+export interface CollectionFieldDefinition extends Omit<
+  FieldDefinition,
+  'type' | 'of' | 'fields' | 'index'
+> {
+  type: CollectionPrimitiveFieldType | 'array';
+  /** `true` for a regular index, or a special one: `'2dsphere'` (geo), `'text'`, `'hashed'`. */
+  index?: boolean | '2dsphere' | 'text' | 'hashed';
+  of?: CollectionPrimitiveFieldType | CollectionSchema;
+  fields?: CollectionSchema;
+}
+
+export type CollectionSchemaField =
+  | CollectionFieldDefinition
+  | CollectionSchema
+  | [CollectionSchema]
+  | readonly [CollectionSchema];
+export interface CollectionSchema {
+  [field: string]: CollectionSchemaField;
+}
+
 /** `onDelete` behaviour of a `defineTable` foreign key. */
 export type ReferentialAction = 'restrict' | 'cascade' | 'setNull';
 
@@ -397,9 +437,11 @@ export interface FindOptions extends ModelQueryOptions {
 }
 
 export interface IndexDefinition {
-  /** Field → direction (`1` / `-1`), or `'text'` for a full-text index. */
-  fields: Record<string, 1 | -1 | 'text'>;
+  /** Field → direction (`1` / `-1`), `'text'` (full text); MongoDB also `'2dsphere'`, `'hashed'`. */
+  fields: Record<string, 1 | -1 | 'text' | '2dsphere' | 'hashed'>;
   unique?: boolean;
+  /** MongoDB partial index: only documents matching this filter are indexed. */
+  partialFilterExpression?: Record<string, unknown>;
   /** MongoDB TTL index: documents expire this many seconds after the indexed date. */
   expireAfterSeconds?: number;
   name?: string;
@@ -560,31 +602,37 @@ export interface ModelCRUD<T extends object, TCreate = Partial<T>> {
 
 export type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
-type PrimitiveValue<P> = P extends 'string' | 'objectId' | 'uuid' | 'decimal'
+type PrimitiveValue<P> = P extends 'string' | 'objectId' | 'uuid' | 'decimal' | 'decimal128'
   ? string // decimal: exact, as a string
   : P extends 'number' | 'integer'
     ? number
-    : P extends 'bigint'
+    : P extends 'bigint' | 'long'
       ? bigint
       : P extends 'boolean'
         ? boolean
         : P extends 'date'
           ? Date
-          : unknown; // 'object' without `fields`, 'json': any JSON value
+          : P extends 'geoPoint'
+            ? GeoPoint
+            : P extends 'binary'
+              ? Buffer
+              : unknown; // 'object' without `fields`, 'json': any JSON value
 
 /** What a field accepts on writes: dates parse from strings, numbers widen exact types. */
 type InputPrimitive<P> = P extends 'date'
   ? Date | string | number
-  : P extends 'bigint'
+  : P extends 'bigint' | 'long'
     ? bigint | number
-    : P extends 'decimal'
+    : P extends 'decimal' | 'decimal128'
       ? string | number
       : PrimitiveValue<P>;
+
+type AnyPrimitiveFieldType = TablePrimitiveFieldType | CollectionPrimitiveFieldType;
 
 /** `I` = input mode (create data) instead of record mode. */
 type InferDefinition<F, I extends boolean> = F extends { type: 'array' }
   ? F extends { of: infer O }
-    ? O extends TablePrimitiveFieldType
+    ? O extends AnyPrimitiveFieldType
       ? (I extends true ? InputPrimitive<O> : PrimitiveValue<O>)[]
       : InferObject<O, I>[]
     : unknown[]
@@ -602,7 +650,7 @@ type InferDefinition<F, I extends boolean> = F extends { type: 'array' }
 
 type InferField<F, I extends boolean> = F extends readonly [infer S]
   ? InferObject<S, I>[]
-  : F extends { type: TablePrimitiveFieldType | 'array' }
+  : F extends { type: AnyPrimitiveFieldType | 'array' }
     ? InferDefinition<F, I>
     : InferObject<F, I>;
 

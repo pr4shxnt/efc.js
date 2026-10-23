@@ -37,11 +37,13 @@
 | [Authentication](./guides/authentication.md) | JWT strategies, login/logout, `requireAuth` |
 | [RBAC](./guides/rbac.md) | Role-based route protection via the `requireAuth('role')` shorthand |
 | [Database](./guides/database.md) | `defineModel`, queries, transactions, MongoDB vs PostgreSQL |
-| [Which model API?](./guides/which-api.md) | `defineModel` vs `defineTable`, and moving between them |
+| [Which model API?](./guides/which-api.md) | `defineModel` vs `defineTable` vs `defineCollection`, and moving between them |
 | [Relations](./guides/relations.md) | Foreign keys, many-to-many, `include`, relation filters, nested writes |
 | [defineTable](./api-reference/table.md) | PostgreSQL-native models: Prisma-style queries, SQL types, aggregation |
+| [defineCollection](./api-reference/collection.md) | MongoDB-native models: mongoose-style queries, BSON types, geo, bulk writes, change streams |
 | [Migrations & Seeds](./guides/migrations.md) | `efc db generate / migrate / rollback / pull / seed / studio`, drift checks |
 | [Coming from Prisma](./guides/coming-from-prisma.md) | `efc import-prisma`, schema and query mapping |
+| [Coming from mongoose](./guides/coming-from-mongoose.md) | `defineCollection` for mongoose users: schema and query mapping |
 | [Validation](./guides/validation.md) | Route `schema` exports with zod, valibot, arktype |
 | [Logging](./guides/logging.md) | pino, request IDs, `getLogger()` |
 | [Caching & Sessions](./guides/caching.md) | `cache`, `cacheResponse`, revoking JWT sessions |

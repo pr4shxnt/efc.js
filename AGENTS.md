@@ -26,6 +26,7 @@ Before changing or generating any code, read in this order:
 | `ignite()` options, boot order | `docs/api-reference/ignite.md`, `Skills/efc/pre-flight.md` |
 | Models, queries, transactions (MongoDB / PostgreSQL) | `docs/guides/database.md`, `docs/api-reference/db.md` |
 | PostgreSQL-native models (`defineTable`, Prisma-style) | `docs/api-reference/table.md`, `docs/guides/which-api.md` |
+| MongoDB-native models (`defineCollection`, mongoose-style) | `docs/api-reference/collection.md`, `docs/guides/which-api.md` |
 | Relations (`ref`, many-to-many, `include`, nested writes) | `docs/guides/relations.md`, `docs/api-reference/table.md` |
 | Migrations (incl. `efc db generate`, `pull`), seeds, `efc db` | `docs/guides/migrations.md`, `docs/cli/db.md` |
 | Coming from Prisma, `efc import-prisma` | `docs/guides/coming-from-prisma.md` |

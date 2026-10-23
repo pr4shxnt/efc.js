@@ -37,3 +37,4 @@ export { connectMongo } from './mongo.js';
 export { connectPostgres } from './postgres.js';
 export { defineModel } from './model.js';
 export { defineTable } from './table-model.js';
+export { defineCollection } from './collection-model.js';

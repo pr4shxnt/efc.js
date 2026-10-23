@@ -35,6 +35,14 @@ function defineModel(name: string, schema: ModelSchema, options?: ModelOptions):
 type InferRecord<typeof Model>  // record incl. id + timestamps per options (defineModel and defineTable)
 type InferCreate<typeof Model>  // create() input: required w/o default/sequence mandatory; dates accept string|number
 async function transaction<T>(fn: () => Promise<T>): Promise<T> // model calls inside join automatically
+// MongoDB-native (mongoose vocabulary + BSON types); PostgreSQL → [EFC] error at first use
+function defineCollection(name: string, schema: CollectionSchema, options?: CollectionOptions): CollectionModel<S, O>
+//   types: + 'decimal128' (string) 'long' (bigint) 'geoPoint' ({ type: 'Point', coordinates: [lng, lat] }) 'binary' (Buffer)
+//   index: true | '2dsphere' | 'text' | 'hashed'; options.indexes + partialFilterExpression; options.collation
+//   find(filter, { projection, sort, skip, limit, populate, collation }) · findOne · findById · exists · countDocuments · distinct
+//   create · insertMany · updateOne/updateMany/replaceOne(f, u, { upsert }) → { matchedCount, modifiedCount, upsertedCount, upsertedId }
+//   findOneAndUpdate(f, u, { upsert, returnDocument: 'before' (default) | 'after' }) · findByIdAndUpdate · findOneAndDelete · findByIdAndDelete
+//   deleteOne/deleteMany → { deletedCount } · bulkWrite(ops) · aggregate<T>(pipeline) · watch(pipeline) (replica set; for await)
 // PostgreSQL-native (Prisma vocabulary + SQL types); MongoDB → [EFC] error at first use
 function defineTable(name: string, schema: TableSchema, options?: TableOptions): TableModel<S, O>
 //   types: + 'integer' (number) 'bigint' (bigint) 'decimal' {precision, scale} (string, exact) 'uuid' 'json'

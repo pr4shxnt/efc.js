@@ -36,7 +36,8 @@ defineMiddleware()
 defineModel()          // ← WAIT — this DOES exist, from main path
 createModel()          // ← does NOT exist (it's defineModel, not createModel)
 defineTable()          // ← EXISTS (PostgreSQL-only, Prisma-style) — see api-surface.md
-defineCollection()     // ← NOT YET — planned (MongoDB-native API, prisma-parity-plan M5)
+defineCollection()     // ← EXISTS (MongoDB-only, mongoose vocabulary) — see api-surface.md
+Collection.findMany() / include               // ← defineTable vocabulary, NOT on defineCollection
 Model.findMany() / findUnique() / groupBy()   // ← only on defineTable, NOT on defineModel
 Table.find() / findById() / $gt / $inc        // ← defineModel vocabulary, NOT on defineTable
 Table.findMany({ include })                   // ← EXISTS; so do relation filters `{ posts: { some } }` and nested writes `{ connect }` (defineTable only)

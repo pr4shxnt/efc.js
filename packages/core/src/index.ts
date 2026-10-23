@@ -324,7 +324,26 @@ export { logger, getLogger } from './logger.js';
 export { cache } from './cache/index.js';
 export { cacheResponse } from './cache/response.js';
 export { compose } from './compose.js';
-export { db, setDbClient, getDbClient, defineModel, defineTable } from './db/index.js';
+export {
+  db,
+  setDbClient,
+  getDbClient,
+  defineModel,
+  defineTable,
+  defineCollection,
+} from './db/index.js';
+export type {
+  CollectionModel,
+  CollectionOptions,
+  CollectionFilter,
+  CollectionUpdate,
+  CollectionFindOptions,
+  CollectionWriteResult,
+  CollectionBulkResult,
+  CollectionBulkOp,
+  CollectionChange,
+  CollectionChangeStream,
+} from './db/collection-model.js';
 export { transaction } from './db/transaction.js';
 export { ModelValidationError } from './db/schema.js';
 export { scanDir } from './router/scan.js';
@@ -333,6 +352,9 @@ export { workerCount } from './cluster/index.js';
 export type {
   EFCConfig,
   DatabasePoolConfig,
+  CollectionSchema,
+  CollectionFieldDefinition,
+  GeoPoint,
   CorsConfig,
   RouteEntry,
   RouteMeta,

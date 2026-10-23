@@ -196,6 +196,12 @@ function scalarSpec(type: ScalarType, def: AnyFieldDefinition, native: boolean):
     case 'objectId':
     case 'uuid':
       return { kind: 'uuid', ddl: 'uuid', formatted: 'uuid' };
+    case 'decimal128':
+    case 'long':
+    case 'geoPoint':
+    case 'binary':
+      // The schema builder refuses MongoDB-only types outside defineCollection.
+      throw new Error(`[EFC] type '${type}' is MongoDB-only`);
   }
 }
 
