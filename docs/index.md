@@ -38,7 +38,8 @@
 | [RBAC](./guides/rbac.md) | Role-based route protection via the `requireAuth('role')` shorthand |
 | [Database](./guides/database.md) | `defineModel`, queries, transactions, MongoDB vs PostgreSQL |
 | [defineTable](./api-reference/table.md) | PostgreSQL-native models: Prisma-style queries, SQL types, aggregation |
-| [Migrations & Seeds](./guides/migrations.md) | `efc db migrate / rollback / seed / studio` |
+| [Migrations & Seeds](./guides/migrations.md) | `efc db generate / migrate / rollback / pull / seed / studio`, drift checks |
+| [Coming from Prisma](./guides/coming-from-prisma.md) | `efc import-prisma`, schema and query mapping |
 | [Validation](./guides/validation.md) | Route `schema` exports with zod, valibot, arktype |
 | [Logging](./guides/logging.md) | pino, request IDs, `getLogger()` |
 | [Caching & Sessions](./guides/caching.md) | `cache`, `cacheResponse`, revoking JWT sessions |

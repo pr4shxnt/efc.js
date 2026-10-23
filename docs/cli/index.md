@@ -33,7 +33,11 @@ npm install --save-dev express-file-cluster
 | `efc generate middleware <name>` | Scaffold a middleware file |
 | `efc generate migration <name>` | Scaffold a timestamped migration |
 | `efc generate seed <name>` | Scaffold a seed script |
-| `efc db migrate \| rollback \| status` | Run, revert and inspect migrations |
+| `efc db generate [name] [--allow-drop] [--tighten] [--verify]` | Write a migration from the models (or verify the migrations match them) |
+| `efc db migrate [--baseline] \| rollback \| status` | Run, revert and inspect migrations |
+| `efc db sync [--dry-run] [--exit-code]` | Bring the database in line with the models; `--exit-code` exits 2 on drift |
+| `efc db pull [--out dir] [--force]` | Write `defineTable` models for an existing PostgreSQL database |
+| `efc import-prisma [schema.prisma] [--out dir]` | Write `defineTable` models from a Prisma schema |
 | `efc db seed [name]` | Run seed scripts |
 | `efc db studio` | Read-only database browser on 127.0.0.1 |
 | `efc routes` | Print the resolved route table |
