@@ -15,9 +15,9 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - `defineModel` on MongoDB (mongoose) and PostgreSQL (Drizzle) — one API
 - Structured logging (pino) with request IDs; opt-in query logging (`logging.queries`: per-operation duration + statement count, slow queries, N+1 warnings)
 - Cache (`cache`, `cacheResponse`) on Redis or memory, also used as the JWT session-revocation store
-- CLI (`efc` binary) incl. migrations, seeds and a read-only studio
+- CLI (`efc` binary) incl. migrations, seeds, a read-only studio and a shadcn-style feature registry (`efc add | list | view | diff | init`)
 
-**Status: v0.7.1 Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M6a query logging).** See `README.md` and `docs/` for full documentation.
+**Status: v0.8.0 Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M6a query logging; 0.8.0: `efc add` feature registry).** See `README.md` and `docs/` for full documentation.
 
 ---
 
@@ -134,7 +134,8 @@ Do not suggest or generate code for these features.
 - `revokeToken` only clears the cookie — the JWT remains valid until expiry. `revokeSession(req, res?)` / `revokeAllSessions(userId)` actually revoke, but need `cache` configured. If the cache is unreachable, `requireAuth` answers 503 by default (`cache.onRevocationCheckError: 'allow'` passes requests instead); the revoke calls throw
 - The `memory` cache backend lives in the cluster primary and workers use it over IPC (shared per machine, lost on restart, not shared across instances) — use `redis` for multiple instances
 - Scaffolded apps set `cache` (Redis if `REDIS_URL`, else memory); their logout uses `revokeSession` and password reset calls `revokeAllSessions`
-- Scaffolded PostgreSQL apps use `defineTable` by default (prompt "Models:"; `ScaffoldOptions.modelApi: 'defineModel'` keeps the portable API): feature models reference `User`/`Admin`/`Plan`/… by FK with `relations`, and `src/model/index.ts` registers every model and declares `Tables`. Route code is generated through `orm(opts)` in scaffold.ts — never hand-write `User.findOne(...)` in templates
+- Scaffolded PostgreSQL apps use `defineTable` by default (prompt "Models:"; `ScaffoldOptions.modelApi: 'defineModel'` keeps the portable API): feature models reference `User`/`Admin`/`Plan`/… by FK (no back-`relations` — each feature stays self-contained), and `src/model/index.ts` registers every model and declares `Tables`. Route code is generated through `orm(opts)` in scaffold.ts — never hand-write `User.findOne(...)` in templates
+- `create-efc-app` writes only the **base** (server, `src/api` + health, `src/tasks` + SendEmail stub, database, task backend); features are registry items (`packages/create-efc-app/src/registry.ts` `ITEMS`) picked at creation or added with `efc add`. Items are rendered from scaffold.ts in **registry mode** (`registry: true`: login/password flows always handle User + Admin, routes always enqueue SendEmail, rbac + routeDocs on, no back-relations) by diffing scaffolds with/without the item; `renderVariant` throws unless every item is self-contained. `scripts/bundle-registry.mjs` renders 6 variants (ts/js × mongo/pg-model/pg-table) into core `dist/registry`; `efc add` (core `src/cli/registry.ts`) reads it, tracks file hashes in the app's `efc.json`, and never overwrites a changed file without `--overwrite`. Items can declare `prompts` (env vars asked in the terminal by `efc add` and in `create-efc-app`; e.g. `email-client` SMTP, `auth@google`/`auth@apple` OAuth credentials) and `aliases` (`mailer` → `email-client`). When changing a template, keep it free of cross-feature conditionals in registry mode
 - `cache` operations never throw on a Redis outage (misses / no-ops); they DO throw if no cache is configured
 - `efc.config.ts` is informational; `src/index.ts` is the actual runtime entrypoint
 - `efc build prod` transpiles `src/**` unbundled → `dist/src/**` (entry `dist/src/index.js`); routes/tasks must exist as files in `dist/` because they're discovered by filesystem scan
