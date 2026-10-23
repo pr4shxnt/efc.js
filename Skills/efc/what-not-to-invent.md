@@ -136,7 +136,14 @@ efc deploy          # NOT IMPLEMENTED
 efc db generate     # NOT IMPLEMENTED — no schema-diff migration generator; write migrations
                     # by hand (efc generate migration <name>) and call Model.sync()
 efc db reset / fresh # NOT IMPLEMENTED
+efc remove <item>   # NOT IMPLEMENTED — `efc add` copies files; delete them yourself
+efc add <url|@ns/x> # NOT IMPLEMENTED — only the built-in registry (efc list); no third-party registries
 ```
+
+`efc add | list | view | diff | init` DO exist (the feature registry, `docs/cli/add.md`).
+OAuth sign-in exists only as registry items (`efc add auth@google`, `efc add auth@apple`) —
+app code in `src/api/auth/<provider>/` + `src/lib/oauth`; there is NO framework OAuth API
+(no `passport`, no `oauth` option on `ignite()`, no other providers).
 
 Implemented commands: `start dev|prod`, `build prod`, `run tests`, `generate route|task|middleware|migration|seed`, `db migrate|rollback|status|seed|studio`, `routes`, `tasks` (+ `failed|retry|purge`), `doctor`, `--version`.
 
