@@ -4,6 +4,16 @@ This is the ground-truth file for working in this repository. Read it before wri
 
 ---
 
+## Identity & Git Commits
+
+- Always use the following author and committer identity for all git commits:
+  - Name: `Prashant Adhikari`
+  - Email: `student@prashantadhikari7.com.np`
+- **NEVER** include `Co-Authored-By: Claude ...` (or any other AI co-author tag) in commit messages.
+- Do not mention Claude in commit messages.
+
+---
+
 ## What this project is
 
 A backend framework called **express-file-cluster** (`express-file-cluster` on npm). It wraps Express with:
