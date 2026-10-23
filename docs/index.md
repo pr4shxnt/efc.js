@@ -43,6 +43,7 @@
 | [defineCollection](./api-reference/collection.md) | MongoDB-native models: mongoose-style queries, BSON types, geo, bulk writes, change streams |
 | [Migrations & Seeds](./guides/migrations.md) | `efc db generate / migrate / rollback / pull / seed / studio`, drift checks |
 | [Coming from Prisma](./guides/coming-from-prisma.md) | `efc import-prisma`, schema and query mapping |
+| [Coming from mongoose](./guides/coming-from-mongoose.md) | `defineCollection` for mongoose users: schema and query mapping |
 | [Validation](./guides/validation.md) | Route `schema` exports with zod, valibot, arktype |
 | [Logging](./guides/logging.md) | pino, request IDs, `getLogger()` |
 | [Caching & Sessions](./guides/caching.md) | `cache`, `cacheResponse`, revoking JWT sessions |
