@@ -1,30 +1,36 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EFC — the file-based backend framework for Express</title>
-    <meta name="description" content="express-file-cluster turns files in src/api into Express routes, uses every CPU core, queues background jobs and types your MongoDB or PostgreSQL models." />
-    <link rel="canonical" href="https://efc.prashantadhikari7.com.np/" />
-    <meta name="robots" content="index, follow, max-image-preview:large" />
-    <meta name="color-scheme" content="dark" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="EFC" />
-    <meta property="og:locale" content="en_US" />
-    <meta property="og:url" content="https://efc.prashantadhikari7.com.np/" />
-    <meta property="og:title" content="EFC — Express, but your folder is your router" />
-    <meta property="og:description" content="express-file-cluster turns files in src/api into Express routes, uses every CPU core, queues background jobs and types your MongoDB or PostgreSQL models." />
-    <meta property="og:image" content="https://efc.prashantadhikari7.com.np/assets/og-image.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="EFC: Express, but your folder is your router. Shows the route dashboard and the install command." />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="EFC — Express, but your folder is your router" />
-    <meta name="twitter:description" content="express-file-cluster turns files in src/api into Express routes, uses every CPU core, queues background jobs and types your MongoDB or PostgreSQL models." />
-    <meta name="twitter:image" content="https://efc.prashantadhikari7.com.np/assets/og-image.png" />
-    <meta name="twitter:image:alt" content="EFC: Express, but your folder is your router. Shows the route dashboard and the install command." />
-    <link rel="manifest" href="site.webmanifest" />
-    <script type="application/ld+json">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EFC — the file-based backend framework for Express</title>
+  <meta name="description"
+    content="express-file-cluster turns files in src/api into Express routes, uses every CPU core, queues background jobs and types your MongoDB or PostgreSQL models." />
+  <link rel="canonical" href="https://efc.prashantadhikari7.com.np/" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="color-scheme" content="dark" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="EFC" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:url" content="https://efc.prashantadhikari7.com.np/" />
+  <meta property="og:title" content="EFC — Express, but your folder is your router" />
+  <meta property="og:description"
+    content="express-file-cluster turns files in src/api into Express routes, uses every CPU core, queues background jobs and types your MongoDB or PostgreSQL models." />
+  <meta property="og:image" content="https://efc.prashantadhikari7.com.np/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt"
+    content="EFC: Express, but your folder is your router. Shows the route dashboard and the install command." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="EFC — Express, but your folder is your router" />
+  <meta name="twitter:description"
+    content="express-file-cluster turns files in src/api into Express routes, uses every CPU core, queues background jobs and types your MongoDB or PostgreSQL models." />
+  <meta name="twitter:image" content="https://efc.prashantadhikari7.com.np/assets/og-image.png" />
+  <meta name="twitter:image:alt"
+    content="EFC: Express, but your folder is your router. Shows the route dashboard and the install command." />
+  <link rel="manifest" href="site.webmanifest" />
+  <script type="application/ld+json">
 {
       "@context": "https://schema.org",
       "@graph": [
@@ -60,14 +66,14 @@
           "screenshot": "https://efc.prashantadhikari7.com.np/assets/hero-dashboard.webp",
           "image": "https://efc.prashantadhikari7.com.np/assets/og-image.png",
           "sameAs": [
-            "https://github.com/pr4shxnt/efc.js",
+            "https://github.com/siggold/express-file-cluster",
             "https://www.npmjs.com/package/express-file-cluster"
           ]
         },
         {
           "@type": "SoftwareSourceCode",
           "name": "express-file-cluster",
-          "codeRepository": "https://github.com/pr4shxnt/efc.js",
+          "codeRepository": "https://github.com/siggold/express-file-cluster",
           "programmingLanguage": [
             "TypeScript",
             "JavaScript"
@@ -81,149 +87,174 @@
       ]
     }
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
-    <link rel="alternate icon" href="assets/favicon.ico" />
-    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
-    <meta name="theme-color" content="#07090c" />
-    <link rel="preload" as="image" href="assets/hero-dashboard.webp" />
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <nav id="navbar">
-      <div class="nav-inner">
-        <a href="#top" class="logo" aria-label="efc.js home">
-          <svg class="logo-img" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-            <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor" />
-            <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85" />
-            <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor" />
-          </svg>
-          <span>efc<span class="logo-dot">.</span>js</span>
-        </a>
-        <div class="nav-links">
-          <a href="docs.html">Docs</a>
-          <a href="workspace.html">Workspace</a>
-          <a href="#changelog">Changelog</a>
-          <a href="https://github.com/pr4shxnt/efc.js" target="_blank" rel="noopener">GitHub</a>
-        </div>
-        <a href="docs.html#quickstart" class="btn-primary nav-cta">Get started</a>
-        <button class="hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobileMenu">
-          <span></span><span></span><span></span>
-        </button>
-      </div>
-      <div class="mobile-menu" id="mobileMenu">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
+  <link rel="alternate icon" href="assets/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
+  <meta name="theme-color" content="#07090c" />
+  <link rel="preload" as="image" href="assets/hero-dashboard.webp" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <nav id="navbar">
+    <div class="nav-inner">
+      <a href="#top" class="logo" aria-label="efc.js home">
+        <svg class="logo-img" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor" />
+          <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85" />
+          <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor" />
+        </svg>
+        <span>efc<span class="logo-dot">.</span>js</span>
+      </a>
+      <div class="nav-links">
         <a href="docs.html">Docs</a>
         <a href="workspace.html">Workspace</a>
         <a href="#changelog">Changelog</a>
-        <a href="https://github.com/pr4shxnt/efc.js" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/siggold/express-file-cluster" target="_blank" rel="noopener">GitHub</a>
       </div>
-    </nav>
+      <a href="docs.html#quickstart" class="btn-primary nav-cta">Get started</a>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false"
+        aria-controls="mobileMenu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <div class="mobile-menu" id="mobileMenu">
+      <a href="docs.html">Docs</a>
+      <a href="workspace.html">Workspace</a>
+      <a href="#changelog">Changelog</a>
+      <a href="https://github.com/siggold/express-file-cluster" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </nav>
 
-    <main id="top">
-      <!-- HERO -->
-      <section class="hero">
-        <div class="hero-bg" aria-hidden="true"><div class="hero-grid"></div><div class="hero-glow"></div></div>
-        <div class="container hero-inner">
-          <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.7.1</span>defineTable relations, now in the scaffolder</a>
-          <h1 class="hero-title">Express, but your folder <br />is your <span class="serif">router.</span></h1>
-          <p class="hero-sub fade-up" style="--d: .2s">Drop a file in <code>src/api/</code> and it's a route. Clustering, background jobs and a typed data layer are already set up.</p>
-          <div class="hero-actions fade-up" style="--d: .3s">
-            <div class="install">
-              <span><span class="c-dim">$</span> npx create-efc-app my-api</span>
-              <button class="copy-btn" data-copy="npx create-efc-app my-api" aria-label="Copy install command">Copy</button>
-            </div>
-            <a href="docs.html#quickstart" class="btn-ghost btn-lg">Read the docs</a>
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero">
+      <div class="hero-bg" aria-hidden="true">
+        <div class="hero-grid"></div>
+        <div class="hero-glow"></div>
+      </div>
+      <div class="container hero-inner">
+        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.7.1</span>defineTable
+          relations, now in the scaffolder</a>
+        <h1 class="hero-title">Express, but your folder <br />is your <span class="serif">router.</span></h1>
+        <p class="hero-sub fade-up" style="--d: .2s">Drop a file in <code>src/api/</code> and it's a route. Clustering,
+          background jobs and a typed data layer are already set up.</p>
+        <div class="hero-actions fade-up" style="--d: .3s">
+          <div class="install">
+            <span><span class="c-dim">$</span> npx create-efc-app my-api</span>
+            <button class="copy-btn" data-copy="npx create-efc-app my-api"
+              aria-label="Copy install command">Copy</button>
           </div>
+          <a href="docs.html#quickstart" class="btn-ghost btn-lg">Read the docs</a>
         </div>
-        <div class="container hero-shots fade-up" style="--d: .45s">
-          <div class="shots">
-            <figure class="shot shot-main">
-              <div class="shot-bar" aria-hidden="true"><span class="shot-url">localhost:3000</span></div>
-              <img src="assets/hero-dashboard.webp" width="1280" height="800" alt="The EFC development dashboard listing a project's routes, such as GET /v1/api/health, with method filters and a typed response example." />
+      </div>
+      <div class="container hero-shots fade-up" style="--d: .45s">
+        <div class="shots">
+          <figure class="shot shot-main">
+            <div class="shot-bar" aria-hidden="true"><span class="shot-url">localhost:3000</span></div>
+            <img src="assets/hero-dashboard.webp" width="1280" height="800"
+              alt="The EFC development dashboard listing a project's routes, such as GET /v1/api/health, with method filters and a typed response example." />
+          </figure>
+          <div class="side-wrap">
+            <figure class="shot shot-side">
+              <img src="assets/hero-workspace.webp" width="1280" height="744" loading="lazy"
+                alt="The EFC Workspace: a project tree with src/api, src/model and src/tasks, and src/index.ts calling ignite()." />
             </figure>
-            <div class="side-wrap">
-              <figure class="shot shot-side">
-                <img src="assets/hero-workspace.webp" width="1280" height="744" loading="lazy" alt="The EFC Workspace: a project tree with src/api, src/model and src/tasks, and src/index.ts calling ignite()." />
-              </figure>
-            </div>
-            <div class="shots-fade" aria-hidden="true"></div>
           </div>
-          <p class="shots-note">Left: the route dashboard every app serves in development. Right: the project that produced it.</p>
+          <div class="shots-fade" aria-hidden="true"></div>
         </div>
-      </section>
+        <p class="shots-note">Left: the route dashboard every app serves in development. Right: the project that
+          produced it.</p>
+      </div>
+    </section>
 
-      <!-- STORY -->
-      <section class="story">
-        <div class="container">
-          <p class="story-text" id="storyText">Every Express app starts with the same chores: a router, a cluster, a queue, auth, a database layer. EFC does them once, so <span class="em">your app starts at the part that's actually yours.</span></p>
-        </div>
-      </section>
+    <!-- STORY -->
+    <section class="story">
+      <div class="container">
+        <p class="story-text" id="storyText">Every Express app starts with the same chores: a router, a cluster, a
+          queue, auth, a database layer. EFC does them once, so <span class="em">your app starts at the part that's
+            actually yours.</span></p>
+      </div>
+    </section>
 
-      <!-- ROUTING -->
-      <section class="sec" id="features">
-        <div class="container">
-          <header class="sec-head reveal">
-            <p class="label">Routing</p>
-            <h2 class="h2">The file tree is the route table.</h2>
-            <p class="lede">EFC reads <code>src/api/</code> when the server starts. Rename a file and its URL changes with it.</p>
-          </header>
+    <!-- ROUTING -->
+    <section class="sec" id="features">
+      <div class="container">
+        <header class="sec-head reveal">
+          <p class="label">Routing</p>
+          <h2 class="h2">The file tree is the route table.</h2>
+          <p class="lede">EFC reads <code>src/api/</code> when the server starts. Rename a file and its URL changes with
+            it.</p>
+        </header>
 
-          <div class="scrolly" id="routeScrolly">
-            <div class="steps">
-              <div class="step" data-step="0">
-                <h3>A file is a route</h3>
-                <p>Export <code>GET</code>, <code>POST</code> and so on. Methods you leave out answer 405 by themselves.</p>
-              </div>
-              <div class="step" data-step="1">
-                <h3>Brackets are params</h3>
-                <p><code>[id].ts</code> becomes <code>:id</code>. Static paths always win, so <code>/users/me</code> never reaches <code>/users/:id</code>.</p>
-              </div>
-              <div class="step" data-step="2">
-                <h3>Optional and catch-all</h3>
-                <p><code>[[id]]</code> is optional. <code>[...slug]</code> takes the rest of the path as an array.</p>
-              </div>
-              <div class="step" data-step="3">
-                <h3>Validated on the way in</h3>
-                <p><code>export const schema</code> takes zod, valibot or arktype. Bad input gets a 400 before your handler runs.</p>
-              </div>
+        <div class="scrolly" id="routeScrolly">
+          <div class="steps">
+            <div class="step" data-step="0">
+              <h3>A file is a route</h3>
+              <p>Export <code>GET</code>, <code>POST</code> and so on. Methods you leave out answer 405 by themselves.
+              </p>
             </div>
+            <div class="step" data-step="1">
+              <h3>Brackets are params</h3>
+              <p><code>[id].ts</code> becomes <code>:id</code>. Static paths always win, so <code>/users/me</code> never
+                reaches <code>/users/:id</code>.</p>
+            </div>
+            <div class="step" data-step="2">
+              <h3>Optional and catch-all</h3>
+              <p><code>[[id]]</code> is optional. <code>[...slug]</code> takes the rest of the path as an array.</p>
+            </div>
+            <div class="step" data-step="3">
+              <h3>Validated on the way in</h3>
+              <p><code>export const schema</code> takes zod, valibot or arktype. Bad input gets a 400 before your
+                handler runs.</p>
+            </div>
+          </div>
 
-            <div class="sticky">
-              <div class="window">
-                <div class="code-bar"><span class="code-bar-label" id="routeLabel">src/api/health.ts</span></div>
-                <div class="route-stage">
-                  <div class="tree" aria-label="Project tree">
-                    <div class="d">src/api/</div>
-                    <div class="f ind1" data-from="0" data-hot="0">health.ts</div>
-                    <div class="d ind1 f" data-from="1">users/</div>
-                    <div class="f ind2" data-from="1" data-hot="1">index.ts</div>
-                    <div class="f ind2" data-from="1" data-hot="1 3">[id].ts</div>
-                    <div class="d ind1 f" data-from="2">docs/</div>
-                    <div class="f ind2" data-from="2" data-hot="2">[...slug].ts</div>
-                    <div class="f ind1" data-from="2" data-hot="2">[[team]].ts</div>
+          <div class="sticky">
+            <div class="window">
+              <div class="code-bar"><span class="code-bar-label" id="routeLabel">src/api/health.ts</span></div>
+              <div class="route-stage">
+                <div class="tree" aria-label="Project tree">
+                  <div class="d">src/api/</div>
+                  <div class="f ind1" data-from="0" data-hot="0">health.ts</div>
+                  <div class="d ind1 f" data-from="1">users/</div>
+                  <div class="f ind2" data-from="1" data-hot="1">index.ts</div>
+                  <div class="f ind2" data-from="1" data-hot="1 3">[id].ts</div>
+                  <div class="d ind1 f" data-from="2">docs/</div>
+                  <div class="f ind2" data-from="2" data-hot="2">[...slug].ts</div>
+                  <div class="f ind1" data-from="2" data-hot="2">[[team]].ts</div>
+                </div>
+                <div class="stage-right">
+                  <div class="route-table" aria-live="polite">
+                    <div class="hd">Routes</div>
+                    <div class="rt" data-from="0" data-new="0"><span class="verb get">GET</span><span
+                        class="path">/health</span></div>
+                    <div class="rt" data-from="1" data-new="1"><span class="verb get">GET</span><span
+                        class="path">/users</span></div>
+                    <div class="rt" data-from="1" data-new="1"><span class="verb post">POST</span><span
+                        class="path">/users</span></div>
+                    <div class="rt" data-from="1" data-new="1 3"><span class="verb get">GET</span><span
+                        class="path">/users/:id</span></div>
+                    <div class="rt" data-from="2" data-new="2"><span class="verb get">GET</span><span
+                        class="path">/docs/:slug*</span></div>
+                    <div class="rt" data-from="2" data-new="2"><span class="verb get">GET</span><span
+                        class="path">/:team?</span></div>
                   </div>
-                  <div class="stage-right">
-                    <div class="route-table" aria-live="polite">
-                      <div class="hd">Routes</div>
-                      <div class="rt" data-from="0" data-new="0"><span class="verb get">GET</span><span class="path">/health</span></div>
-                      <div class="rt" data-from="1" data-new="1"><span class="verb get">GET</span><span class="path">/users</span></div>
-                      <div class="rt" data-from="1" data-new="1"><span class="verb post">POST</span><span class="path">/users</span></div>
-                      <div class="rt" data-from="1" data-new="1 3"><span class="verb get">GET</span><span class="path">/users/:id</span></div>
-                      <div class="rt" data-from="2" data-new="2"><span class="verb get">GET</span><span class="path">/docs/:slug*</span></div>
-                      <div class="rt" data-from="2" data-new="2"><span class="verb get">GET</span><span class="path">/:team?</span></div>
-                    </div>
-                    <div class="code-swap">
-<pre data-step="0" class="on"><span class="c-dim">// GET /health</span>
+                  <div class="code-swap">
+                    <pre data-step="0" class="on"><span class="c-dim">// GET /health</span>
 <span class="c-purple">export const</span> <span class="c-blue">GET</span> = (req, res) => {
   res.<span class="c-blue">json</span>({ ok: <span class="c-orange">true</span> })
 }
 
 <span class="c-dim">// POST /health → 405, no code needed</span></pre>
-<pre data-step="1"><span class="c-dim">// GET /users/:id</span>
+                    <pre data-step="1"><span class="c-dim">// GET /users/:id</span>
 <span class="c-purple">import</span> { HttpError } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster'</span>
 
 <span class="c-purple">export const</span> <span class="c-blue">GET</span> = <span class="c-purple">async</span> (req, res) => {
@@ -231,63 +262,66 @@
   <span class="c-purple">if</span> (!user) <span class="c-purple">throw new</span> <span class="c-blue">HttpError</span>(<span class="c-orange">404</span>, <span class="c-green">'Not found'</span>)
   res.<span class="c-blue">json</span>(user)
 }</pre>
-<pre data-step="2"><span class="c-dim">// GET /docs/guides/auth</span>
+                    <pre data-step="2"><span class="c-dim">// GET /docs/guides/auth</span>
 <span class="c-purple">export const</span> <span class="c-blue">GET</span> = (req, res) => {
   req.params.slug  <span class="c-dim">// ['guides', 'auth']</span>
   res.<span class="c-blue">json</span>(<span class="c-blue">lookup</span>(req.params.slug))
 }</pre>
-<pre data-step="3"><span class="c-purple">import</span> { z } <span class="c-purple">from</span> <span class="c-green">'zod'</span>
+                    <pre data-step="3"><span class="c-purple">import</span> { z } <span class="c-purple">from</span> <span class="c-green">'zod'</span>
 
 <span class="c-purple">export const</span> schema = {
   params: z.<span class="c-blue">object</span>({ id: z.<span class="c-blue">string</span>().<span class="c-blue">uuid</span>() }),
 }
 
 <span class="c-dim">// GET /users/42 → 400 { issues: [...] }</span></pre>
-                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- CLUSTERING -->
-      <section class="sec" id="cluster">
-        <div class="container split">
-          <header class="sec-head reveal">
-            <p class="label">Clustering</p>
-            <h2 class="h2">One worker per CPU core.</h2>
-            <p class="lede">In production the primary process forks a worker for each core and replaces any that crash. Try crashing one.</p>
-            <p class="aside">On shutdown, <code>SIGTERM</code> reaches every worker, so open requests and running jobs finish first.</p>
-          </header>
+    <!-- CLUSTERING -->
+    <section class="sec" id="cluster">
+      <div class="container split">
+        <header class="sec-head reveal">
+          <p class="label">Clustering</p>
+          <h2 class="h2">One worker per CPU core.</h2>
+          <p class="lede">In production the primary process forks a worker for each core and replaces any that crash.
+            Try crashing one.</p>
+          <p class="aside">On shutdown, <code>SIGTERM</code> reaches every worker, so open requests and running jobs
+            finish first.</p>
+        </header>
 
-          <div class="window cluster" id="clusterSim">
-            <div class="cluster-top">
-              <span class="cl-stat">requests <b id="clReq">0</b> · alive <b id="clAlive">4</b>/4</span>
-              <button class="btn-crash" id="crashBtn">Crash a worker</button>
-            </div>
-            <div class="cl-arena" id="clArena">
-              <div class="cl-lb">primary :3000</div>
-              <div class="cl-workers" id="clWorkers"></div>
-            </div>
-            <div class="cl-log" id="clLog" aria-live="polite"></div>
+        <div class="window cluster" id="clusterSim">
+          <div class="cluster-top">
+            <span class="cl-stat">requests <b id="clReq">0</b> · alive <b id="clAlive">4</b>/4</span>
+            <button class="btn-crash" id="crashBtn">Crash a worker</button>
           </div>
+          <div class="cl-arena" id="clArena">
+            <div class="cl-lb">primary :3000</div>
+            <div class="cl-workers" id="clWorkers"></div>
+          </div>
+          <div class="cl-log" id="clLog" aria-live="polite"></div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- JOBS -->
-      <section class="sec" id="tasks">
-        <div class="container">
-          <header class="sec-head reveal">
-            <p class="label">Background jobs</p>
-            <h2 class="h2">Reply first. Do the slow work after.</h2>
-            <p class="lede">Each file in <code>src/tasks/</code> is a job. Queue it from a handler and return 202. It runs on BullMQ or pg-boss, with retries.</p>
-          </header>
-          <div class="split even">
-            <div class="window">
-              <div class="code-bar"><span class="code-bar-label">src/tasks/SendWelcome.ts</span></div>
-<pre><span class="c-purple">import</span> { defineTask } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster/tasks'</span>
+    <!-- JOBS -->
+    <section class="sec" id="tasks">
+      <div class="container">
+        <header class="sec-head reveal">
+          <p class="label">Background jobs</p>
+          <h2 class="h2">Reply first. Do the slow work after.</h2>
+          <p class="lede">Each file in <code>src/tasks/</code> is a job. Queue it from a handler and return 202. It runs
+            on BullMQ or pg-boss, with retries.</p>
+        </header>
+        <div class="split even">
+          <div class="window">
+            <div class="code-bar"><span class="code-bar-label">src/tasks/SendWelcome.ts</span></div>
+            <pre><span class="c-purple">import</span> { defineTask } <span class="c-purple">from</span> <span class="c-green">'express-file-cluster/tasks'</span>
 
 <span class="c-purple">export default</span> <span class="c-blue">defineTask</span>&lt;{ to: <span class="c-blue">string</span> }&gt;(
   { retries: <span class="c-orange">3</span> },
@@ -297,39 +331,67 @@
 <span class="c-dim">// in a route handler</span>
 <span class="c-purple">await</span> <span class="c-blue">enqueue</span>(<span class="c-green">'SendWelcome'</span>, { to: user.email })
 res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span class="c-blue">json</span>({ queued: <span class="c-orange">true</span> })</pre>
-            </div>
+          </div>
 
-            <div class="window flow" id="flow">
-              <div class="code-bar"><span class="code-bar-label">POST /signup</span></div>
-              <div class="flow-body">
-                <div class="flow-row"><span class="flow-dot"></span><div><div class="flow-t">Request received</div><div class="flow-s">validate, create user</div></div><span class="flow-time">0 ms</span></div>
-                <div class="flow-row"><span class="flow-dot"></span><div><div class="flow-t">Job queued</div><div class="flow-s">enqueue('SendWelcome')</div></div><span class="flow-time">4 ms</span></div>
-                <div class="flow-row ok"><span class="flow-dot"></span><div><div class="flow-t">202 sent</div><div class="flow-s">the user moves on</div></div><span class="flow-time">5 ms</span></div>
-                <div class="flow-row fail"><span class="flow-dot"></span><div><div class="flow-t">Attempt 1 failed</div><div class="flow-s">SMTP timeout, retry in 1 s</div></div><span class="flow-time">2.1 s</span></div>
-                <div class="flow-row ok"><span class="flow-dot"></span><div><div class="flow-t">Attempt 2 sent</div><div class="flow-s">job complete</div></div><span class="flow-time">3.4 s</span></div>
+          <div class="window flow" id="flow">
+            <div class="code-bar"><span class="code-bar-label">POST /signup</span></div>
+            <div class="flow-body">
+              <div class="flow-row"><span class="flow-dot"></span>
+                <div>
+                  <div class="flow-t">Request received</div>
+                  <div class="flow-s">validate, create user</div>
+                </div><span class="flow-time">0 ms</span>
+              </div>
+              <div class="flow-row"><span class="flow-dot"></span>
+                <div>
+                  <div class="flow-t">Job queued</div>
+                  <div class="flow-s">enqueue('SendWelcome')</div>
+                </div><span class="flow-time">4 ms</span>
+              </div>
+              <div class="flow-row ok"><span class="flow-dot"></span>
+                <div>
+                  <div class="flow-t">202 sent</div>
+                  <div class="flow-s">the user moves on</div>
+                </div><span class="flow-time">5 ms</span>
+              </div>
+              <div class="flow-row fail"><span class="flow-dot"></span>
+                <div>
+                  <div class="flow-t">Attempt 1 failed</div>
+                  <div class="flow-s">SMTP timeout, retry in 1 s</div>
+                </div><span class="flow-time">2.1 s</span>
+              </div>
+              <div class="flow-row ok"><span class="flow-dot"></span>
+                <div>
+                  <div class="flow-t">Attempt 2 sent</div>
+                  <div class="flow-s">job complete</div>
+                </div><span class="flow-time">3.4 s</span>
               </div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- DATA -->
-      <section class="sec" id="data">
-        <div class="container split">
-          <header class="sec-head reveal">
-            <p class="label">Data</p>
-            <h2 class="h2">Describe the model. Get the types.</h2>
-            <p class="lede">Types come from the schema, and tables or collections are created on first use. <code>defineModel</code> runs on MongoDB and PostgreSQL. <code>defineTable</code> adds relations on PostgreSQL.</p>
-          </header>
+    <!-- DATA -->
+    <section class="sec" id="data">
+      <div class="container split">
+        <header class="sec-head reveal">
+          <p class="label">Data</p>
+          <h2 class="h2">Describe the model. Get the types.</h2>
+          <p class="lede">Types come from the schema, and tables or collections are created on first use.
+            <code>defineModel</code> runs on MongoDB and PostgreSQL. <code>defineTable</code> adds relations on
+            PostgreSQL.</p>
+        </header>
 
-          <div>
-            <div class="tabs" role="tablist" aria-label="Model API">
-              <button role="tab" aria-selected="true" aria-controls="p-table" id="t-table">defineTable</button>
-              <button role="tab" aria-selected="false" aria-controls="p-model" id="t-model" tabindex="-1">defineModel</button>
-            </div>
-            <div class="window" id="p-table" role="tabpanel" aria-labelledby="t-table">
-              <div class="code-bar"><span class="code-bar-label">src/model/Post.ts</span></div>
-<pre><span class="c-purple">export const</span> Post = <span class="c-blue">defineTable</span>(<span class="c-green">'Post'</span>, {
+        <div>
+          <div class="tabs" role="tablist" aria-label="Model API">
+            <button role="tab" aria-selected="true" aria-controls="p-table" id="t-table">defineTable</button>
+            <button role="tab" aria-selected="false" aria-controls="p-model" id="t-model"
+              tabindex="-1">defineModel</button>
+          </div>
+          <div class="window" id="p-table" role="tabpanel" aria-labelledby="t-table">
+            <div class="code-bar"><span class="code-bar-label">src/model/Post.ts</span></div>
+            <pre><span class="c-purple">export const</span> Post = <span class="c-blue">defineTable</span>(<span class="c-green">'Post'</span>, {
   title:  { type: <span class="c-green">'string'</span>, required: <span class="c-orange">true</span> },
   author: { type: <span class="c-green">'uuid'</span>, ref: <span class="c-green">'User'</span> },
   tags:   { type: <span class="c-green">'array'</span>, of: <span class="c-green">'uuid'</span>, ref: <span class="c-green">'Tag'</span> },
@@ -340,10 +402,10 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
   take: <span class="c-orange">20</span>,
 })
 <span class="c-dim">// one SQL query, typed { author: User | null, tags: Tag[] }</span></pre>
-            </div>
-            <div class="window" id="p-model" role="tabpanel" aria-labelledby="t-model" hidden>
-              <div class="code-bar"><span class="code-bar-label">src/model/User.ts</span></div>
-<pre><span class="c-purple">export const</span> User = <span class="c-blue">defineModel</span>(<span class="c-green">'User'</span>, {
+          </div>
+          <div class="window" id="p-model" role="tabpanel" aria-labelledby="t-model" hidden>
+            <div class="code-bar"><span class="code-bar-label">src/model/User.ts</span></div>
+            <pre><span class="c-purple">export const</span> User = <span class="c-blue">defineModel</span>(<span class="c-green">'User'</span>, {
   email: { type: <span class="c-green">'string'</span>, required: <span class="c-orange">true</span>, unique: <span class="c-orange">true</span> },
   role:  { type: <span class="c-green">'string'</span>, enum: [<span class="c-green">'user'</span>, <span class="c-green">'admin'</span>] },
 })
@@ -352,112 +414,146 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
 
 <span class="c-purple">await</span> User.<span class="c-blue">find</span>({ role: <span class="c-green">'admin'</span> })
 <span class="c-dim">// same call on MongoDB or PostgreSQL</span></pre>
-            </div>
           </div>
-        </div>
-      </section>
-
-      <!-- ALSO INCLUDED -->
-      <section class="sec" id="included">
-        <div class="container">
-          <header class="sec-head reveal">
-            <p class="label">Also included</p>
-            <h2 class="h2">The rest of the boilerplate.</h2>
-          </header>
-          <dl class="list">
-            <div><dt>Auth</dt><dd>JWT in a cookie or a Bearer token. <code>requireAuth('admin')</code> checks roles.</dd></div>
-            <div><dt>Cache</dt><dd>Redis or in memory, with <code>cacheResponse()</code> for GET routes.</dd></div>
-            <div><dt>Logging</dt><dd>pino, with a request ID on every line.</dd></div>
-            <div><dt>Scaffolder</dt><dd><code>create-efc-app</code> writes a working app with user and admin routes.</dd></div>
-            <div><dt>Mailer</dt><dd>Gmail or any SMTP server, sent from a background job.</dd></div>
-            <div><dt>CLI</dt><dd>Route listing, migrations, seeds and a read-only database browser.</dd></div>
-          </dl>
-          <p class="more"><a href="docs.html">All of it is in the docs →</a></p>
-        </div>
-      </section>
-
-      <!-- CHANGELOG -->
-      <section class="sec" id="changelog">
-        <div class="container">
-          <header class="sec-head reveal">
-            <p class="label">Changelog</p>
-            <h2 class="h2">Recent releases.</h2>
-          </header>
-          <ol class="releases">
-            <li><span class="v">0.7.1</span><time datetime="2026-10-16">Oct 16</time><p>The scaffolder generates <code>defineTable</code> models with foreign keys on PostgreSQL.</p></li>
-            <li><span class="v">0.7.0</span><time datetime="2026-10-16">Oct 16</time><p>Relations for <code>defineTable</code>: foreign keys, many-to-many, <code>include</code>. Query logging.</p></li>
-            <li><span class="v">0.5.0</span><time datetime="2026-10-15">Oct 15</time><p>Types inferred from schemas, <code>defineTable</code>, and an MCP server for the docs.</p></li>
-            <li><span class="v">0.4.0</span><time datetime="2026-10-10">Oct 10</time><p>PostgreSQL, pg-boss, request validation, cron jobs and migrations.</p></li>
-          </ol>
-          <p class="next"><b>Next:</b> <code>defineCollection</code> for MongoDB. After that, plugins, WebSockets and OpenAPI for 1.0.</p>
-        </div>
-      </section>
-
-      <!-- CTA -->
-      <section class="cta" id="cta">
-        <div class="cta-orb" aria-hidden="true"></div>
-        <div class="container" style="position: relative">
-          <svg class="cta-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-            <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor" />
-            <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85" />
-            <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor" />
-          </svg>
-          <h2>Write the part<br /><span class="serif">only you can write.</span></h2>
-          <p>The router, the cluster, the queue and the data layer are done. Start with one command.</p>
-          <div class="cta-actions">
-            <div class="install">
-              <span><span class="c-dim">$</span> npx create-efc-app my-api</span>
-              <button class="copy-btn" data-copy="npx create-efc-app my-api" aria-label="Copy install command">Copy</button>
-            </div>
-            <a href="https://github.com/pr4shxnt/efc.js" target="_blank" rel="noopener" class="btn-ghost btn-lg">Star on GitHub →</a>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <div class="container">
-        <div class="footer-inner">
-          <div class="footer-brand">
-            <a href="#top" class="logo">
-              <svg class="logo-img" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-                <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor" />
-                <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85" />
-                <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor" />
-              </svg>
-              <span>efc<span class="logo-dot">.</span>js</span>
-            </a>
-            <p>An opinionated Express framework where your folder structure is your API contract.</p>
-          </div>
-          <div class="footer-cols">
-            <div class="footer-col">
-              <div class="footer-col-label">Product</div>
-              <a href="#features">Features</a>
-              <a href="#changelog">Changelog</a>
-              <a href="workspace.html">Workspace</a>
-            </div>
-            <div class="footer-col">
-              <div class="footer-col-label">Developers</div>
-              <a href="docs.html">Documentation</a>
-              <a href="docs.html#cli">CLI reference</a>
-              <a href="https://www.npmjs.com/package/express-file-cluster" target="_blank" rel="noopener">npm</a>
-              <a href="https://github.com/pr4shxnt/efc.js" target="_blank" rel="noopener">GitHub</a>
-            </div>
-            <div class="footer-col">
-              <div class="footer-col-label">Project</div>
-              <a href="https://github.com/pr4shxnt/efc.js/blob/main/plan.md" target="_blank" rel="noopener">Architecture</a>
-              <a href="https://github.com/pr4shxnt/efc.js/blob/main/docs/contributing/index.md" target="_blank" rel="noopener">Contributing</a>
-              <a href="https://github.com/pr4shxnt/efc.js/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
-            </div>
-          </div>
-        </div>
-        <div class="footer-bottom">
-          <span>© 2026 EFC Contributors</span>
-          <span>v0.7.1 · Beta</span>
         </div>
       </div>
-    </footer>
+    </section>
 
-    <script src="script.js"></script>
-  </body>
+    <!-- ALSO INCLUDED -->
+    <section class="sec" id="included">
+      <div class="container">
+        <header class="sec-head reveal">
+          <p class="label">Also included</p>
+          <h2 class="h2">The rest of the boilerplate.</h2>
+        </header>
+        <dl class="list">
+          <div>
+            <dt>Auth</dt>
+            <dd>JWT in a cookie or a Bearer token. <code>requireAuth('admin')</code> checks roles.</dd>
+          </div>
+          <div>
+            <dt>Cache</dt>
+            <dd>Redis or in memory, with <code>cacheResponse()</code> for GET routes.</dd>
+          </div>
+          <div>
+            <dt>Logging</dt>
+            <dd>pino, with a request ID on every line.</dd>
+          </div>
+          <div>
+            <dt>Scaffolder</dt>
+            <dd><code>create-efc-app</code> writes a working app with user and admin routes.</dd>
+          </div>
+          <div>
+            <dt>Mailer</dt>
+            <dd>Gmail or any SMTP server, sent from a background job.</dd>
+          </div>
+          <div>
+            <dt>CLI</dt>
+            <dd>Route listing, migrations, seeds and a read-only database browser.</dd>
+          </div>
+        </dl>
+        <p class="more"><a href="docs.html">All of it is in the docs →</a></p>
+      </div>
+    </section>
+
+    <!-- CHANGELOG -->
+    <section class="sec" id="changelog">
+      <div class="container">
+        <header class="sec-head reveal">
+          <p class="label">Changelog</p>
+          <h2 class="h2">Recent releases.</h2>
+        </header>
+        <ol class="releases">
+          <li><span class="v">0.7.1</span><time datetime="2026-10-16">Oct 16</time>
+            <p>The scaffolder generates <code>defineTable</code> models with foreign keys on PostgreSQL.</p>
+          </li>
+          <li><span class="v">0.7.0</span><time datetime="2026-10-16">Oct 16</time>
+            <p>Relations for <code>defineTable</code>: foreign keys, many-to-many, <code>include</code>. Query logging.
+            </p>
+          </li>
+          <li><span class="v">0.5.0</span><time datetime="2026-10-15">Oct 15</time>
+            <p>Types inferred from schemas, <code>defineTable</code>, and an MCP server for the docs.</p>
+          </li>
+          <li><span class="v">0.4.0</span><time datetime="2026-10-10">Oct 10</time>
+            <p>PostgreSQL, pg-boss, request validation, cron jobs and migrations.</p>
+          </li>
+        </ol>
+        <p class="next"><b>Next:</b> <code>defineCollection</code> for MongoDB. After that, plugins, WebSockets and
+          OpenAPI for 1.0.</p>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta" id="cta">
+      <div class="cta-orb" aria-hidden="true"></div>
+      <div class="container" style="position: relative">
+        <svg class="cta-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor" />
+          <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85" />
+          <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor" />
+        </svg>
+        <h2>Write the part<br /><span class="serif">only you can write.</span></h2>
+        <p>The router, the cluster, the queue and the data layer are done. Start with one command.</p>
+        <div class="cta-actions">
+          <div class="install">
+            <span><span class="c-dim">$</span> npx create-efc-app my-api</span>
+            <button class="copy-btn" data-copy="npx create-efc-app my-api"
+              aria-label="Copy install command">Copy</button>
+          </div>
+          <a href="https://github.com/siggold/express-file-cluster" target="_blank" rel="noopener"
+            class="btn-ghost btn-lg">Star on GitHub →</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <a href="#top" class="logo">
+            <svg class="logo-img" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+              <rect x="6" y="7" width="20" height="3" rx="1.5" fill="currentColor" />
+              <rect x="6" y="14.5" width="14" height="3" rx="1.5" fill="currentColor" opacity="0.85" />
+              <rect x="6" y="22" width="20" height="3" rx="1.5" fill="currentColor" />
+            </svg>
+            <span>efc<span class="logo-dot">.</span>js</span>
+          </a>
+          <p>An opinionated Express framework where your folder structure is your API contract.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <div class="footer-col-label">Product</div>
+            <a href="#features">Features</a>
+            <a href="#changelog">Changelog</a>
+            <a href="workspace.html">Workspace</a>
+          </div>
+          <div class="footer-col">
+            <div class="footer-col-label">Developers</div>
+            <a href="docs.html">Documentation</a>
+            <a href="docs.html#cli">CLI reference</a>
+            <a href="https://www.npmjs.com/package/express-file-cluster" target="_blank" rel="noopener">npm</a>
+            <a href="https://github.com/siggold/express-file-cluster" target="_blank" rel="noopener">GitHub</a>
+          </div>
+          <div class="footer-col">
+            <div class="footer-col-label">Project</div>
+            <a href="https://github.com/siggold/express-file-cluster/blob/main/plan.md" target="_blank"
+              rel="noopener">Architecture</a>
+            <a href="https://github.com/siggold/express-file-cluster/blob/main/docs/contributing/index.md"
+              target="_blank" rel="noopener">Contributing</a>
+            <a href="https://github.com/siggold/express-file-cluster/blob/main/LICENSE" target="_blank"
+              rel="noopener">MIT License</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 EFC Contributors</span>
+        <span>v0.7.1 · Beta</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+
 </html>
