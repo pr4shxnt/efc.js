@@ -112,6 +112,10 @@ export class Registry {
     this.index = JSON.parse(fs.readFileSync(file, 'utf8')) as RegistryIndex;
   }
 
+  has(name: string): boolean {
+    return this.index.items.some((i) => i.name === name || i.aliases?.includes(name));
+  }
+
   meta(name: string): RegistryIndexItem {
     const item = this.index.items.find((i) => i.name === name || i.aliases?.includes(name));
     if (!item) {
@@ -669,3 +673,303 @@ export function lineDiff(a: string, b: string): string[] {
   });
   return shown;
 }
+
+// ── Custom auth entities ──────────────────────────────────────────────────────
+
+const RESERVED_ENTITIES = new Set(['user', 'admin']);
+
+function toPascal(s: string): string {
+  const parts = s
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[-_]+/g, ' ')
+    .trim()
+    .split(/\s+/);
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join('');
+}
+
+function toCamel(s: string): string {
+  const p = toPascal(s);
+  return p.charAt(0).toLowerCase() + p.slice(1);
+}
+
+function toSlug(s: string): string {
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[-_\s]+/g, '-')
+    .toLowerCase();
+}
+
+export interface ValidatedEntityName {
+  pascal: string;
+  camel: string;
+  slug: string;
+}
+
+function validateEntityName(name: string): ValidatedEntityName | { error: string } {
+  const raw = name.trim();
+  if (!raw) return { error: 'Entity name cannot be empty' };
+  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(raw))
+    return { error: `Entity name must be alphanumeric and start with a letter: "${raw}"` };
+  const pascal = toPascal(raw);
+  const camel = toCamel(raw);
+  const slug = toSlug(raw);
+  if (RESERVED_ENTITIES.has(slug) || RESERVED_ENTITIES.has(pascal.toLowerCase()))
+    return { error: `"${pascal}" is a built-in entity — use \`efc add auth\` for User/Admin` };
+  return { pascal, camel, slug };
+}
+
+/**
+ * Whether the app uses `defineTable` (PostgreSQL-native queries).
+ * Must match the `usesTables` logic in create-efc-app's scaffold.ts.
+ */
+function entityUsesTables(cfg: EfcJson): boolean {
+  return cfg.database === 'postgresql' && cfg.modelApi === 'defineTable';
+}
+
+/** Code for model calls in the generated routes, adapting to defineModel vs defineTable. */
+function entityOrm(cfg: EfcJson) {
+  const t = entityUsesTables(cfg);
+  return {
+    findOne: (model: string, filter: string) =>
+      t ? `${model}.findFirst({ where: ${filter} })` : `${model}.findOne(${filter})`,
+    create: (model: string, data: string) =>
+      t ? `${model}.create({ data: ${data} })` : `${model}.create(${data})`,
+  };
+}
+
+function entityModelContent(pascal: string, slug: string, cfg: EfcJson): string {
+  const api = entityUsesTables(cfg) ? 'defineTable' : 'defineModel';
+  return `import { ${api} } from 'express-file-cluster';
+
+export const ${pascal} = ${api}('${pascal}', {
+  name:               { type: 'string',  required: true },
+  email:              { type: 'string',  required: true, unique: true },
+  password:           { type: 'string',  required: true },
+  role:               { type: 'string',  required: true, default: '${slug}' },
+  avatar:             { type: 'string' },
+  isVerified:         { type: 'boolean', default: false },
+  isActive:           { type: 'boolean', default: true },
+  verifyToken:        { type: 'string' },
+  resetToken:         { type: 'string' },
+  resetTokenExpiry:   { type: 'date' },
+  refreshToken:       { type: 'string' },
+  refreshTokenExpiry: { type: 'date' },
+});
+`;
+}
+
+function entityRegisterContent(pascal: string, camel: string, cfg: EfcJson): string {
+  const ts = cfg.language === 'typescript';
+  const db = entityOrm(cfg);
+  const typedArgs = ts ? '(req: Request, res: Response)' : '(req, res)';
+  const typeImport = ts ? "import type { Request, Response } from 'express';\n" : '';
+  return `${typeImport}import bcrypt from 'bcrypt';
+import { ${pascal} } from '../../../model/${pascal}.js';
+
+export const POST = async ${typedArgs} => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'name, email and password are required' });
+  }
+  const existing = await ${db.findOne(pascal, '{ email }')};
+  if (existing) return res.status(409).json({ error: 'Email already in use' });
+  const hashed = await bcrypt.hash(password, 10);
+  const record = await ${db.create(pascal, '{ name, email, password: hashed }')};
+  const { password: _, ...safe } = record;
+  res.status(201).json({ message: '${pascal} account created', ${camel}: safe });
+};
+`;
+}
+
+function entityLoginContent(pascal: string, slug: string, cfg: EfcJson): string {
+  const ts = cfg.language === 'typescript';
+  const db = entityOrm(cfg);
+  const typedArgs = ts ? '(req: Request, res: Response)' : '(req, res)';
+  const typeImport = ts ? "import type { Request, Response } from 'express';\n" : '';
+  return `${typeImport}import bcrypt from 'bcrypt';
+import { issueToken } from 'express-file-cluster/auth';
+import { ${pascal} } from '../../../model/${pascal}.js';
+
+export const POST = async ${typedArgs} => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+
+  const record = await ${db.findOne(pascal, '{ email }')};
+  if (!record) return res.status(401).json({ error: 'Invalid credentials' });
+  const match = await bcrypt.compare(password, record.password);
+  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!record.isActive) return res.status(403).json({ error: 'Account suspended' });
+  await issueToken(res, { id: record.id, role: record.role, email: record.email });
+  res.json({ message: 'Logged in as ${slug}' });
+};
+`;
+}
+
+function entityLogoutContent(cfg: EfcJson): string {
+  const ts = cfg.language === 'typescript';
+  const typedArgs = ts ? '(req: Request, res: Response)' : '(req, res)';
+  const typeImport = ts ? "import type { Request, Response } from 'express';\n" : '';
+  return `${typeImport}import { requireAuth, revokeSession } from 'express-file-cluster/auth';
+
+export const middlewares = [requireAuth];
+
+export const POST = async ${typedArgs} => {
+  try {
+    await revokeSession(req, res);
+  } catch {
+    res.clearCookie('efc_token');
+  }
+  res.json({ message: 'Logged out successfully' });
+};
+`;
+}
+
+function entityMeContent(slug: string, cfg: EfcJson): string {
+  const ts = cfg.language === 'typescript';
+  const typedArgs = ts ? '(req: Request, res: Response)' : '(req, res)';
+  const typeImport = ts ? "import type { Request, Response } from 'express';\n" : '';
+  return `${typeImport}import { requireAuth } from 'express-file-cluster/auth';
+
+export const middlewares = [requireAuth('${slug}')];
+
+export const GET = async ${typedArgs} => {
+  res.json((req${ts ? ' as any' : ''}).user);
+};
+`;
+}
+
+export interface EntityAuthOptions {
+  dryRun?: boolean | undefined;
+  overwrite?: boolean | undefined;
+}
+
+export interface EntityAuthResult {
+  written: string[];
+  manual: string[];
+  conflicts: string[];
+  installNeeded?: boolean;
+}
+
+/**
+ * Generate a model and auth routes for a custom entity (e.g. Merchant, Driver).
+ * The entity gets its own namespaced routes under `src/api/auth/<slug>/` and uses
+ * the same auth primitives (issueToken, requireAuth) as User/Admin.
+ */
+export function generateEntityAuth(
+  cwd: string,
+  entityName: string,
+  cfg: EfcJson,
+  options?: EntityAuthOptions,
+): EntityAuthResult {
+  const validated = validateEntityName(entityName);
+  if ('error' in validated) throw new Error(`[EFC] ${validated.error}`);
+  const { pascal, camel, slug } = validated;
+
+  const ext = cfg.language === 'typescript' ? 'ts' : 'js';
+  const result: EntityAuthResult = { written: [], manual: [], conflicts: [] };
+
+  const files: { rel: string; content: string }[] = [
+    { rel: `src/model/${pascal}.${ext}`, content: entityModelContent(pascal, slug, cfg) },
+    {
+      rel: `src/api/auth/${slug}/register.${ext}`,
+      content: entityRegisterContent(pascal, camel, cfg),
+    },
+    {
+      rel: `src/api/auth/${slug}/login.${ext}`,
+      content: entityLoginContent(pascal, slug, cfg),
+    },
+    {
+      rel: `src/api/auth/${slug}/logout.${ext}`,
+      content: entityLogoutContent(cfg),
+    },
+    {
+      rel: `src/api/auth/${slug}/me.${ext}`,
+      content: entityMeContent(slug, cfg),
+    },
+  ];
+
+  for (const f of files) {
+    const abs = path.join(cwd, f.rel);
+    const exists = fs.existsSync(abs);
+    if (exists && !options?.overwrite) {
+      result.conflicts.push(f.rel);
+      result.manual.push(`${f.rel} already exists — skipped (pass --overwrite to replace)`);
+      continue;
+    }
+    result.written.push(f.rel);
+    if (!options?.dryRun) {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, f.content);
+      cfg.files[f.rel] = sha256(f.content);
+    }
+  }
+
+  // Register the model in src/model/index (defineTable apps)
+  if (entityUsesTables(cfg) && !options?.dryRun) {
+    result.manual.push(...registerModels(cwd, cfg.language, [pascal]));
+  }
+
+  // Ensure bcrypt and @types/bcrypt are in package.json
+  const pkgFile = path.join(cwd, 'package.json');
+  if (fs.existsSync(pkgFile)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8')) as Record<string, unknown>;
+      let pkgChanged = false;
+      const deps = ((pkg['dependencies'] ?? {}) as Record<string, string>);
+      const devDeps = ((pkg['devDependencies'] ?? {}) as Record<string, string>);
+
+      if (!deps['bcrypt']) {
+        deps['bcrypt'] = '^5.1.0';
+        pkg['dependencies'] = Object.fromEntries(
+          Object.entries(deps).sort(([a], [b]) => a.localeCompare(b)),
+        );
+        pkgChanged = true;
+      }
+      if (cfg.language === 'typescript' && !devDeps['@types/bcrypt']) {
+        devDeps['@types/bcrypt'] = '^5.0.0';
+        pkg['devDependencies'] = Object.fromEntries(
+          Object.entries(devDeps).sort(([a], [b]) => a.localeCompare(b)),
+        );
+        pkgChanged = true;
+      }
+
+      if (pkgChanged) {
+        result.installNeeded = true;
+        if (!options?.dryRun) {
+          fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  // Ensure JWT_SECRET in .env
+  const envFile = path.join(cwd, '.env');
+  if (fs.existsSync(envFile)) {
+    const envKeys = readEnvKeys(envFile);
+    if (!envKeys.includes('JWT_SECRET')) {
+      const secret = crypto.randomBytes(64).toString('hex');
+      if (!options?.dryRun) {
+        appendEnv(envFile, [`JWT_SECRET=${secret}`]);
+        const exampleFile = path.join(cwd, '.env.example');
+        if (fs.existsSync(exampleFile) && !readEnvKeys(exampleFile).includes('JWT_SECRET')) {
+          appendEnv(exampleFile, ['JWT_SECRET=<generate with: openssl rand -hex 64>']);
+        }
+      }
+      result.manual.push('Added JWT_SECRET to .env');
+    }
+  }
+
+  // Track in efc.json — use a virtual item name
+  const itemName = `auth:${slug}`;
+  if (!cfg.items.includes(itemName)) cfg.items.push(itemName);
+  if (!options?.dryRun) {
+    writeEfcJson(cwd, cfg);
+  }
+
+  return result;
+}
+
+export { validateEntityName };
+

@@ -187,6 +187,55 @@ and pass it through as `cookieDomain: process.env.COOKIE_DOMAIN` in `efc.config.
 
 ---
 
+## Custom auth entities
+
+EFC ships with **User** and **Admin** as built-in principals (`efc add auth`). Many apps need additional authenticatable entities — a food delivery app might have `Merchant` and `DeliveryPartner`, a marketplace might have `Seller` and `Buyer`.
+
+Use `efc add auth:` to scaffold a new entity with its own model and namespaced auth routes:
+
+```bash
+# Either syntax works:
+efc add auth:merchant
+efc add auth --entity merchant
+
+# Multiple at once:
+efc add auth:merchant auth:driver
+```
+
+### What gets generated
+
+For `efc add auth:merchant`:
+
+| File | Purpose |
+|---|---|
+| `src/model/Merchant.ts` | Model with name, email, password, role, isActive, tokens |
+| `src/api/auth/merchant/register.ts` | `POST /auth/merchant/register` |
+| `src/api/auth/merchant/login.ts` | `POST /auth/merchant/login` |
+| `src/api/auth/merchant/logout.ts` | `POST /auth/merchant/logout` |
+| `src/api/auth/merchant/me.ts` | `GET /auth/merchant/me` |
+
+The generated code uses the same auth primitives (`issueToken`, `requireAuth`, `revokeSession`) as the built-in User/Admin. Each entity's JWT carries `role: 'merchant'` (or whatever the entity name is, lowercased).
+
+### Protecting routes by entity
+
+```ts
+import { requireAuth } from 'express-file-cluster/auth';
+
+// Only merchants can access this route:
+export const middlewares = [requireAuth('merchant')];
+
+// Merchants OR admins:
+export const middlewares = [requireAuth('merchant', 'admin')];
+```
+
+### Customising the generated code
+
+The files belong to you — they're copied into your `src/` just like `efc add auth`. Add fields to the model, change the registration flow, add email verification — it's your code.
+
+> **Note:** The existing `/auth/login` and `/auth/register` routes are **not modified**. Each custom entity gets its own namespace (`/auth/<entity>/...`), so nothing breaks.
+
+---
+
 ## Environment variables
 
 | Variable | Wired into (via `efc.config.ts`) | Description |
@@ -196,3 +245,4 @@ and pass it through as `cookieDomain: process.env.COOKIE_DOMAIN` in `efc.config.
 | `COOKIE_DOMAIN` | `cookieDomain` | Cookie domain for `http-only` strategy |
 
 `ignite()` doesn't read any of these from `process.env` itself — see the full [Environment Variables reference](./environment-variables.md) for how the scaffolded `efc.config.ts` wires them.
+
