@@ -141,7 +141,7 @@ efc remove <item>   # NOT IMPLEMENTED — `efc add` copies files; delete them yo
 efc add <url|@ns/x> # NOT IMPLEMENTED — only the built-in registry (efc list); no third-party registries
 ```
 
-`efc add | list | view | diff | init` DO exist (the feature registry, `docs/cli/add.md`).
+`efc add | list | view | diff | init` DO exist (the feature registry, `docs/cli/add.md`). Custom auth entities can be scaffolded via `efc add auth --entity <name>`, `efc add auth:<name>`, or `efc add auth new <name>` (e.g. `efc add auth:merchant`).
 OAuth sign-in exists only as registry items (`efc add auth@google`, `efc add auth@apple`) —
 app code in `src/api/auth/<provider>/` + `src/lib/oauth`; there is NO framework OAuth API
 (no `passport`, no `oauth` option on `ignite()`, no other providers).

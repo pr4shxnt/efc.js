@@ -34,6 +34,7 @@ efc diff                              # compare installed features with the regi
 | `--overwrite` | Replace files you've changed with the registry version |
 | `--no-install` | Don't run `npm install` / `pnpm install` / … afterwards |
 | `--no-prompt` | Don't ask the items' questions — write placeholders to `.env` instead |
+| `--entity <name>` | Scaffold a custom authenticatable entity (model + namespaced auth routes) |
 
 ---
 
@@ -66,13 +67,41 @@ efc diff                              # compare installed features with the regi
 
 The full route list is in [Generated Portals](../guides/generated-portals.md); OAuth setup is in [Sign in with Google & Apple](../guides/oauth.md).
 
-A few things hold for every item:
+---
 
-- **Dependencies come along.** `efc add admin-users` also installs `auth` and `admin` if they're missing.
-- **Routes that send email** (`auth`, `forgot-password`, `email-verification`) enqueue the `SendEmail` task. The base app has a stub that logs the message. `efc add email-client` swaps in real SMTP. These items need a task backend (`tasks` in `efc.config`); the base app always has one.
-- **Models shared by two items** (`Plan`, `SupportTicket`, `Notification`) are identical in both. The second item skips the file that's already there.
-- **On PostgreSQL with `defineTable`**, references are real foreign keys, and `efc add` registers new models in `src/model/index.ts` (the export plus the `Tables` entry). Models declare no back-relations. Add `relations: { … }` to a model when you want `include`. See [defineTable](../api-reference/table.md).
-- **Tables and collections** are created on first use (`autoSync`). With `autoSync: false`, run `efc db sync` or write a migration.
+## Custom auth entities
+
+While `efc add auth` scaffolds the standard **User** and **Admin** principals, real-world apps (marketplaces, food delivery, logistics) often need custom entities like `Merchant`, `Driver`, `Seller`, or `DeliveryPartner`.
+
+EFC provides a first-class shortcut to scaffold an authenticatable entity with its own model and namespaced routes:
+
+```bash
+# Any of these syntaxes work:
+efc add auth --entity merchant
+efc add auth:merchant
+efc add auth new merchant
+
+# Multiple entities at once:
+efc add auth:merchant auth:delivery-partner
+```
+
+### What gets generated
+
+For `efc add auth:merchant`:
+
+| File | Purpose |
+|---|---|
+| `src/model/Merchant.ts` | Model with `name`, `email`, `password`, `role: 'merchant'`, `isActive`, tokens |
+| `src/api/auth/merchant/register.ts` | `POST /auth/merchant/register` |
+| `src/api/auth/merchant/login.ts` | `POST /auth/merchant/login` (issues token with `role: 'merchant'`) |
+| `src/api/auth/merchant/logout.ts` | `POST /auth/merchant/logout` |
+| `src/api/auth/merchant/me.ts` | `GET /auth/merchant/me` (guarded by `requireAuth('merchant')`) |
+
+- **No existing routes modified:** Existing `/auth/login` and `/auth/register` remain untouched.
+- **Model registered:** On PostgreSQL with `defineTable`, registers the model in `src/model/index.ts`.
+- **Packages ensured:** Adds `bcrypt` (and `@types/bcrypt` in TypeScript) to `package.json` and runs package manager install if missing.
+- **Tracked in efc.json:** Recorded as `auth:<slug>` in `efc.json`.
+
 
 ---
 

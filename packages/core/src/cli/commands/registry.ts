@@ -10,6 +10,8 @@ import {
   applyAdd,
   detectProject,
   envFromAnswers,
+  generateEntityAuth,
+  validateEntityName,
   itemStatus,
   normalizeAnswer,
   promptApplies,
@@ -241,31 +243,133 @@ function addCommand(): Command {
   return new Command('add')
     .description('Add features to the app from the registry (copies their source into src/)')
     .argument(
-      '<items...>',
-      'registry items, e.g. auth forgot-password admin-users — `efc list` shows them',
+      '[items...]',
+      'registry items (auth forgot-password admin-users) or custom auth entities (auth:merchant, auth --entity merchant)',
     )
     .option('-y, --yes', 'skip the confirmation')
     .option('--overwrite', 'replace files that were changed in this app')
     .option('--dry-run', 'show what would change without writing anything')
     .option('--no-install', "don't run the package manager afterwards")
     .option('--no-prompt', "don't ask for credentials — write placeholders to .env instead")
+    .option('--entity <name>', 'scaffold a custom auth entity (model + auth routes)')
     .action(
       async (
-        names: string[],
+        names: string[] | undefined,
         opts: {
           yes?: boolean;
           overwrite?: boolean;
           dryRun?: boolean;
           install: boolean;
           prompt: boolean;
+          entity?: string;
         },
       ) => {
         try {
+          const rawNames = names ?? [];
+          // ── Custom entity detection ─────────────────────────────────────
+          // Supports:
+          // 1. `efc add auth:merchant` or `efc add auth:merchant auth:delivery`
+          // 2. `efc add auth --entity merchant` or `efc add --entity merchant`
+          // 3. `efc add auth new merchant` (or `efc add auth new merchant delivery`)
+          const entityNames: string[] = [];
+          const registryNames: string[] = [];
+
+          let i = 0;
+          if (rawNames[0] === 'auth' && rawNames[1] === 'new' && rawNames.length >= 3) {
+            for (let j = 2; j < rawNames.length; j++) {
+              entityNames.push(rawNames[j]!);
+            }
+            i = rawNames.length;
+          }
+
+          for (; i < rawNames.length; i++) {
+            const n = rawNames[i]!;
+            const colonMatch = /^auth:([A-Za-z][A-Za-z0-9_-]*)$/.exec(n);
+            if (colonMatch) {
+              entityNames.push(colonMatch[1]!);
+            } else if (opts.entity && n === 'auth') {
+              // 'auth' was the command target for --entity, not a separate registry item
+              continue;
+            } else {
+              registryNames.push(n);
+            }
+          }
+
+          if (opts.entity && !entityNames.includes(opts.entity)) {
+            entityNames.push(opts.entity);
+          }
+
+          if (entityNames.length === 0 && registryNames.length === 0) {
+            fail(
+              'Specify at least one item or entity to add — e.g. `efc add auth` or `efc add auth:merchant`. Run `efc list` to see available features.',
+            );
+          }
+
+          let anyInstallNeeded = false;
+
+          if (entityNames.length > 0) {
+            const { cwd, cfg, detected } = load();
+            if (detected) {
+              console.log(
+                pc.dim(`\n  No ${EFC_JSON} yet — detected ${describe(cfg)}; it'll be created.`),
+              );
+            }
+            for (const eName of entityNames) {
+              const validated = validateEntityName(eName);
+              if ('error' in validated) fail(validated.error);
+              const { pascal, slug } = validated;
+
+              console.log(pc.bold(`\n  Adding auth entity: ${pascal}\n`));
+              const result = generateEntityAuth(cwd, eName, cfg, {
+                dryRun: opts.dryRun,
+                overwrite: opts.overwrite,
+              });
+
+              if (result.written.length) {
+                for (const f of result.written) console.log(`  ${pc.green('create   ')}  ${f}`);
+                const actionVerb = opts.dryRun ? 'would be written (dry run)' : 'written';
+                console.log(pc.green(`\n  ✓ ${result.written.length} file(s) ${actionVerb}`));
+              }
+              for (const m of result.manual) console.log(pc.yellow(`  ! ${m}`));
+              console.log(
+                pc.dim(
+                  `\n  Routes: POST /auth/${slug}/register, /login, /logout; GET /me`,
+                ),
+              );
+              console.log(
+                pc.dim(`  Protect routes with: requireAuth('${slug}')`),
+              );
+
+              if (result.installNeeded) anyInstallNeeded = true;
+            }
+            console.log();
+
+            if (anyInstallNeeded && !opts.dryRun) {
+              const pm = packageManager(cwd);
+              if (opts.install) {
+                console.log(pc.dim(`  $ ${pm} install`));
+                const r = spawnSync(pm, ['install'], {
+                  cwd,
+                  stdio: 'inherit',
+                  shell: process.platform === 'win32',
+                });
+                if (r.status !== 0)
+                  console.log(pc.yellow(`  ${pm} install failed — run it yourself.`));
+              } else {
+                console.log(pc.yellow(`  Run \`${pm} install\` for the new packages.`));
+              }
+            }
+
+            // If there are no registry items to add, we're done.
+            if (registryNames.length === 0) return;
+          }
+
           const { cwd, registry, cfg, detected } = load();
-          const plan = planAdd(cwd, registry, names, { overwrite: !!opts.overwrite }, cfg);
+          const itemsToAdd = registryNames;
+          const plan = planAdd(cwd, registry, itemsToAdd, { overwrite: !!opts.overwrite }, cfg);
           if (plan.problems.length) fail(plan.problems.join('\n'));
           if (plan.items.length === 0) {
-            console.log(pc.dim(`Already installed: ${names.join(', ')}`));
+            console.log(pc.dim(`Already installed: ${itemsToAdd.join(', ')}`));
             return;
           }
           if (detected) {
@@ -361,6 +465,17 @@ function listCommand(): Command {
           console.log(`  ${mark} ${pc.cyan(item.name.padEnd(20))} ${item.description}${deps}`);
         }
       }
+
+      const entities = (readEfcJson(cwd)?.items ?? [])
+        .filter((i) => i.startsWith('auth:'))
+        .map((i) => i.slice(5));
+      if (entities.length > 0) {
+        console.log(pc.bold('\n  custom auth entities'));
+        for (const e of entities) {
+          console.log(`  ${pc.green('✓')} ${pc.cyan(e.padEnd(20))} model + auth routes for ${e}`);
+        }
+      }
+
       console.log(pc.dim('\n  efc add <item...>   ·   efc view <item>\n'));
     } catch (err) {
       fail(err);
@@ -412,6 +527,20 @@ function diffCommand(): Command {
         const names = name ? [name] : cfg.items;
         let clean = true;
         for (const n of names) {
+          if (!registry.has(n)) {
+            if (n.startsWith('auth:')) {
+              if (name) {
+                console.log(
+                  pc.dim(
+                    `\n${n} is a custom auth entity (files are owned by your project, no upstream registry item to diff).`,
+                  ),
+                );
+              }
+            } else {
+              console.log(pc.dim(`\n${n} is not a registry item.`));
+            }
+            continue;
+          }
           for (const f of itemStatus(cwd, registry, cfg, n)) {
             if (f.status === 'unchanged') continue;
             clean = false;
