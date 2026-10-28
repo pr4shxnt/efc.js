@@ -322,7 +322,79 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
     }
   }, 60_000);
 
+  // Request values used in lookups must be strings; objects are refused before any query.
+  it('validates request value types in the auth routes', async () => {
+    const base = serverUrl;
+    const json = { 'content-type': 'application/json' };
+    const email = `types-${Date.now()}@example.com`;
+    const reg = await fetch(`${base}/auth/register`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ name: 'Types', email, password: 'types-pass-123' }),
+    });
+    expect(reg.status, await reg.clone().text()).toBe(201);
+    // A refresh token (login) and a pending reset token (forgot-password) exist.
+    const typesLogin = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ email, password: 'types-pass-123' }),
+    });
+    // Responses carry no token fields.
+    const profile = await fetch(`${base}/user/profile`, {
+      headers: { cookie: (typesLogin.headers.get('set-cookie') ?? '').split(';')[0]! },
+    });
+    expect(profile.status, await profile.clone().text()).toBe(200);
+    const { user: shown } = (await profile.json()) as { user: Record<string, unknown> };
+    expect(shown['email']).toBe(email);
+    for (const secret of ['password', 'refreshToken', 'resetToken', 'verifyToken']) {
+      expect(shown, secret).not.toHaveProperty(secret);
+    }
+    await fetch(`${base}/auth/forgot-password`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ email }),
+    });
+
+    for (const op of [{ $ne: null }, { $gt: '' }, { not: '' }, { not: null }]) {
+      const label = JSON.stringify(op);
+      const refresh = await fetch(`${base}/auth/refresh`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ refreshToken: op }),
+      });
+      expect(refresh.status, `refresh ${label}: ${await refresh.clone().text()}`).toBe(400);
+      expect(refresh.headers.get('set-cookie') ?? '', label).not.toContain('efc_token=');
+
+      const reset = await fetch(`${base}/auth/reset-password`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ token: op, password: 'other-pass-123' }),
+      });
+      expect(reset.status, `reset ${label}: ${await reset.clone().text()}`).toBe(400);
+
+      const login = await fetch(`${base}/auth/login`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ email: op, password: 'types-pass-123' }),
+      });
+      expect(login.status, `login ${label}`).toBe(400);
+    }
+    for (const q of ['token[$ne]=x', 'token[not]=', 'token[$gt]=']) {
+      const verify = await fetch(`${base}/auth/verify-email?${q}`);
+      expect(verify.status, `verify-email ?${q}: ${await verify.clone().text()}`).toBe(400);
+    }
+
+    // The password is unchanged.
+    const other = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ email, password: 'other-pass-123' }),
+    });
+    expect(other.status).toBe(401);
+  }, 60_000);
+
   it('signs in with Google and Apple', async () => {
+
     const base = serverUrl;
     const json = { 'content-type': 'application/json' };
     const cookieOf = (r: Response) => r.headers.get('set-cookie')!.split(';')[0]!;

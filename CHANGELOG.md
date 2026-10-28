@@ -4,6 +4,34 @@ All three packages (`express-file-cluster`, `create-efc-app`, `express-file-clus
 together under one version. Newest first. The public site's changelog (`client/index.html#changelog`)
 mirrors this file — see `AGENTS.md` §5.
 
+## 0.9.6 — 2026-10-28
+
+**Security release — update your generated auth routes.** Found by an internal review of the framework and
+the code `create-efc-app` / `efc add` generate. Upgrading the package does not change files already in your
+app; see *Updating an existing app* below. Full details will follow in a GitHub security advisory.
+
+- **Security (critical):** generated auth routes (login, register, refresh, forgot/reset password, email
+  verification, admin user creation, custom-entity `auth:<name>` routes) now validate the type of every
+  request value they look up by, and answer 400 otherwise.
+- **Security (high):** user objects returned by the profile, admin user and register routes no longer
+  include `refreshToken`, `resetToken`, `verifyToken` or their expiries.
+- **Security (high):** changing a user's role, deactivating or deleting them in the admin routes now ends
+  their sessions (`revokeAllSessions`), and `/auth/refresh` refuses inactive accounts (403).
+- **Hardening (framework):** `requireAuth` only accepts HS256 tokens (the algorithm EFC signs with);
+  errors that carry a 5xx `statusCode` no longer echo their message to clients (4xx still do); a
+  `jwtSecret` under 32 bytes logs a warning in production.
+- **New:** [`SECURITY.md`](SECURITY.md) (report vulnerabilities privately) and
+  [Versioning & support](docs/versioning.md) — what a patch, minor and major may contain, LTS from 1.0,
+  supported Node versions (22 and 24). Docs site: *Which model API?*, *Relations*, *Versioning & support*.
+
+**Updating an existing app** (generated before 0.9.6) — do this now: re-add untouched routes with
+`efc add auth user-profile account-security forgot-password email-verification admin-users --overwrite`
+(only the items you have; reapply your edits to any file you changed; custom entities: `efc add auth:<name>
+--overwrite`), or by hand: return 400 unless `typeof value === 'string'` for every `req.body` / `req.query`
+value used in a lookup; strip `refreshToken`, `resetToken`, `verifyToken` (and their expiries) from user
+objects you return; call `revokeAllSessions(id)` when an admin changes a user's role or deactivates/deletes
+them; reject `isActive === false` in `/auth/refresh`.
+
 ## 0.9.5 — 2026-10-28
 
 **Database connections: errors that say what to fix, and a warning before the pool runs the server out.**

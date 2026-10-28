@@ -113,6 +113,17 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
       `[EFC] Unknown authStrategy "${String(authStrategy)}" — treated as 'bearer'. Use 'http-only' or 'bearer'; this will be an error in 1.0.`,
     );
   }
+  // HS256 with a short secret can be brute-forced offline from any token a user holds.
+  if (
+    jwtSecret &&
+    Buffer.byteLength(jwtSecret) < 32 &&
+    process.env['NODE_ENV'] === 'production' &&
+    (!clusterEnabled || cluster.isPrimary)
+  ) {
+    getLogger().warn(
+      `[EFC] jwtSecret is ${Buffer.byteLength(jwtSecret)} bytes — use at least 32 random bytes in production (openssl rand -hex 64).`,
+    );
+  }
   configureQueryLog(config.logging);
 
   if (clusterEnabled && cluster.isPrimary) {
@@ -275,8 +286,10 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
         // isHttpError() covers the common case, but errors can also arrive as plain
         // objects with a numeric statusCode (e.g. thrown across a module boundary, or
         // duck-typed by user code) — fall back to that shape before giving up to 500.
+        // Only 4xx: a library's 5xx message can describe internals (hosts, SQL, paths).
+        const status = (err as { statusCode?: unknown } | null)?.statusCode;
         const duckTyped =
-          err instanceof Error && typeof (err as { statusCode?: unknown }).statusCode === 'number'
+          err instanceof Error && typeof status === 'number' && status >= 400 && status < 500
             ? (err as Error & { statusCode: number })
             : null;
 

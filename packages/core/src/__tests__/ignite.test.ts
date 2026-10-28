@@ -205,6 +205,21 @@ describe('ignite() — server integration', () => {
     expect(res.body).toMatchObject({ error: 'Invalid input', statusCode: 422 });
   });
 
+  it("hides a library error's 5xx message", async () => {
+    // e.g. a driver error carrying statusCode 500 and a message naming hosts or SQL.
+    writeRoute(
+      apiDir,
+      'boom.js',
+      `export const GET = async (_req, _res, next) => {
+         next(Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:5432'), { statusCode: 503 }));
+       };`,
+    );
+    server = await ignite({ basePath: '/', cluster: false, port: 0 });
+    const res = await request(server!).get('/boom');
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error', statusCode: 500 });
+  });
+
   it('answers 408 when a handler exceeds requestTimeout, without crashing on its late reply', async () => {
     writeRoute(
       apiDir,

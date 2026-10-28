@@ -103,6 +103,17 @@ describe('requireAuth', () => {
     expect(res.status).toBe(200);
   });
 
+  it('rejects a token signed with another algorithm, even with the right secret', async () => {
+    configureAuth({ secret: 'test-secret', strategy: 'bearer', expiresIn: '1h' });
+    const { SignJWT } = await import('jose');
+    const token = await new SignJWT({ id: '2', role: 'admin' })
+      .setProtectedHeader({ alg: 'HS512' })
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode('test-secret'));
+    const res = await request(makeApp()).get('/admin').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(401);
+  });
+
   it("still accepts 'localStorage' as the old name for bearer", async () => {
     configureAuth({ secret: 'test-secret', strategy: 'localStorage', expiresIn: '1h' });
     const token = await signToken({ id: '2', role: 'admin' });

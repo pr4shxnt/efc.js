@@ -115,6 +115,18 @@ Filters, sorting and pagination behave the same on both engines.
 
 ---
 
+### Check request values before they reach a filter
+
+Filters accept operator objects, and JSON bodies (and `?a[b]=c` query strings) can carry objects where you expect a string. Check the type of anything from `req.body` / `req.query` before using it in a lookup:
+
+```ts
+const { refreshToken } = req.body;
+if (typeof refreshToken !== 'string') return res.status(400).json({ error: 'Invalid refresh token' });
+const user = await User.findOne({ refreshToken });
+```
+
+— or validate the body with `export const schema` ([validation](./validation.md)), which replaces it with the parsed, typed output.
+
 ## Writing
 
 ```ts
