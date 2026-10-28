@@ -118,6 +118,49 @@ await Place.bulkWrite([
 
 ## Aggregation
 
+### Typed pipelines
+
+`pipeline()` builds an aggregation stage by stage, and each stage's output type is inferred from the schema — no hand-written result types:
+
+```ts
+const ratings = await Place.pipeline()
+  .match({ owner: ownerId })                 // string ids are cast, like find()
+  .unwind('$reviews')                        // reviews: { rating, text } (one per result)
+  .group({ _id: '$name', avg: { $avg: '$reviews.rating' }, n: { $sum: 1 } })
+  .sort({ avg: -1 });
+// ratings: { _id: string; id: string; avg: number | null; n: number }[]
+```
+
+| Stage | Output type |
+|---|---|
+| `match(filter)`, `sort`, `skip`, `limit`, `sample(n)` | unchanged |
+| `unwind('$field', { preserveNullAndEmptyArrays? })` | the array field holds one element (or `null` when preserved) |
+| `group({ _id, …accumulators })` | `_id` (a `'$field'`, `null` or `{ key: '$field' }`), a string `id`, and per accumulator: `$sum`/`$count` → `number` (`$sum` of a `decimal128` → exact `string`), `$avg` → `number \| null`, `$min`/`$max`/`$first`/`$last` → the field's type, `$push`/`$addToSet` → an array of it |
+| `project({ a: 1, b: 1 })` | only those fields, plus `id` |
+| `count('n')` | `{ n: number }` (no result when nothing matched) |
+| `lookup('ref', Model)` / `lookup({ from, localField, foreignField, as })` | see below |
+| `addFields<{ x: number }>({ … })` | adds the fields you name in the generic |
+| `stage<Out>({ … })` | anything else (`$facet`, `$bucket`, …), with its output type spelled out |
+
+Field references (`'$name'`, `'$address.city'`) are checked against the record — one level into embedded objects. Await the builder, or call `.exec()`; `.toArray()` returns the stages as plain objects.
+
+While the records still have the collection's shape, `match` and `sort` are cast like `find()` (`id` → `_id`, string ids → ObjectIds). After a stage that changes the shape (`group`, `unwind`, `lookup`, `project`, …) they're passed through as written.
+
+### `lookup()`
+
+```ts
+const posts = await Post.lookup('author', User, { published: true });
+// posts[0].author: User record | null    (an array of refs → User records[])
+
+const users = await User.pipeline()
+  .lookup({ from: Post, localField: 'id', foreignField: 'author', as: 'posts' });
+// users[0].posts: Post records[]
+```
+
+The first form replaces a `ref` field with the record it points to (`null` when it points nowhere); the optional third argument filters first. Inside a pipeline it's `.lookup('author', User)`. The full form adds an array field; `id` means `_id` on either side. The target is a model, so the collection name is never spelled out.
+
+### Raw pipelines
+
 ```ts
 const ratings = await Place.aggregate<{ _id: string; avg: number }>([
   { $unwind: '$reviews' },
@@ -126,7 +169,7 @@ const ratings = await Place.aggregate<{ _id: string; avg: number }>([
 ]);
 ```
 
-The pipeline is passed to MongoDB unchanged; type the output with the generic. Results get the same conversions as records: decimals become strings, longs bigints, `_id` gains a string `id`. `$lookup` joins other collections by collection name.
+`aggregate()` passes the pipeline to MongoDB unchanged (no id casting); type the output with the generic. Results of both forms get the same conversions as records: decimals become strings, longs bigints, `_id` gains a string `id`.
 
 ## Change streams
 

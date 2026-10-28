@@ -386,6 +386,14 @@ export type {
   CollectionChange,
   CollectionChangeStream,
 } from './db/collection-model.js';
+export type {
+  Pipeline,
+  FieldRef,
+  Accumulator,
+  GroupResult,
+  LookedUp,
+  LookupTarget,
+} from './db/pipeline.js';
 export { transaction } from './db/transaction.js';
 export { ModelValidationError } from './db/schema.js';
 export { scanDir } from './router/scan.js';
