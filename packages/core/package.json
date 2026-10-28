@@ -1,6 +1,6 @@
 {
   "name": "express-file-cluster",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "description": "Enterprise-grade, zero-boilerplate backend framework with file-based routing and multi-core clustering",
   "homepage": "https://efc.prashantadhikari7.com.np/",
   "repository": {

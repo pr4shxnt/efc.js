@@ -167,6 +167,16 @@ databasePool: { max: 5, idleTimeoutMs: 30_000, connectionTimeoutMs: 5_000 },
 
 Unset options keep the driver's default. `efc db` commands use the defaults.
 
+At boot, one process per machine logs the total — `workers × (max + 10 for pg-boss on the same database)` on PostgreSQL, `workers × max` on MongoDB. On PostgreSQL it compares that with the server's `max_connections` (minus the superuser reserve) and **warns** when this machine alone could exhaust it:
+
+```
+[EFC] PostgreSQL connections: up to 110 from this machine (11 worker(s) × (pool 10)), but the server allows 97 …
+```
+
+Several instances share the server, so multiply by the instance count — or put PgBouncer in front.
+
+Failed connections name the fix instead of echoing the driver: a `DATABASE_URL` without a password, a wrong password, a missing database or role, a server that needs `?sslmode=require`, nothing listening at the host/port (PostgreSQL); a rejected login or an unreachable server (MongoDB). The password is never printed; the driver's error is kept as `cause`.
+
 ---
 
 ### `authStrategy`

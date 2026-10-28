@@ -229,8 +229,9 @@ Goal: define a model and use it — no table chores, on either engine.
       `@mapbox/node-pre-gyp`) for `hashPassword`/`verifyPassword` in `express-file-cluster/auth` (node:crypto
       scrypt); nodemailer ^10.2.1 + esbuild override in scaffolded apps; repo lockfile refreshed (zod, vite,
       vitest, qs, body-parser, …)
-- [ ] Friendlier `connectPostgres` error when `DATABASE_URL` has no password (`SASL: client password must be a
-      string`) + scaffolder note to create the database/user (bugs/e2e-bugs.txt)
+- [x] Friendlier `connectPostgres` error when `DATABASE_URL` has no password (`SASL: client password must be a
+      string`) + scaffolder note to create the database/user (bugs/e2e-bugs.txt) — 0.9.5, with the other
+      connection errors (pg + Mongo) and a boot-time warning when `workers × pool` exceeds `max_connections`
 
 ---
 

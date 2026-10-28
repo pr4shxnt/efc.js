@@ -4,6 +4,24 @@ All three packages (`express-file-cluster`, `create-efc-app`, `express-file-clus
 together under one version. Newest first. The public site's changelog (`client/index.html#changelog`)
 mirrors this file — see `AGENTS.md` §5.
 
+## 0.9.5 — 2026-10-28
+
+**Database connections: errors that say what to fix, and a warning before the pool runs the server out.**
+
+- **Fix:** connection failures name the fix instead of echoing the driver. A PostgreSQL
+  `DATABASE_URL` with no password used to fail with `SASL: SCRAM-SERVER-FIRST-MESSAGE: client password
+  must be a string`; now: `[EFC] PostgreSQL asked for a password and DATABASE_URL has none (user …).
+  Put it in the URL: postgres://user:<password>@host/db`. Also covered: wrong password, missing database
+  (`createdb …`), missing role, servers that need `?sslmode=require`, refused/unknown host, timeouts —
+  and for MongoDB a rejected login or an unreachable server (Atlas Network Access). pg-boss start-up
+  errors go through the same messages. The password is never printed; the driver's error is the
+  `cause`.
+- **New:** every cluster worker opens its own pool, so at boot one process per machine logs the total
+  (`workers × (databasePool.max + pg-boss)`) and, on PostgreSQL, warns when it exceeds the server's
+  `max_connections` minus the superuser reserve — before "too many clients" shows up under load.
+- **Changed:** `create-efc-app` reminds PostgreSQL users that EFC creates tables, not the database
+  or its login (`createdb <name>` locally; the dashboard's connection string for Neon, Supabase, RDS).
+
 ## 0.9.4 — 2026-10-28
 
 **Auth strategy: chosen on init, and Bearer apps actually get a token.**

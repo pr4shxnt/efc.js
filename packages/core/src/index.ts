@@ -39,7 +39,7 @@ import { isHttpError } from './errors.js';
 import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
 import { setDbEngine, setAutoSync } from './db/engine.js';
-import { connectPostgres } from './db/postgres.js';
+import { checkConnectionBudget, connectPostgres } from './db/postgres.js';
 import { runWithContext } from './context.js';
 import { configureLogger, getLogger, requestLogger } from './logger.js';
 import { configureQueryLog } from './db/query-log.js';
@@ -175,12 +175,31 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   // Pre-Flight step 1: Connect database. The engine decides what defineModel compiles to.
   if (database) setDbEngine(database);
   setAutoSync(config.autoSync ?? true);
+  // Pools are per worker; one process per machine reports the machine's total.
+  const poolWorkers = clusterEnabled ? (workers ?? os.cpus().length) : 1;
+  const reportsPools = !clusterEnabled || cluster.worker?.id === 1;
   if (database === 'mongodb' && databaseUrl) {
     const conn = await connectMongo(databaseUrl, config.databasePool);
     setDbClient(conn as unknown as Record<string, unknown>);
+    if (reportsPools) {
+      const max = config.databasePool?.max ?? 100; // mongoose's maxPoolSize default
+      getLogger().info(
+        `MongoDB connections: up to ${poolWorkers * max} from this machine (${poolWorkers} worker(s) × maxPoolSize ${max})`,
+      );
+    }
   } else if (database === 'postgresql' && databaseUrl) {
     const pool = await connectPostgres(databaseUrl, config.databasePool);
     setDbClient(pool as unknown as Record<string, unknown>);
+    if (reportsPools) {
+      const max = config.databasePool?.max ?? 10; // node-postgres' default
+      // pg-boss on the same database opens its own pool (node-postgres default 10).
+      const boss =
+        config.tasks && config.tasks.backend === 'pg-boss' && !config.tasks.connectionString
+          ? 10
+          : 0;
+      const breakdown = `${poolWorkers} worker(s) × (pool ${max}${boss ? ` + pg-boss ${boss}` : ''})`;
+      await checkConnectionBudget(poolWorkers * (max + boss), breakdown);
+    }
   }
 
   // Pre-Flight step 1b: Cache (also the session-revocation store requireAuth consults)
