@@ -53,7 +53,7 @@
           "applicationCategory": "DeveloperApplication",
           "applicationSubCategory": "Web framework",
           "operatingSystem": "Node.js 18+",
-          "softwareVersion": "0.9.4",
+          "softwareVersion": "0.9.5",
           "license": "https://opensource.org/licenses/MIT",
           "isAccessibleForFree": true,
           "offers": {
@@ -141,8 +141,8 @@
         <div class="hero-glow"></div>
       </div>
       <div class="container hero-inner">
-        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.9.4</span>Pick cookie or Bearer
-          auth on init</a>
+        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.9.5</span>Database errors that
+          say what to fix</a>
         <h1 class="hero-title">Express, but your folder <br />is your <span class="serif">router.</span></h1>
         <p class="hero-sub fade-up" style="--d: .2s">Drop a file in <code>src/api/</code> and it's a route. Clustering,
           background jobs and a typed data layer are already set up.</p>
@@ -464,6 +464,11 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
           <h2 class="h2">Recent releases.</h2>
         </header>
         <ol class="releases">
+          <li><span class="v">0.9.5</span><time datetime="2026-10-28">Oct 28</time>
+            <p>Connection errors name the fix (missing password, database, role, SSL) instead of echoing the
+              driver; a boot-time warning when <code>workers × pool</code> exceeds PostgreSQL's
+              <code>max_connections</code>.</p>
+          </li>
           <li><span class="v">0.9.4</span><time datetime="2026-10-28">Oct 28</time>
             <p><code>create-efc-app</code> and <code>efc add auth</code> ask for the auth strategy: http-only
               cookie (browsers) or Bearer token (apps). Bearer logins now return the token;
@@ -576,7 +581,7 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
       </div>
       <div class="footer-bottom">
         <span>© 2026 EFC Contributors</span>
-        <span>v0.9.4 · Beta</span>
+        <span>v0.9.5 · Beta</span>
       </div>
     </div>
   </footer>

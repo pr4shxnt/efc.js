@@ -216,6 +216,19 @@ async function main(): Promise<void> {
     );
   }
 
+  if (opts.database === 'postgresql') {
+    // EFC creates tables, but not the database or the login — the most common first-run error.
+    const db = path.basename(opts.projectName);
+    p.note(
+      `.env points DATABASE_URL at postgresql://localhost:5432/${db}, with no user or password.\n` +
+        'EFC creates the tables on first use, but not the database or the login:\n' +
+        `  • Local server: createdb ${db}  (add user:password@ to the URL if it asks for one)\n` +
+        '  • Neon, Supabase, RDS: create the database in the dashboard and paste its full\n' +
+        '    connection string into .env as DATABASE_URL',
+      'PostgreSQL',
+    );
+  }
+
   // Tables (PostgreSQL) and collections/indexes (MongoDB) are created on first use, so
   // there's nothing to set up before the first run; migrations are there when wanted.
   p.outro(
