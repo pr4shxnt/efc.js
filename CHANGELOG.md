@@ -14,7 +14,8 @@ mirrors this file — see `AGENTS.md` §5.
   token under `'bearer'` (and sets no cookie); the generated routes send `token` (and `refreshToken`)
   in the body. Google/Apple sign-in redirects to `OAUTH_SUCCESS_REDIRECT#code=<code>` — a one-time
   code (60 s, single use) the app posts to the new `/auth/oauth/exchange` for the token, so the JWT never
-  appears in a URL. Under `'http-only'` nothing changes: cookie set, `issueToken` resolves `undefined`,
+  appears in a URL. The app starts sign-in with a PKCE `code_challenge` and must send the matching
+  `code_verifier`, so another app catching the `myapp://` redirect can't redeem the code. Under `'http-only'` nothing changes: cookie set, `issueToken` resolves `undefined`,
   no token in the body.
 - **Changed:** `create-efc-app` asks **Authentication:** up front — `http-only cookie` (browsers:
   websites and SPAs, recommended), `Bearer token` (mobile/desktop apps, API clients) or `None`. Before,

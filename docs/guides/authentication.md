@@ -122,7 +122,7 @@ export const POST = async (req: Request, res: Response) => {
 };
 ```
 
-The scaffolded login and `/auth/refresh` routes also return `refreshToken` in bearer mode; post it back as `{ refreshToken }` to `/auth/refresh` for a new pair. Google/Apple sign-in never puts the JWT in a URL: it redirects to `OAUTH_SUCCESS_REDIRECT#code=<code>`, and the app (e.g. its `myapp://signed-in` link) posts `{ code }` to `/auth/oauth/exchange` for the token. The code works once, for 60 seconds — see [Sign in with Google & Apple](./oauth.md).
+The scaffolded login and `/auth/refresh` routes also return `refreshToken` in bearer mode; post it back as `{ refreshToken }` to `/auth/refresh` for a new pair. Google/Apple sign-in never puts the JWT in a URL: the app starts it with a PKCE `code_challenge`, gets `OAUTH_SUCCESS_REDIRECT#code=<code>` back and posts `{ code, code_verifier }` to `/auth/oauth/exchange` for the token. The code works once, for 60 seconds, and only with the app's verifier — see [Sign in with Google & Apple](./oauth.md#bearer-apps-mobile--desktop).
 
 The client keeps the token in secure storage and sends it on every request:
 

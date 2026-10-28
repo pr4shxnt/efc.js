@@ -444,8 +444,9 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       `${ts ? "import type { Request, Response } from 'express';\n" : ''}import { signInWithOAuth, successRedirect } from '../lib/oauth.js';
 
 export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' : ''}) => {
-  const token = await signInWithOAuth(res, req.body);
-  res.json({ location: await successRedirect(token) });
+  const { appChallenge, ...profile } = req.body;
+  const token = await signInWithOAuth(res, profile);
+  res.json({ location: await successRedirect(token, appChallenge) });
 };
 `,
     );
@@ -515,35 +516,50 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       expect(next.refreshToken).not.toBe(tokens.refreshToken);
       expect((await fetch(`${base}/auth/me`, { headers: bearer(next.token) })).status).toBe(200);
 
-      // OAuth in bearer mode: the redirect carries a one-time code, never the JWT.
-      const signedIn = await fetch(`${base}/oauth-code-test`, {
-        method: 'POST',
-        headers: json,
-        body: JSON.stringify({
-          provider: 'google',
-          providerId: `bearer-${Date.now()}`,
-          email: `oauth-bearer-${Date.now()}@example.com`,
-          emailVerified: true,
-          name: 'OAuth Bearer',
-        }),
-      });
+      // OAuth in bearer mode: the redirect carries a one-time code, never the JWT, and only
+      // the app holding the PKCE verifier behind the sign-in's code_challenge can redeem it.
+      const verifier = crypto.randomBytes(32).toString('base64url');
+      const appChallenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+      const profile = {
+        provider: 'google',
+        providerId: `bearer-${Date.now()}`,
+        email: `oauth-bearer-${Date.now()}@example.com`,
+        emailVerified: true,
+        name: 'OAuth Bearer',
+      };
+      const signIn = (body: object) =>
+        fetch(`${base}/oauth-code-test`, { method: 'POST', headers: json, body: JSON.stringify(body) });
+      const noChallenge = await signIn(profile);
+      expect(noChallenge.status, await noChallenge.clone().text()).toBe(400);
+      const signedIn = await signIn({ ...profile, appChallenge });
       expect(signedIn.status, await signedIn.clone().text()).toBe(200);
       const { location } = (await signedIn.json()) as { location: string };
       expect(location).toMatch(/#code=[\w-]+$/);
       expect(location).not.toContain('.ey'); // no JWT in the URL
       const code = location.split('#code=')[1]!;
-      const exchange = (c: string) =>
+      const exchange = (c: string, v: string) =>
         fetch(`${base}/auth/oauth/exchange`, {
           method: 'POST',
           headers: { ...json, connection: 'close' },
-          body: JSON.stringify({ code: c }),
+          body: JSON.stringify({ code: c, code_verifier: v }),
         });
-      // Two racing requests with the same code: exactly one gets the token.
-      const [a, b] = await Promise.all([exchange(code), exchange(code)]);
+      // Another app that caught the redirect has the code but not the verifier.
+      const thief = crypto.randomBytes(32).toString('base64url');
+      expect((await exchange(code, thief)).status).toBe(400);
+      // ...and its failed attempt didn't burn the code. Two racing exchanges: exactly one wins.
+      const [a, b] = await Promise.all([exchange(code, verifier), exchange(code, verifier)]);
       expect([a.status, b.status].sort()).toEqual([200, 400]);
       const { token: oauthToken } = (await (a.status === 200 ? a : b).json()) as { token: string };
       expect((await fetch(`${base}/auth/me`, { headers: bearer(oauthToken) })).status).toBe(200);
-      expect((await exchange(code)).status).toBe(400);
+      expect((await exchange(code, verifier)).status).toBe(400);
+
+      // The start routes check the challenge's shape.
+      const badStart = await fetch(`${base}/auth/google?code_challenge=short`, { redirect: 'manual' });
+      expect(badStart.status).toBe(400);
+      const goodStart = await fetch(`${base}/auth/google?code_challenge=${appChallenge}`, {
+        redirect: 'manual',
+      });
+      expect(goodStart.status).toBe(302);
 
       // Logout revokes the bearer token on every worker.
       const logout = await fetch(`${base}/auth/logout`, {

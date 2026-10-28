@@ -4055,6 +4055,8 @@ export interface OAuthState {
   state: string;
   nonce: string;
   verifier?: string;
+  /** Bearer apps: the S256 challenge of a verifier only the app knows (app ↔ this server). */
+  appChallenge?: string;
 }
 
 export interface OAuthProfile {
@@ -4161,28 +4163,61 @@ export async function signInWithOAuth(res${T(': Response')}, profile${T(': OAuth
 }
 
 /**
+ * Bearer apps start sign-in with \`?code_challenge=<base64url SHA-256 of a random verifier>\`
+ * (PKCE, RFC 7636, between the app and this server). Only the app holding the verifier can
+ * redeem the sign-in code — another app catching the myapp:// redirect can't.
+ */
+export function appChallengeFrom(query${T(': Request[\'query\']')})${T(': string | undefined')} {
+  const challenge = query.code_challenge;
+  if (challenge === undefined) return undefined;
+  if (typeof challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(challenge)) {
+    throw new HttpError(400, 'code_challenge must be the base64url SHA-256 of your code_verifier');
+  }
+  return challenge;
+}
+
+/**
  * Where the browser goes once signed in. With authStrategy 'bearer' the JWT never goes in the
  * URL (history, screenshots, logs): it gets a one-time code, valid for a minute, which the app
- * (e.g. its myapp://signed-in link) trades for the token at POST /auth/oauth/exchange.
+ * that started the sign-in trades for the token at POST /auth/oauth/exchange.
  */
-export async function successRedirect(token${T('?: string')})${T(': Promise<string>')} {
+export async function successRedirect(
+  token${T('?: string')},
+  appChallenge${T('?: string')},
+)${T(': Promise<string>')} {
   const to = process.env.OAUTH_SUCCESS_REDIRECT || '/';
   if (!token) return to;
+  if (!appChallenge) {
+    throw new HttpError(
+      400,
+      'Bearer sign-in needs a code_challenge — start at /auth/<provider>?code_challenge=…',
+    );
+  }
   const code = randomToken();
-  await cache.set(\`oauth:code:\${code}\`, token, { ttl: CODE_TTL_S });
+  await cache.set(\`oauth:code:\${code}\`, { token, appChallenge }, { ttl: CODE_TTL_S });
   return \`\${to}#code=\${code}\`;
 }
 
-/** The token for a one-time sign-in code — once: a second use (or after a minute) gets 400. */
-export async function exchangeCode(code${T(': unknown')})${T(': Promise<string>')} {
+/**
+ * The token for a one-time sign-in code, given the verifier behind the challenge the sign-in
+ * started with. Once: a second use (or after a minute) gets 400.
+ */
+export async function exchangeCode(code${T(': unknown')}, verifier${T(': unknown')})${T(': Promise<string>')} {
   if (typeof code !== 'string' || !code) throw new HttpError(400, 'code is required');
+  if (typeof verifier !== 'string' || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) {
+    throw new HttpError(400, 'code_verifier is required (43-128 characters)');
+  }
   const key = \`oauth:code:\${code}\`;
-  const token = await cache.get${T('<string>')}(key);
-  // del is atomic: of two requests racing with the same code, only one removes it.
-  if (!token || (await cache.del(key)) !== 1) {
+  const saved = await cache.get${T('<{ token: string; appChallenge: string }>')}(key);
+  const expected = Buffer.from(saved?.appChallenge ?? '');
+  const actual = Buffer.from(pkceChallenge(verifier));
+  // A wrong verifier leaves the code alone, so it can't be used to burn someone's sign-in.
+  if (!saved || expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
     throw new HttpError(400, 'Invalid or expired sign-in code');
   }
-  return token;
+  // del is atomic: of two requests racing with the same code, only one removes it.
+  if ((await cache.del(key)) !== 1) throw new HttpError(400, 'Invalid or expired sign-in code');
+  return saved.token;
 }
 `;
 
@@ -4192,14 +4227,16 @@ export async function exchangeCode(code${T(': unknown')})${T(': Promise<string>'
   const meta = (method: string, description: string) =>
     `${ts ? "import type { RouteMeta } from 'express-file-cluster';\n\n" : ''}export const meta${T(': RouteMeta')} = {\n  ${method}: { description: '${description}' },\n};\n\n`;
 
-  const googleStart = `${typeImport}import { pkceChallenge, randomToken, rememberState } from '../../../lib/oauth.js';
+  const googleStart = `${typeImport}import { appChallengeFrom, pkceChallenge, randomToken, rememberState } from '../../../lib/oauth.js';
 ${meta('GET', 'Start "Sign in with Google": redirects to Google.')}// Redirects to Google's consent screen; Google sends the browser back to the callback route
 // (GOOGLE_REDIRECT_URI — register that exact URL in the Google Cloud console).
-export const GET = async ${reqRes('_req')} => {
+// Bearer apps add ?code_challenge=… (see appChallengeFrom in src/lib/oauth).
+export const GET = async ${reqRes('req')} => {
+  const appChallenge = appChallengeFrom(req.query);
   const state = randomToken();
   const nonce = randomToken();
   const verifier = randomToken();
-  rememberState(res, 'google', { state, nonce, verifier });
+  rememberState(res, 'google', { state, nonce, verifier, ...(appChallenge ? { appChallenge } : {}) });
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID ?? '',
     redirect_uri: process.env.GOOGLE_REDIRECT_URI ?? '',
@@ -4256,17 +4293,19 @@ export const GET = async ${reqRes('req')} => {
     emailVerified: payload.email_verified === true,
     name: ${ts ? 'payload.name as string | undefined' : 'payload.name'},
   });
-  res.redirect(await successRedirect(token));
+  res.redirect(await successRedirect(token, saved.appChallenge));
 };
 `;
 
-  const appleStart = `${typeImport}import { randomToken, rememberState } from '../../../lib/oauth.js';
+  const appleStart = `${typeImport}import { appChallengeFrom, randomToken, rememberState } from '../../../lib/oauth.js';
 ${meta('GET', 'Start "Sign in with Apple": redirects to Apple.')}// Redirects to Apple; Apple POSTs the result to the callback route (APPLE_REDIRECT_URI —
 // register it on the Services ID; Apple only accepts https URLs on a verified domain).
-export const GET = async ${reqRes('_req')} => {
+// Bearer apps add ?code_challenge=… (see appChallengeFrom in src/lib/oauth).
+export const GET = async ${reqRes('req')} => {
+  const appChallenge = appChallengeFrom(req.query);
   const state = randomToken();
   const nonce = randomToken();
-  rememberState(res, 'apple', { state, nonce }, true);
+  rememberState(res, 'apple', { state, nonce, ...(appChallenge ? { appChallenge } : {}) }, true);
   const params = new URLSearchParams({
     client_id: process.env.APPLE_CLIENT_ID ?? '',
     redirect_uri: process.env.APPLE_REDIRECT_URI ?? '',
@@ -4343,13 +4382,13 @@ export const POST = async ${reqRes('req')} => {
     emailVerified: payload.email_verified === true || payload.email_verified === 'true',
     name,
   });
-  res.redirect(303, await successRedirect(token));
+  res.redirect(303, await successRedirect(token, saved.appChallenge));
 };
 `;
 
   const exchange = `${typeImport}import { exchangeCode } from '../../../lib/oauth.js';
-${meta('POST', 'Bearer apps: trade the one-time code from the sign-in redirect for a token.')}export const POST = async ${reqRes('req')} => {
-  res.json({ token: await exchangeCode(req.body?.code) });
+${meta('POST', 'Bearer apps: trade the one-time code from the sign-in redirect (plus the PKCE code_verifier) for a token.')}export const POST = async ${reqRes('req')} => {
+  res.json({ token: await exchangeCode(req.body?.code, req.body?.code_verifier) });
 };
 `;
 

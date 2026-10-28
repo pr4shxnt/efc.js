@@ -61,13 +61,21 @@ Send the browser (not `fetch`) to the start route:
 
 After the provider sends the user back, the callback sets the usual `efc_token` cookie (the same one `/auth/login` sets) and redirects to `OAUTH_SUCCESS_REDIRECT`. From there, requests with credentials work as after a password login, and `GET /auth/me` returns the user.
 
-> With `authStrategy: 'http-only'` the callbacks set the session cookie and redirect to `OAUTH_SUCCESS_REDIRECT`. With `'bearer'` they redirect to `OAUTH_SUCCESS_REDIRECT#code=<code>` instead — a one-time code, never the JWT itself (URLs end up in history, logs and screenshots). The app (e.g. its `myapp://signed-in` deep link) trades it for the token:
->
-> ```http
-> POST /auth/oauth/exchange   { "code": "<code>" }   →   200 { "token": "<jwt>" }
-> ```
->
-> The code is kept in `cache` for 60 seconds and works once; a second use, even a simultaneous one, gets 400.
+> With `authStrategy: 'http-only'` the callbacks set the session cookie and redirect to `OAUTH_SUCCESS_REDIRECT`. With `'bearer'` they redirect to `OAUTH_SUCCESS_REDIRECT#code=<code>` instead — a one-time code, never the JWT itself (URLs end up in history, logs and screenshots).
+
+### Bearer apps (mobile / desktop)
+
+The app proves it's the one that started the sign-in with PKCE ([RFC 7636](https://www.rfc-editor.org/rfc/rfc7636)), so another app that registers the same `myapp://` link and catches the redirect can't use the code:
+
+1. Make a random `code_verifier` (43–128 characters, e.g. 32 random bytes as base64url) and keep it in memory.
+2. Open `/auth/google?code_challenge=<base64url(SHA-256(code_verifier))>` (or `/auth/apple?…`) in the system browser (`ASWebAuthenticationSession`, Custom Tabs).
+3. `OAUTH_SUCCESS_REDIRECT` (e.g. `myapp://signed-in`) receives `#code=<code>`. Trade it within 60 seconds:
+
+```http
+POST /auth/oauth/exchange   { "code": "<code>", "code_verifier": "<code_verifier>" }   →   200 { "token": "<jwt>" }
+```
+
+The code works once — a second use, even a simultaneous one, gets 400. A wrong verifier gets 400 without using the code up. Without a `code_challenge`, bearer sign-in stops with 400 at the callback. The code lives in `cache`: with several instances, use Redis (`REDIS_URL`).
 
 ---
 
