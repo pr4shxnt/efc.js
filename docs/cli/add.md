@@ -140,7 +140,7 @@ Wrong answers are asked again. A question is only asked for a variable the app d
 
 ```json
 {
-  "registry": "0.9.2",
+  "registry": "0.9.3",
   "language": "typescript",
   "database": "postgresql",
   "modelApi": "defineTable",

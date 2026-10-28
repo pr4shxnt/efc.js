@@ -4,6 +4,12 @@ All three packages (`express-file-cluster`, `create-efc-app`, `express-file-clus
 together under one version. Newest first. The public site's changelog (`client/index.html#changelog`)
 mirrors this file — see `AGENTS.md` §5.
 
+## 0.9.3 — 2026-10-28
+
+- **Fix:** `efc start prod` now loads `.env` from the working directory when one exists. Variables
+  already set in the environment (Docker, Kubernetes, PaaS secrets) still win; the file only fills in
+  what's missing. Before, a VPS deploy with just a `.env` booted without `DATABASE_URL`, `JWT_SECRET`, …
+
 ## 0.9.2 — 2026-10-28
 
 **Security: zero `npm audit` findings, in the repo and in scaffolded apps.**
