@@ -208,7 +208,10 @@ export const Note = defineModel('SyncNote', { title: { type: 'string', unique: t
           collections: { name: string; count: number }[];
         };
         expect(cols.engine).toBe(engine);
-        expect(cols.collections).toEqual(expect.arrayContaining([{ name: table, count: 1 }]));
+        // Without --write nothing is writable.
+        expect(cols.collections).toEqual(
+          expect.arrayContaining([{ name: table, count: 1, writable: false }]),
+        );
         const page = (await (await fetch(`${url}/api/collections/${table}`)).json()) as {
           rows: { title: string }[];
           total: number;
