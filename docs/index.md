@@ -39,6 +39,8 @@
 | [RBAC](./guides/rbac.md) | Role-based route protection via the `requireAuth('role')` shorthand |
 | [Database](./guides/database.md) | `defineModel`, queries, transactions, MongoDB vs PostgreSQL |
 | [Which model API?](./guides/which-api.md) | `defineModel` vs `defineTable` vs `defineCollection`, and moving between them |
+| [Feature matrix](./guides/feature-matrix.md) | What each model API does on which engine, with the test that proves each row |
+| [Type inference](./api-reference/types.md) | What every schema type becomes in records and inputs, ids, timestamps, typed queries |
 | [Relations](./guides/relations.md) | Foreign keys, many-to-many, `include`, relation filters, nested writes |
 | [defineTable](./api-reference/table.md) | PostgreSQL-native models: Prisma-style queries, SQL types, aggregation |
 | [defineCollection](./api-reference/collection.md) | MongoDB-native models: mongoose-style queries, BSON types, geo, bulk writes, change streams |
