@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { scaffold, type ScaffoldOptions } from './scaffold.js';
 import {
+  AUTH_STRATEGY_OPTIONS,
   ITEMS,
   envFromAnswers,
   itemPrompts,
@@ -104,33 +105,32 @@ async function main(): Promise<void> {
       hint: item.description,
     });
   }
+  // Asked up front, not only when an auth feature is ticked — it decides how every client
+  // (browser, mobile app) talks to the API.
+  const auth = await p.select({
+    message: 'Authentication:',
+    options: [
+      ...AUTH_STRATEGY_OPTIONS,
+      { value: 'none', label: 'None', hint: 'add it later with `efc add auth`' },
+    ],
+  });
+  if (p.isCancel(auth)) cancel();
+
   const picked = await p.groupMultiselect({
     message: `Add features now? ${pc.dim('(space to toggle, enter to confirm — or add any later with `efc add <item>`)')}`,
     options: groups,
+    initialValues: auth === 'none' ? [] : ['auth'],
     required: false,
   });
   if (p.isCancel(picked)) cancel();
   const items = withDependencies(picked as string[]);
 
-  let authStrategy: ScaffoldOptions['authStrategy'] = 'http-only';
-  if (items.includes('auth')) {
-    const strategy = await p.select({
-      message: 'Authentication strategy:',
-      options: [
-        { value: 'http-only', label: 'http-only', hint: 'secure cookie — recommended for SSR' },
-        { value: 'localStorage', label: 'localStorage', hint: 'bearer token — for SPAs' },
-      ],
-    });
-    if (p.isCancel(strategy)) cancel();
-    authStrategy = strategy as ScaffoldOptions['authStrategy'];
-  }
-
   // Each feature's own questions (SMTP for the email client, OAuth credentials…) — the same
   // ones `efc add` asks. Answers named like env vars go into .env.
-  const answers: PromptAnswers = {};
+  const answers: PromptAnswers = auth === 'none' ? {} : { authStrategy: auth as string };
   const prompts = itemPrompts(items);
   for (const q of prompts) {
-    if (!promptApplies(q, answers)) continue;
+    if (q.name in answers || !promptApplies(q, answers)) continue;
     if (q.note) p.note(q.note);
     if (q.type === 'select') {
       const choice = await p.select({
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
     items,
     {
       projectName: projectName as string,
-      authStrategy,
+      authStrategy: (answers['authStrategy'] ?? 'http-only') as ScaffoldOptions['authStrategy'],
       cluster: cluster as boolean,
       taskBackend: taskBackend as 'bullmq' | 'pg-boss',
       ...(answers['provider'] === 'custom' && { smtpProvider: 'custom' as const }),

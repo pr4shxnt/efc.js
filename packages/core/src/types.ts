@@ -1,7 +1,12 @@
 import type { RequestHandler, ErrorRequestHandler } from 'express';
 
 export type DatabaseEngine = 'mongodb' | 'postgresql';
-export type AuthStrategy = 'http-only' | 'localStorage';
+/**
+ * How clients carry the JWT. `'http-only'`: an http-only cookie (browsers — websites and
+ * SPAs). `'bearer'`: an `Authorization: Bearer` header (mobile/desktop apps, API clients).
+ * `'localStorage'` is the old name for `'bearer'` and still works.
+ */
+export type AuthStrategy = 'http-only' | 'bearer' | 'localStorage';
 export type TaskBackend = 'bullmq' | 'pg-boss';
 
 export interface TaskConfig {
@@ -106,6 +111,7 @@ export interface EFCConfig {
   databaseUrl?: string;
   /** Connection pool settings — per worker, so the total is `max × workers`. */
   databasePool?: DatabasePoolConfig;
+  /** `'http-only'` (cookie, default) or `'bearer'` (Authorization header). */
   authStrategy?: AuthStrategy;
   jwtSecret?: string;
   /** JWT lifetime, e.g. '15m', '1h', '7d'. Default: '7d'. */

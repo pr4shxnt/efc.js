@@ -8,8 +8,9 @@ env = dict(os.environ, npm_config_userconfig=f'{S}/npmrc', npm_config_cache=f'{S
 DOWN, ENTER, SPACE = '\x1b[B', '\r', ' '
 # Feature picker rows (cursor starts on the first group header): 0 Auth, 1 auth, 2 auth@google,
 # 3 auth@apple, 4 User portal (+9 items), 14 Admin portal (+9 items), 24 Integrations.
-# Picks auth and both portal groups; OAuth and the email client ask for credentials, so they stay off.
-features = DOWN + SPACE + DOWN * 3 + SPACE + DOWN * 10 + SPACE + ENTER
+# auth is already ticked (an Authentication strategy was chosen); this adds both portal groups.
+# OAuth and the email client ask for credentials, so they stay off.
+features = DOWN * 4 + SPACE + DOWN * 10 + SPACE + ENTER
 steps = [
     ('Project name', name + ENTER),
     ('Language', (DOWN if lang == 'js' else '') + ENTER),
@@ -17,8 +18,8 @@ steps = [
     *([('Models:', ENTER)] if db == 'postgresql' else []),  # default: defineTable
     ('Task queue backend', (DOWN if db == 'postgresql' and backend == 'bullmq' else '') + ENTER),
     ('Multi-core clustering', ENTER),
+    ('Authentication:', ENTER),  # default: http-only cookie
     ('Add features now', features),
-    ('Authentication strategy', ENTER),
 ]
 pid, fd = pty.fork()
 if pid != 0:

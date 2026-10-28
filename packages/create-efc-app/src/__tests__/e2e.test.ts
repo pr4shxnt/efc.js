@@ -424,6 +424,158 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
     process.kill(server!.pid!, 'SIGTERM');
     expect(await exited, out).toBe(0);
   }, 30_000);
+
+  // The same generated routes, switched to authStrategy: 'bearer' (the one-line change the
+  // docs promise): login hands out tokens in the body, no cookie, and the header works.
+  it("with authStrategy: 'bearer', login, refresh and logout work over the Authorization header", async () => {
+    const ext = stack.language === 'typescript' ? 'ts' : 'js';
+    const cfgFile = path.join(appDir, `efc.config.${ext}`);
+    await fs.writeFile(
+      cfgFile,
+      (await fs.readFile(cfgFile, 'utf8')).replace(
+        "authStrategy: 'http-only'",
+        "authStrategy: 'bearer'",
+      ),
+    );
+    // Test-only: the redirect a bearer app gets after Google/Apple sign-in, for a real user.
+    const ts = stack.language === 'typescript';
+    await fs.outputFile(
+      path.join(appDir, 'src', 'api', `oauth-code-test.${ts ? 'ts' : 'js'}`),
+      `${ts ? "import type { Request, Response } from 'express';\n" : ''}import { signInWithOAuth, successRedirect } from '../lib/oauth.js';
+
+export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' : ''}) => {
+  const { appChallenge, ...profile } = req.body;
+  const token = await signInWithOAuth(res, profile);
+  res.json({ location: await successRedirect(token, appChallenge) });
+};
+`,
+    );
+    const efc = path.join(appDir, 'node_modules', '.bin', 'efc');
+    run(efc, ['build', 'prod'], appDir);
+
+    const port = await freePort();
+    const dotenv = Object.fromEntries(
+      (await fs.readFile(path.join(appDir, '.env'), 'utf8'))
+        .split('\n')
+        .filter((l) => /^[A-Z_]+=/.test(l))
+        .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+    );
+    let log = '';
+    const bearerServer = spawn(efc, ['start', 'prod'], {
+      cwd: appDir,
+      env: { ...process.env, ...dotenv, PORT: String(port), NODE_ENV: 'production' },
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    bearerServer.stdout!.on('data', (d: Buffer) => (log += d.toString()));
+    bearerServer.stderr!.on('data', (d: Buffer) => (log += d.toString()));
+    try {
+      const base = `http://127.0.0.1:${port}/v1/api`;
+      const start = Date.now();
+      for (;;) {
+        try {
+          if ((await fetch(`${base}/health`)).ok) break;
+        } catch {
+          /* not listening yet */
+        }
+        if (Date.now() - start > 30_000) throw new Error(`server never became healthy\n${log}`);
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const json = { 'content-type': 'application/json' };
+      const email = `bearer-${Date.now()}@example.com`;
+      const register = await fetch(`${base}/auth/register`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ name: 'Bearer', email, password: 'secret-pass-123' }),
+      });
+      expect(register.status, await register.clone().text()).toBe(201);
+
+      const login = await fetch(`${base}/auth/login`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ email, password: 'secret-pass-123' }),
+      });
+      expect(login.status, await login.clone().text()).toBe(200);
+      expect(login.headers.get('set-cookie') ?? '').not.toContain('efc_token=');
+      const tokens = (await login.json()) as { token: string; refreshToken: string };
+      expect(typeof tokens.token).toBe('string');
+      expect(typeof tokens.refreshToken).toBe('string');
+
+      const bearer = (t: string) => ({ authorization: `Bearer ${t}`, connection: 'close' });
+      expect((await fetch(`${base}/auth/me`, { headers: bearer(tokens.token) })).status).toBe(200);
+      expect((await fetch(`${base}/auth/me`)).status).toBe(401);
+
+      // A mobile client has no cookie jar: it posts the refresh token back in the body.
+      const refresh = await fetch(`${base}/auth/refresh`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+      });
+      expect(refresh.status, await refresh.clone().text()).toBe(200);
+      const next = (await refresh.json()) as { token: string; refreshToken: string };
+      expect(next.refreshToken).not.toBe(tokens.refreshToken);
+      expect((await fetch(`${base}/auth/me`, { headers: bearer(next.token) })).status).toBe(200);
+
+      // OAuth in bearer mode: the redirect carries a one-time code, never the JWT, and only
+      // the app holding the PKCE verifier behind the sign-in's code_challenge can redeem it.
+      const verifier = crypto.randomBytes(32).toString('base64url');
+      const appChallenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+      const profile = {
+        provider: 'google',
+        providerId: `bearer-${Date.now()}`,
+        email: `oauth-bearer-${Date.now()}@example.com`,
+        emailVerified: true,
+        name: 'OAuth Bearer',
+      };
+      const signIn = (body: object) =>
+        fetch(`${base}/oauth-code-test`, { method: 'POST', headers: json, body: JSON.stringify(body) });
+      const noChallenge = await signIn(profile);
+      expect(noChallenge.status, await noChallenge.clone().text()).toBe(400);
+      const signedIn = await signIn({ ...profile, appChallenge });
+      expect(signedIn.status, await signedIn.clone().text()).toBe(200);
+      const { location } = (await signedIn.json()) as { location: string };
+      expect(location).toMatch(/#code=[\w-]+$/);
+      expect(location).not.toContain('.ey'); // no JWT in the URL
+      const code = location.split('#code=')[1]!;
+      const exchange = (c: string, v: string) =>
+        fetch(`${base}/auth/oauth/exchange`, {
+          method: 'POST',
+          headers: { ...json, connection: 'close' },
+          body: JSON.stringify({ code: c, code_verifier: v }),
+        });
+      // Another app that caught the redirect has the code but not the verifier.
+      const thief = crypto.randomBytes(32).toString('base64url');
+      expect((await exchange(code, thief)).status).toBe(400);
+      // ...and its failed attempt didn't burn the code. Two racing exchanges: exactly one wins.
+      const [a, b] = await Promise.all([exchange(code, verifier), exchange(code, verifier)]);
+      expect([a.status, b.status].sort()).toEqual([200, 400]);
+      const { token: oauthToken } = (await (a.status === 200 ? a : b).json()) as { token: string };
+      expect((await fetch(`${base}/auth/me`, { headers: bearer(oauthToken) })).status).toBe(200);
+      expect((await exchange(code, verifier)).status).toBe(400);
+
+      // The start routes check the challenge's shape.
+      const badStart = await fetch(`${base}/auth/google?code_challenge=short`, { redirect: 'manual' });
+      expect(badStart.status).toBe(400);
+      const goodStart = await fetch(`${base}/auth/google?code_challenge=${appChallenge}`, {
+        redirect: 'manual',
+      });
+      expect(goodStart.status).toBe(302);
+
+      // Logout revokes the bearer token on every worker.
+      const logout = await fetch(`${base}/auth/logout`, {
+        method: 'POST',
+        headers: bearer(next.token),
+      });
+      expect(logout.status, await logout.clone().text()).toBe(200);
+      for (let i = 0; i < 6; i++) {
+        expect((await fetch(`${base}/auth/me`, { headers: bearer(next.token) })).status).toBe(401);
+      }
+    } finally {
+      const exited = new Promise((resolve) => bearerServer.once('exit', resolve));
+      if (bearerServer.pid) process.kill(-bearerServer.pid, 'SIGTERM');
+      await exited;
+    }
+  }, 180_000);
 });
 
 // The shadcn-style path: create the base app (server, src/api, src/tasks, database), then grow

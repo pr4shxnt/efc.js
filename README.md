@@ -336,7 +336,7 @@ See [defineTable](docs/api-reference/table.md).
 
 ## Authentication
 
-### `http-only` strategy _(recommended for SSR)_
+### `http-only` strategy _(default — browsers: websites and SPAs)_
 
 Tokens are stored in `HttpOnly; Secure; SameSite=Strict` cookies — no JS access, no XSS risk.
 
@@ -346,8 +346,8 @@ import { issueToken, revokeSession, requireAuth } from 'express-file-cluster/aut
 // Login
 export const POST = async (req, res) => {
   const user = await verifyCredentials(req.body);
-  issueToken(res, { sub: user.id, role: user.role });
-  res.json({ ok: true });
+  const token = await issueToken(res, { sub: user.id, role: user.role }); // undefined here: it's a cookie
+  res.json({ ok: true, ...(token ? { token } : {}) });                     // same route works for bearer
 };
 
 // Logout — needs `cache` in ignite(): the token is rejected from now on, cookie cleared
@@ -359,18 +359,9 @@ export const DELETE = async (req, res) => {
 
 `await revokeAllSessions(userId)` logs a user out everywhere. Without a cache, `revokeToken(res)` only clears the cookie. If the cache is unreachable, `requireAuth` answers 503 by default (`cache.onRevocationCheckError: 'allow'` lets requests through instead).
 
-### `localStorage` strategy _(SPA-friendly)_
+### `bearer` strategy _(mobile / desktop apps, API clients)_
 
-Token returned in the response body; client attaches `Authorization: Bearer <token>`.
-
-```ts
-import { signToken } from 'express-file-cluster/auth';
-
-export const POST = async (req, res) => {
-  const token = signToken({ sub: user.id });
-  res.json({ token });
-};
-```
+`authStrategy: 'bearer'`: `issueToken` sets no cookie and returns the token — the login route above sends it in the body. The client keeps it in secure storage (Keychain / Keystore) and sends `Authorization: Bearer <token>`. Browsers, SPAs included, should stay on `http-only`. (`'localStorage'` is the old name for `'bearer'` and still works.)
 
 ### Protecting routes
 
@@ -603,7 +594,7 @@ const config: EFCConfig = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN,
   cookieDomain: process.env.COOKIE_DOMAIN,
   cors: corsOrigins ? { origin: corsOrigins } : true,
-  authStrategy: 'http-only',   // 'http-only' | 'localStorage'
+  authStrategy: 'http-only',   // 'http-only' (browsers) | 'bearer' (mobile/desktop apps, API clients)
   tasks: { backend: 'bullmq', concurrency: 5, redisUrl: process.env.REDIS_URL },
   globalMiddlewares: [],
 };
@@ -637,7 +628,7 @@ ignite({
 | `basePath` | `string` | `'/v1/api'` | URL prefix for all routes |
 | `database` | `'mongodb' \| 'postgresql'` | auto-detected | Database engine |
 | `databaseUrl` | `string` | — | Connection string — `mongodb://…` or `postgres://…` selects the engine |
-| `authStrategy` | `'http-only' \| 'localStorage'` | `'http-only'` | Token delivery method |
+| `authStrategy` | `'http-only' \| 'bearer'` | `'http-only'` | Cookie (browsers) or `Authorization: Bearer` (apps, API clients) |
 | `jwtSecret` | `string` | — | JWT signing secret |
 | `jwtExpiresIn` | `string` | `'7d'` | Token lifetime |
 | `cookieDomain` | `string` | — | Cookie domain (`http-only` only) |

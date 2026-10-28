@@ -103,6 +103,16 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   const clusterEnabled = config.cluster ?? process.env['NODE_ENV'] === 'production';
 
   configureLogger(config.logging);
+  // Any value but 'http-only' acts as bearer, as it always has — an app may rely on that, so
+  // 0.9.x only warns (a typo of 'http-only' silently means no cookie). 1.0 makes it an error.
+  if (
+    !['http-only', 'bearer', 'localStorage'].includes(authStrategy) &&
+    (!clusterEnabled || cluster.isPrimary) // once, not once per worker
+  ) {
+    getLogger().warn(
+      `[EFC] Unknown authStrategy "${String(authStrategy)}" — treated as 'bearer'. Use 'http-only' or 'bearer'; this will be an error in 1.0.`,
+    );
+  }
   configureQueryLog(config.logging);
 
   if (clusterEnabled && cluster.isPrimary) {

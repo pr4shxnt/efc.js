@@ -8,6 +8,7 @@ import pc from 'picocolors';
 import {
   Registry,
   applyAdd,
+  configFromAnswers,
   detectProject,
   envFromAnswers,
   generateEntityAuth,
@@ -365,6 +366,7 @@ function addCommand(): Command {
           if (!opts.yes && !tty) fail('Not a terminal — pass --yes to add without confirming.');
           const ask = opts.prompt && tty && plan.prompts.length > 0;
           let env: Record<string, string> = {};
+          let config: Record<string, string> = {};
           if (!opts.yes || ask) {
             const term = openTerminal();
             try {
@@ -373,8 +375,13 @@ function addCommand(): Command {
                 return;
               }
               if (ask) {
-                console.log(pc.bold('\n  Configuration') + pc.dim('  (saved to .env)\n'));
-                env = envFromAnswers(plan.prompts, await askPrompts(term, plan.prompts, cwd));
+                const where = plan.prompts.some((p) => p.config !== undefined)
+                  ? '.env / efc.config'
+                  : '.env';
+                console.log(pc.bold('\n  Configuration') + pc.dim(`  (saved to ${where})\n`));
+                const answers = await askPrompts(term, plan.prompts, cwd);
+                env = envFromAnswers(plan.prompts, answers);
+                config = configFromAnswers(plan.prompts, answers);
                 console.log();
               }
             } finally {
@@ -382,7 +389,7 @@ function addCommand(): Command {
             }
           }
 
-          const result = applyAdd(cwd, plan, registry, env);
+          const result = applyAdd(cwd, plan, registry, env, config);
           console.log(
             pc.green(`  ✓ ${result.written.length} file(s) written`) +
               (result.conflicts.length ? pc.yellow(`, ${result.conflicts.length} left alone`) : ''),

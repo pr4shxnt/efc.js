@@ -169,26 +169,19 @@
 <h2>Create a project</h2>
 <pre data-file="terminal"><code data-lang="bash">$ npx create-efc-app my-api</code></pre>
 <p>The interactive wizard asks:</p>
-<pre data-file="create-efc-app"><code>? Project name:            my-api
-? Language:                TypeScript | JavaScript
-? Database:                MongoDB | PostgreSQL
-? Models:                  defineTable | defineModel        (PostgreSQL only)
-? Authentication strategy: http-only | localStorage
-? Features: (space to toggle)
-    ◉ Multi-core clustering
-    ◉ Background tasks
-    ◉ API route documentation
-    ◉ User portal
-    ◉ Admin portal
-    ◉ Role-based access control
-    ◯ Mailer</code></pre>
-<p>Some choices ask a follow-up:</p>
-<ul>
-  <li><strong>Background tasks</strong> → a queue backend: <code>BullMQ</code> (Redis) or <code>pg-boss</code> (stores jobs in your PostgreSQL — no Redis to run).</li>
-  <li><strong>Mailer</strong> → <code>Gmail</code> (preconfigured, App Password prompt) or a custom SMTP host. See <a href="#mailer">Mailer</a>.</li>
-  <li><strong>User / Admin portal</strong> → which sub-features to generate. See <a href="#portals">Generated Portals</a>.</li>
-  <li><strong>RBAC</strong> → a <code>Role</code> model and <code>requireAuth('role')</code> on protected routes. See <a href="#rbac">RBAC</a>.</li>
-</ul>
+<pre data-file="create-efc-app"><code>? Project name:          my-api
+? Language:              TypeScript | JavaScript
+? Database:              MongoDB | PostgreSQL
+? Models:                defineTable | defineModel        (PostgreSQL only)
+? Task queue backend:    BullMQ | pg-boss
+? Multi-core clustering? Yes
+? Authentication:        http-only cookie   browsers — websites and SPAs (recommended)
+                         Bearer token       mobile/desktop apps, API clients
+                         None               add later with `efc add auth`
+? Add features now? (space to toggle)
+    ◉ Authentication
+    ◯ User portal …   ◯ Admin portal …   ◯ Email client …</code></pre>
+<p>Every feature is a registry item — tick it now or add it later with <code>efc add &lt;item&gt;</code>. Some ask a follow-up: the <strong>Email client</strong> asks for <code>Gmail</code> or a custom SMTP host (see <a href="#mailer">Mailer</a>); <strong>Sign in with Google / Apple</strong> ask for their credentials.</p>
 <p>It then writes the project, generates <code>.env</code> with a real <code>JWT_SECRET</code>, and runs <code>npm install</code>.</p>
 
 <h2>Start the dev server</h2>
@@ -289,7 +282,7 @@ ignite({ ...config, cluster: true })
     <tr><td><code>workers</code></td><td>CPU count</td><td>Number of workers to fork.</td></tr>
     <tr><td><code>database</code></td><td>from URL</td><td><code>'mongodb'</code> or <code>'postgresql'</code>; detected from <code>databaseUrl</code> when omitted.</td></tr>
     <tr><td><code>databaseUrl</code></td><td>—</td><td>Connection string.</td></tr>
-    <tr><td><code>authStrategy</code></td><td><code>'http-only'</code></td><td><code>'http-only'</code> cookie or <code>'localStorage'</code> Bearer token.</td></tr>
+    <tr><td><code>authStrategy</code></td><td><code>'http-only'</code></td><td><code>'http-only'</code> cookie (browsers) or <code>'bearer'</code> token (mobile/desktop apps, API clients).</td></tr>
     <tr><td><code>jwtSecret</code></td><td>—</td><td>Enables auth. At least 32 random bytes in production.</td></tr>
     <tr><td><code>jwtExpiresIn</code></td><td><code>'7d'</code></td><td>Token lifetime: <code>'15m'</code>, <code>'1h'</code>, <code>'30d'</code>…</td></tr>
     <tr><td><code>tasks</code></td><td>off</td><td>Queue backend. See <a href="#tasks">Background Tasks</a>.</td></tr>
@@ -579,18 +572,13 @@ $ efc tasks purge --all                 # delete failed jobs</code></pre>
 
 export const POST = async (req, res) => {
   const user = await verifyCredentials(req.body)
-  await issueToken(res, { sub: user.id, role: user.role })
-  res.json({ message: 'Logged in' })
+  // http-only: sets the cookie, returns undefined. bearer: returns the token.
+  const token = await issueToken(res, { sub: user.id, role: user.role })
+  res.json({ message: 'Logged in', ...(token ? { token } : {}) })
 }</code></pre>
 
-<h2>Bearer token (SPAs, mobile)</h2>
-<p>With <code>authStrategy: 'localStorage'</code>, return the token and send it back as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
-<pre data-file="src/api/auth/login.ts"><code data-lang="ts">import { signToken } from 'express-file-cluster/auth'
-
-export const POST = async (req, res) => {
-  const user = await verifyCredentials(req.body)
-  res.json({ token: await signToken({ sub: user.id, role: user.role }) })
-}</code></pre>
+<h2>Bearer token (mobile / desktop apps, API clients)</h2>
+<p>With <code>authStrategy: 'bearer'</code> the same route sends the token in the body instead of a cookie. The client keeps it in secure storage (Keychain / Keystore) and sends <code>Authorization: Bearer &lt;token&gt;</code>. Browsers — SPAs included — should stay on <code>'http-only'</code>: any script on the page can read a token kept in <code>localStorage</code>. (<code>'localStorage'</code> is the old name for <code>'bearer'</code> and still works.)</p>
 
 <h2>Protecting routes</h2>
 <pre data-file="src/api/users/index.ts"><code data-lang="ts">import { requireAuth, getCurrentUser } from 'express-file-cluster/auth'
