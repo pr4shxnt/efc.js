@@ -8,7 +8,7 @@ efc db generate --verify       # fail if the migrations miss anything the models
 efc db sync [--dry-run]        # reconcile tables/collections + indexes with src/model(s)/
 efc db sync --dry-run --exit-code   # exit 2 when the database has drifted from the models
 efc db migrate [--baseline]    # run pending migrations (one new batch); --baseline only records them
-efc db pull [--out src/model]  # write defineTable models for the database (PostgreSQL)
+efc db pull [--out src/model] [--sample 1000]  # write models for the database: defineTable (PostgreSQL) / defineCollection (MongoDB)
 efc db rollback [--steps 2]    # revert the last batch(es)
 efc db status                  # applied vs pending
 efc db seed [name]             # run all seeds, or one

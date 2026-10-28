@@ -1,16 +1,18 @@
-// Writes `defineTable` model files from a plain description — shared by `efc db pull`
-// (introspected PostgreSQL) and `efc import-prisma` (a schema.prisma).
+// Writes model files from a plain description — shared by `efc db pull` (introspected
+// PostgreSQL → defineTable, sampled MongoDB → defineCollection) and `efc import-prisma`.
 import fs from 'node:fs';
 import path from 'node:path';
 
 export interface ModelSource {
   name: string;
   /** Field name → definition, in column order. */
-  fields: [string, Record<string, unknown>][];
+  fields: [string, unknown][];
   /** defineTable options (empty keys are left out). */
   options: Record<string, unknown>;
   /** Comments put above the model — what couldn't be carried over. */
   notes: string[];
+  /** Default `defineTable`. */
+  api?: 'defineTable' | 'defineCollection';
 }
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -48,9 +50,10 @@ export function modelFile(model: ModelSource): string {
     ),
   );
   const opts = Object.keys(options).length ? `\n  ${literal(options, '  ')},` : '';
-  return `import { defineTable } from 'express-file-cluster';
+  const api = model.api ?? 'defineTable';
+  return `import { ${api} } from 'express-file-cluster';
 
-${notes}export const ${model.name} = defineTable(
+${notes}export const ${model.name} = ${api}(
   '${model.name}',
   {
 ${fields}
@@ -59,11 +62,14 @@ ${fields}
 `;
 }
 
-/** The barrel that registers every model and, in TypeScript, declares `Tables` for `include`. */
-export function modelIndex(names: string[], typescript: boolean): string {
+/**
+ * The barrel that registers every model and, in TypeScript, declares `Tables` for
+ * `include` (defineTable only — `tables: false` for collections).
+ */
+export function modelIndex(names: string[], typescript: boolean, tables = true): string {
   const sorted = [...names].sort();
   const exports = sorted.map((n) => `export { ${n} } from './${n}.js';`).join('\n');
-  if (!typescript) return `${exports}\n`;
+  if (!typescript || !tables) return `${exports}\n`;
   return `${exports}
 
 ${sorted.map((n) => `import type { ${n} } from './${n}.js';`).join('\n')}
@@ -101,6 +107,7 @@ export function writeModels(
     modelIndex(
       models.map((m) => m.name),
       opts.typescript,
+      models.some((m) => (m.api ?? 'defineTable') === 'defineTable'),
     ),
   );
   return { written, skipped };

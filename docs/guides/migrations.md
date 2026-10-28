@@ -10,7 +10,7 @@
 | `efc db status` | Lists applied (with batch) and pending migrations |
 | `efc db seed [name]` | Runs every seed in `src/seeds/`, or just one |
 | `efc db sync [--dry-run] [--exit-code]` | Brings the database in line with the models (or reports what would change) |
-| `efc db pull` | Writes `defineTable` models for an existing PostgreSQL database |
+| `efc db pull` | Writes `defineTable` models for an existing PostgreSQL database, `defineCollection` models for a MongoDB one |
 | `efc db studio [-p 4983]` | Opens a read-only database browser on `127.0.0.1` |
 
 All of them read `DATABASE_URL` from the environment or `.env` (override with `--database-url`); the engine follows the URL scheme.
@@ -118,6 +118,23 @@ efc db pull --out pulled      # somewhere else, to compare
 - **Relations:** foreign keys become `ref`s with `onDelete`. A column like `authorId` becomes an `author` field that keeps the `authorId` column. EFC join tables become many-to-many arrays, and every target model gets back-`relations`.
 
 A schema EFC created pulls back to models that sync finds nothing to change in. For a schema EFC didn't create, anything that has no EFC equivalent is noted at the top of the file: expression or partial indexes, other CHECKs, composite keys, and other defaults. Existing files are kept unless you pass `--force`.
+
+## Pulling an existing database (MongoDB)
+
+```bash
+efc db pull                   # → src/model/<Model>.ts + index.ts (defineCollection)
+efc db pull --sample 5000     # sample more documents per collection (default 1000)
+```
+
+MongoDB has no schema to read, so `pull` samples each collection (`$sample`) and infers one from the documents:
+
+- **Types:** `string`, `number`, `boolean`, `date`, `objectId`, `decimal128`, `long`, `binary` and GeoJSON points (`geoPoint`); embedded objects become nested schemas, arrays of objects `[{ … }]`, other arrays `{ type: 'array', of }`.
+- **Required:** only when every sampled document had a non-null value. A field with mixed types (or only nulls) becomes `{ type: 'object' }` (any value) with a note.
+- **Refs:** an `objectId` field gets `ref` when its name matches another collection (`owner`, `ownerId` → `Owner`) or when every sampled id exists in exactly one other collection; otherwise a note asks you to add it.
+- **Indexes:** single-field unique, plain, `text`, `2dsphere` and `hashed` indexes go on the field; compound, partial and TTL indexes into `indexes`.
+- **Names and timestamps:** a model per collection (`audit_log` → `AuditLog`, with `collection: 'audit_log'` when mongoose wouldn't pick that name); `createdAt`/`updatedAt` dates map to the default `timestamps`, otherwise `timestamps: false`.
+
+`_id` and `__v` are left to defineCollection. Read the generated files before using them: a sample shows what the data *has*, not what it must have.
 
 `required` and `default` live in the model, not the database. A table created by `sync` or a migration without `--tighten` has nullable columns and no defaults, so its fields pull back as optional. Generate with `--tighten` if you want `required` enforced (and pulled back).
 

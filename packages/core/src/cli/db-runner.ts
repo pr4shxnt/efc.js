@@ -18,6 +18,9 @@ import { pathToFileURL } from 'node:url';
 import { registeredModels, setAutoSync, setSyncSuppressed, type PlanStep } from '../db/engine.js';
 import { describeStep, planModels, renderMigration } from '../db/generate.js';
 import { pullPostgres } from '../db/pull.js';
+import { pullMongo } from '../db/pull-mongo.js';
+import { loadMongoose } from '../db/mongo-model.js';
+import type * as MongooseNS from 'mongoose';
 import { writeModels } from '../db/codegen.js';
 
 interface RunnerOptions {
@@ -31,6 +34,8 @@ interface RunnerOptions {
   allowDrop?: boolean;
   tighten?: boolean;
   out?: string;
+  /** `efc db pull` on MongoDB: documents sampled per collection. */
+  sample?: number;
   force?: boolean;
   steps?: number;
   seed?: string;
@@ -270,13 +275,22 @@ async function main(): Promise<void> {
         break;
       }
       case 'pull': {
-        if (engine !== 'postgresql')
-          throw new Error(
-            '[EFC] efc db pull reads PostgreSQL schemas (MongoDB arrives with defineCollection)',
-          );
-        const { models, skipped: notPulled } = await pullPostgres(client as Pool);
+        const { models, skipped: notPulled } =
+          engine === 'postgresql'
+            ? await pullPostgres(client as Pool)
+            : await pullMongo(
+                client as MongooseNS.Connection,
+                (await loadMongoose()).pluralize()!,
+                opts.sample !== undefined ? { sample: opts.sample } : {},
+              );
         if (models.length === 0) {
-          console.log(pc.yellow('  No tables found in the current schema'));
+          console.log(
+            pc.yellow(
+              engine === 'postgresql'
+                ? '  No tables found in the current schema'
+                : '  No collections found in the database',
+            ),
+          );
           break;
         }
         const typescript = fs.existsSync(path.join(process.cwd(), 'tsconfig.json'));
@@ -295,7 +309,9 @@ async function main(): Promise<void> {
         if (notPulled.length)
           console.log(
             pc.dim(
-              `\n  Not pulled (no single "id" primary key of type uuid, integer or bigint): ${notPulled.join(', ')}`,
+              engine === 'postgresql'
+                ? `\n  Not pulled (no single "id" primary key of type uuid, integer or bigint): ${notPulled.join(', ')}`
+                : `\n  Not pulled (no usable model name): ${notPulled.join(', ')}`,
             ),
           );
         const notes = models.reduce((n, m) => n + m.notes.length, 0);

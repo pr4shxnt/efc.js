@@ -119,12 +119,23 @@ export function dbCommand(): Command {
   common(
     cmd
       .command('pull')
-      .description('Write defineTable models for the tables in the database (PostgreSQL)'),
+      .description(
+        'Write models for the database: defineTable from PostgreSQL tables, defineCollection from sampled MongoDB documents',
+      ),
   )
     .option('--out <dir>', 'where to write the models', 'src/model')
     .option('--force', 'overwrite model files that already exist')
-    .action((opts: { databaseUrl?: string; dist?: boolean; out: string; force?: boolean }) =>
-      run('pull', opts),
+    .option('--sample <n>', 'MongoDB: documents sampled per collection (default 1000)', (v) =>
+      Number.parseInt(v, 10),
+    )
+    .action(
+      (opts: {
+        databaseUrl?: string;
+        dist?: boolean;
+        out: string;
+        force?: boolean;
+        sample?: number;
+      }) => run('pull', opts),
     );
 
   common(cmd.command('status').description('List applied and pending migrations')).action(
