@@ -9,7 +9,12 @@ import { modelFile, type ModelSource } from '../../db/codegen.js';
 // `efc db pull` on MongoDB: documents written straight through the driver (no EFC model)
 // are sampled into defineCollection models, which then read the same data and find
 // nothing to change in sync.
-const URL = process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/efc_pull_mongo_test';
+// Its own database even when CI points every test at one (EFC_TEST_MONGO_URL): this file
+// drops it, which must not wipe other test files' data mid-run.
+const URL = (process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/x').replace(
+  /\/[^/?]*(\?|$)/,
+  '/efc_pull_mongo_test$1',
+);
 
 async function reachable(url: string): Promise<boolean> {
   const { MongoClient } = await import('mongodb');
@@ -81,7 +86,9 @@ describe.skipIf(!available)('efc db pull (MongoDB)', () => {
 
     // No timestamps, an unusual collection name.
     // `by` points at an owner (found by its ids, not its name); `ext` at nothing pulled.
-    await db.collection('audit_log').insertOne({ action: 'login', at: now, by: ann, ext: new ObjectId() });
+    await db
+      .collection('audit_log')
+      .insertOne({ action: 'login', at: now, by: ann, ext: new ObjectId() });
     await db.collection('audit_log').createIndex({ at: 1 }, { expireAfterSeconds: 3600 });
 
     ({ models } = await pullMongo(conn, mg.pluralize()!, { sample: 100 }));
@@ -110,7 +117,9 @@ describe.skipIf(!available)('efc db pull (MongoDB)', () => {
         required: true,
         fields: { city: { type: 'string', required: true }, zip: { type: 'string' } },
       },
-      reviews: [{ rating: { type: 'number', required: true }, text: { type: 'string', required: true } }],
+      reviews: [
+        { rating: { type: 'number', required: true }, text: { type: 'string', required: true } },
+      ],
       misc: { type: 'object', required: true }, // mixed string / number
     });
     expect(place['photo']).not.toHaveProperty('required');
@@ -151,11 +160,7 @@ describe.skipIf(!available)('efc db pull (MongoDB)', () => {
     const built = Object.fromEntries(
       models.map((m) => [
         m.name,
-        defineCollection(
-          m.name,
-          Object.fromEntries(m.fields) as never,
-          m.options as never,
-        ),
+        defineCollection(m.name, Object.fromEntries(m.fields) as never, m.options as never),
       ]),
     );
     for (const m of Object.values(built)) expect(await m.sync({ dryRun: true })).toEqual([]);
@@ -169,7 +174,9 @@ describe.skipIf(!available)('efc db pull (MongoDB)', () => {
       reviews: [{ rating: 5, text: 'great' }],
     });
     const near = await Place.find({
-      location: { $near: { $geometry: { type: 'Point', coordinates: [85.3, 27.7] }, $maxDistance: 50 } },
+      location: {
+        $near: { $geometry: { type: 'Point', coordinates: [85.3, 27.7] }, $maxDistance: 50 },
+      },
     } as never);
     expect(near.map((p) => (p as { name: string }).name)).toEqual(['Cafe']);
   });

@@ -6,13 +6,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mongoose from 'mongoose';
 
+// CI points every test file at one database (EFC_TEST_MONGO_URL); files that drop theirs need
+// their own, or they wipe each other's data mid-run. Keep the server, use this file's name.
+const perFileDb = (url: string | undefined, db: string) =>
+  url ? url.replace(/\/[^/?]*(\?|$)/, `/${db}$1`) : `mongodb://127.0.0.1:27017/${db}`;
+
 // `efc db migrate | rollback | status | seed | studio` through the real CLI binary,
 // in a throwaway project that resolves `express-file-cluster` via node_modules like an
 // installed app. Needs the built dist/ and a reachable database per engine.
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const CLI = path.join(CORE, 'dist', 'cli', 'index.js');
 const URLS = {
-  mongodb: process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/efc_db_cli_test',
+  mongodb: perFileDb(process.env['EFC_TEST_MONGO_URL'], 'efc_db_cli_test'),
   postgresql: process.env['EFC_TEST_PG_URL'] ?? 'postgres://postgres@127.0.0.1:5433/efc_test',
 };
 

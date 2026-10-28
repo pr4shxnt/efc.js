@@ -6,13 +6,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mongoose from 'mongoose';
 
+// CI points every test file at one database (EFC_TEST_MONGO_URL); files that drop theirs need
+// their own, or they wipe each other's data mid-run. Keep the server, use this file's name.
+const perFileDb = (url: string | undefined, db: string) =>
+  url ? url.replace(/\/[^/?]*(\?|$)/, `/${db}$1`) : `mongodb://127.0.0.1:27017/${db}`;
+
 // `efc db generate | pull | sync --exit-code | migrate --baseline` and `efc import-prisma`
 // through the real CLI binary, in throwaway projects. PostgreSQL runs in its own schema
 // (search_path in the URL), MongoDB in its own database. Needs the built dist/.
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const CLI = path.join(CORE, 'dist', 'cli', 'index.js');
 const PG = process.env['EFC_TEST_PG_URL'] ?? 'postgres://postgres@127.0.0.1:5433/efc_test';
-const MONGO = process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/efc_db_generate_test';
+const MONGO = perFileDb(process.env['EFC_TEST_MONGO_URL'], 'efc_db_generate_test');
 
 const { default: pg } = await import('pg');
 async function pgReachable(): Promise<boolean> {
@@ -67,7 +72,12 @@ const migrationFiles = (root: string) =>
     : [];
 const readMigration = (root: string, suffix: string) =>
   fs.readFileSync(
-    path.join(root, 'src', 'migrations', migrationFiles(root).find((f) => f.includes(suffix))!),
+    path.join(
+      root,
+      'src',
+      'migrations',
+      migrationFiles(root).find((f) => f.includes(suffix))!,
+    ),
     'utf8',
   );
 

@@ -11,7 +11,12 @@ import { defineCollection } from '../../db/collection-model.js';
 // `efc db studio`: read-only by default; `--write` edits through the models, and only for
 // requests that carry the page's token from the studio's own origin. Self-skips per engine.
 const PG_URL = process.env['EFC_TEST_PG_URL'] ?? 'postgres://postgres@127.0.0.1:5433/efc_test';
-const MONGO_URL = process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/efc_studio_test';
+// Its own database even when CI points every test at one (EFC_TEST_MONGO_URL): this file
+// drops it, which must not wipe other test files' data mid-run.
+const MONGO_URL = (process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/x').replace(
+  /\/[^/?]*(\?|$)/,
+  '/efc_studio_test$1',
+);
 const s = Math.random().toString(36).slice(2, 7);
 
 async function reachablePg(): Promise<boolean> {
