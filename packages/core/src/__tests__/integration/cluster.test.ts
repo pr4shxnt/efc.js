@@ -202,4 +202,47 @@ export const POST = async (req, res) => { await revokeSession(req); res.json({ p
     expect([...seen.values()].every((s) => s === 401)).toBe(true);
     expect(output()).not.toMatch(/no EFC cluster primary answered/);
   }, 30_000);
+
+  // The point of counting in the cache: per-worker counters would let 2 workers accept 2 × max.
+  it('rateLimit holds one limit across workers', async () => {
+    const {
+      child: proc,
+      port,
+      output,
+    } = await boot({
+      config: `cache: { backend: 'memory' },`,
+      routes: {
+        'limited.js': `import { rateLimit } from ${JSON.stringify(DIST_INDEX)};
+export const middlewares = [rateLimit({ window: '1h', max: 5 })];
+export const GET = (_req, res) => res.json({ pid: process.pid });`,
+      },
+    });
+    child = proc;
+    await waitFor(() => workerPids(output()).length === 2, 'two workers', output);
+    const hit = async () => {
+      const r = await fetch(`http://127.0.0.1:${port}/limited`, {
+        headers: { connection: 'close' },
+      });
+      return {
+        status: r.status,
+        pid: ((await r.json()) as { pid?: number }).pid,
+        remaining: r.headers.get('ratelimit-remaining'),
+      };
+    };
+    // 30 at once, over fresh connections, so both workers take a share.
+    const results = await Promise.all(Array.from({ length: 30 }, hit));
+    const ok = results.filter((r) => r.status === 200);
+    expect(ok.length, JSON.stringify(results)).toBe(5);
+    expect(results.filter((r) => r.status === 429).length).toBe(25);
+    expect(new Set(ok.map((r) => r.remaining)).size).toBe(5); // 4,3,2,1,0 — each count once
+    // Both workers served requests (200 or 429) — the limit wasn't per worker.
+    const served = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        fetch(`http://127.0.0.1:${port}/pid`, { headers: { connection: 'close' } }).then(
+          (r) => r.json() as Promise<{ pid: number }>,
+        ),
+      ),
+    );
+    expect(new Set(served.map((r) => r.pid)).size).toBe(2);
+  }, 30_000);
 });

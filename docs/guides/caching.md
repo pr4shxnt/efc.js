@@ -41,13 +41,44 @@ await cache.clear('user:');                          // every key with this pref
 
 // Get-or-compute: concurrent callers in one process share a single computation
 const stats = await cache.wrap('stats:daily', 60, () => Stats.aggregate(pipeline));
+
+// Atomic counter — one count across every worker (and, on Redis, every instance)
+const n = await cache.incr('signups:today', { ttl: 86_400 });  // TTL set when the key is created
 ```
 
 Values are stored as JSON — `Date`s come back as ISO strings. `undefined` is never cached.
 
 ### When Redis is down
 
-The cache **degrades instead of failing**: `get` returns `undefined`, `set`/`del` are no-ops, `wrap` just runs your function. Requests keep working (only slower), and a warning is logged at most every 30 seconds. Boot waits up to ~2 s for the first connection, then continues regardless.
+The cache **degrades instead of failing**: `get` returns `undefined`, `set`/`del` are no-ops, `wrap` just runs your function, `incr` returns `undefined` (a count can't be made up). Requests keep working (only slower), and a warning is logged at most every 30 seconds. Boot waits up to ~2 s for the first connection, then continues regardless.
+
+---
+
+## Rate limiting
+
+```ts
+import { rateLimit } from 'express-file-cluster';
+
+// src/api/auth/login.ts
+export const middlewares = [rateLimit({ window: '15m', max: 10 })];
+```
+
+`rateLimit` counts in the cache (`cache.incr`), so the limit is one limit for the whole app — an in-memory counter per worker would let 8 workers accept 8 × `max`. With the `memory` backend that's per machine; use `redis` when you run several instances.
+
+| Option | Default | |
+|---|---|---|
+| `window` | — | Seconds, or `'30s'` / `'15m'` / `'1h'` / `'1d'`. Windows are aligned to the clock. |
+| `max` | — | Requests per window and key. The next one gets **429** with `Retry-After`. |
+| `key` | client IP (`req.ip`) | Who a request counts against; return `undefined` to not limit it. |
+| `name` | the route pattern | Routes with the same `name` share a limit. |
+| `onCacheError` | `'allow'` | Cache unreachable: let requests through, or `'reject'` with 503. |
+| `headers` | `true` | `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`. |
+
+**Behind a proxy or load balancer, set `trustProxy` in `ignite()`** (`TRUST_PROXY=1` in scaffolded apps). Otherwise `req.ip` is the proxy's for every client, and an IP-keyed limit is one limit for everyone. The login and forgot-password routes `create-efc-app` generates key on the email too (`10 / 15 min per address + account`, `5 reset emails / hour per address`), so even then they limit one account, never everyone:
+
+```ts
+rateLimit({ window: '15m', max: 10, key: (req) => `${req.ip}:${String(req.body?.email ?? '').toLowerCase()}` })
+```
 
 ---
 

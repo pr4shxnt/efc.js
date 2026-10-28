@@ -380,6 +380,9 @@ ${declaration}
   jwtExpiresIn: process.env.JWT_EXPIRES_IN,
   cookieDomain: process.env.COOKIE_DOMAIN,
   cors: corsOrigins ? { origin: corsOrigins } : true,
+  // Behind a proxy / load balancer (Render, Fly, Heroku, nginx): the number of hops, e.g. 1,
+  // so req.ip is the client and rate limits count per client.
+  trustProxy: process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : undefined,
   authStrategy: '${opts.authStrategy}',
   tasks: ${tasks},
   // Cache + session-revocation store (logout really invalidates tokens). Redis when
@@ -556,7 +559,7 @@ async function writeEnvFiles(dest: string, opts: ScaffoldOptions): Promise<void>
   const oauthEnv = oauthVars.map(([k, v]) => `\n${k}=${v}`).join('');
   const oauthExample = oauthVars.map(([k, , ex]) => `\n${k}=${ex}`).join('');
   const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbUrl}\nJWT_SECRET=${secret}${redis}\nCORS_ORIGINS=http://localhost:3000${smtpVars}${oauthEnv}`;
-  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>${redis}\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com${smtpExample}${oauthExample}`;
+  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>${redis}\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com\n# Behind a proxy / load balancer: how many hops to trust, so rate limits see client IPs\n# TRUST_PROXY=1${smtpExample}${oauthExample}`;
   await fs.outputFile(path.join(dest, '.env'), dotenv);
   await fs.outputFile(path.join(dest, '.env.example'), example);
 }
@@ -787,7 +790,19 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     ? ts
       ? `import { issueToken, verifyPassword } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
-${loginDbImports}${loginMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+import { rateLimit } from 'express-file-cluster';
+${loginDbImports}${loginMeta}// 10 attempts per 15 minutes per address and account. Keyed on the email too, so behind a
+// proxy without TRUST_PROXY (every client then has the proxy's IP) it still limits one
+// account at a time, never everyone.
+export const middlewares = [
+  rateLimit({
+    window: '15m',
+    max: 10,
+    key: (req) => \`\${req.ip}:\${String(req.body?.email ?? '').toLowerCase()}\`,
+  }),
+];
+
+const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 async function issueRefreshToken(
   res: Response,
@@ -822,7 +837,19 @@ ${loginBody}
 };
 `
       : `import { issueToken, verifyPassword } from 'express-file-cluster/auth';
-${loginDbImports}${loginMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+import { rateLimit } from 'express-file-cluster';
+${loginDbImports}${loginMeta}// 10 attempts per 15 minutes per address and account. Keyed on the email too, so behind a
+// proxy without TRUST_PROXY (every client then has the proxy's IP) it still limits one
+// account at a time, never everyone.
+export const middlewares = [
+  rateLimit({
+    window: '15m',
+    max: 10,
+    key: (req) => \`\${req.ip}:\${String(req.body?.email ?? '').toLowerCase()}\`,
+  }),
+];
+
+const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 async function issueRefreshToken(res, model, id) {
   const refreshToken = crypto.randomBytes(40).toString('hex');
@@ -1738,7 +1765,13 @@ ${sendVerifyEmailResend}  }
     const fpContent = ts
       ? `import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
-${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
+import { rateLimit } from 'express-file-cluster';
+${mailerTaskImport}${fpModelImports}${fpMeta}// 5 reset emails per hour per address — keeps the endpoint from mail-bombing someone.
+export const middlewares = [
+  rateLimit({ window: '1h', max: 5, key: (req) => String(req.body?.email ?? '').toLowerCase() }),
+];
+
+const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
 export const POST = async (req: Request, res: Response) => {
   const { email } = req.body;
@@ -1759,7 +1792,13 @@ ${sendResetEmail}  }
 };
 `
       : `import crypto from 'node:crypto';
-${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
+import { rateLimit } from 'express-file-cluster';
+${mailerTaskImport}${fpModelImports}${fpMeta}// 5 reset emails per hour per address — keeps the endpoint from mail-bombing someone.
+export const middlewares = [
+  rateLimit({ window: '1h', max: 5, key: (req) => String(req.body?.email ?? '').toLowerCase() }),
+];
+
+const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
 export const POST = async (req, res) => {
   const { email } = req.body;

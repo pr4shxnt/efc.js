@@ -140,6 +140,7 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   }
 
   const app = express();
+  if (config.trustProxy !== undefined) app.set('trust proxy', config.trustProxy);
   // defineTable returns `bigint` for bigint columns and bigserial ids, which JSON.stringify
   // rejects; send them as strings (exact — a JS number would lose precision past 2^53).
   app.set('json replacer', (_key: string, value: unknown) =>
@@ -364,6 +365,8 @@ export function gracefulShutdown(server: http.Server | undefined, timeoutMs = 10
 export { HttpError, isHttpError } from './errors.js';
 export { logger, getLogger } from './logger.js';
 export { cache } from './cache/index.js';
+export { rateLimit } from './rate-limit.js';
+export type { RateLimitOptions } from './rate-limit.js';
 export { cacheResponse } from './cache/response.js';
 export { compose } from './compose.js';
 export {

@@ -81,6 +81,11 @@ const cache: {
   clear(prefix?): Promise<number>;
 }
 function cacheResponse(ttl: number | { ttl; perUser?: boolean; key?: (req) => string }): RequestHandler
+// Fixed window counted with cache.incr — one limit across workers (memory) / instances (redis).
+// key defaults to req.ip: behind a proxy set ignite({ trustProxy }) or everyone shares one bucket.
+function rateLimit(o: { window: number | '15m'; max: number; key?: (req) => string | undefined;
+  name?: string; message?: string; onCacheError?: 'allow' | 'reject'; headers?: boolean }): RequestHandler
+// cache.incr(key, { ttl? }): Promise<number | undefined> — atomic; undefined when Redis is down
 // GET/HEAD 200 JSON only; X-Cache: HIT|MISS; keys under 'res:' + originalUrl
 
 function scanDir(dir: string, base?: string, maxDepth?: number): RouteEntry[]
