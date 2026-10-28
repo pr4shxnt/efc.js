@@ -53,7 +53,7 @@
           "applicationCategory": "DeveloperApplication",
           "applicationSubCategory": "Web framework",
           "operatingSystem": "Node.js 18+",
-          "softwareVersion": "0.9.2",
+          "softwareVersion": "0.9.3",
           "license": "https://opensource.org/licenses/MIT",
           "isAccessibleForFree": true,
           "offers": {
@@ -141,8 +141,8 @@
         <div class="hero-glow"></div>
       </div>
       <div class="container hero-inner">
-        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.9.2</span>Zero audit
-          findings: password hashing built in</a>
+        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.9.3</span><code>efc start prod</code> reads
+          <code>.env</code></a>
         <h1 class="hero-title">Express, but your folder <br />is your <span class="serif">router.</span></h1>
         <p class="hero-sub fade-up" style="--d: .2s">Drop a file in <code>src/api/</code> and it's a route. Clustering,
           background jobs and a typed data layer are already set up.</p>
@@ -464,6 +464,10 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
           <h2 class="h2">Recent releases.</h2>
         </header>
         <ol class="releases">
+          <li><span class="v">0.9.3</span><time datetime="2026-10-28">Oct 28</time>
+            <p><code>efc start prod</code> loads <code>.env</code> when present; real environment variables
+              still win.</p>
+          </li>
           <li><span class="v">0.9.2</span><time datetime="2026-10-28">Oct 28</time>
             <p>Zero <code>npm audit</code> findings. <code>hashPassword</code> / <code>verifyPassword</code> (scrypt,
               built into Node) replace <code>bcrypt</code> in scaffolded apps.</p>
@@ -567,7 +571,7 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
       </div>
       <div class="footer-bottom">
         <span>© 2026 EFC Contributors</span>
-        <span>v0.9.2 · Beta</span>
+        <span>v0.9.3 · Beta</span>
       </div>
     </div>
   </footer>

@@ -36,7 +36,7 @@ efc start prod
 
 - Looks for `dist/src/index.js` (the `efc build prod` layout), then `dist/index.js` (a custom `tsup.config`). If neither exists, prints an error instructing you to run `efc build prod` first.
 - Sets `NODE_ENV=production`.
-- Does **not** read `.env` — secrets must come from the platform's environment.
+- Loads `.env` from the working directory if present; variables already set in the environment (platform secrets) win over it.
 - Spawns `node dist/src/index.js`.
 - Forwards `SIGTERM`/`SIGINT` to the server so `gracefulShutdown()` runs, and exits with the server's exit code.
 - With `NODE_ENV=production`, `ignite()` defaults `cluster` to `true` and forks `os.cpus().length` workers. When the primary receives `SIGTERM` it relays it to every worker, waits for them to drain, then exits.

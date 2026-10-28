@@ -23,7 +23,7 @@ npm start
 # → node dist/src/index.js  (NODE_ENV=production)
 ```
 
-`efc start prod` sets `NODE_ENV=production` and spawns the compiled server with `node`. It does **not** read `.env` — secrets must be injected through the platform's secret management.
+`efc start prod` sets `NODE_ENV=production` and spawns the compiled server with `node`. If a `.env` file sits in the working directory it's loaded too, but anything already in the environment wins — so platform-injected secrets always take precedence.
 
 Stopping is graceful at every layer: `efc start prod` forwards `SIGTERM`/`SIGINT` to the server, the cluster primary relays it to each worker, and each worker stops accepting connections, finishes in-flight requests and task jobs, then exits. This works whether the signal reaches the whole process group (Ctrl+C) or only PID 1 (`docker stop`, Kubernetes).
 
