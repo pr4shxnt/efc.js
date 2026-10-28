@@ -127,95 +127,7 @@ function pgSource(pool: Pool): Source {
   };
 }
 
-const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>EFC Studio</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-:root{--bg:#0f1115;--panel:#161a21;--line:#262c36;--text:#e6e9ef;--dim:#8b93a3;--acc:#5cc8ff}
-*{box-sizing:border-box}body{margin:0;font:13px/1.45 ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;height:100vh}
-aside{width:240px;border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
-aside h1{font-size:13px;margin:0;padding:14px 16px;border-bottom:1px solid var(--line);letter-spacing:.04em}
-aside h1 span{color:var(--dim);font-weight:400}
-aside button{display:flex;justify-content:space-between;width:100%;padding:8px 16px;border:0;background:none;color:var(--text);cursor:pointer;text-align:left;font:inherit}
-aside button:hover,aside button.on{background:#1f2530}aside button small{color:var(--dim)}
-main{flex:1;display:flex;flex-direction:column;min-width:0}
-header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line)}
-header b{font-size:14px}header .sp{flex:1}header button{background:#1f2530;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
-header button:disabled{opacity:.4;cursor:default}#meta{color:var(--dim)}
-.wrap{overflow:auto;flex:1}table{border-collapse:collapse;width:max-content;min-width:100%}
-th,td{border-bottom:1px solid var(--line);padding:6px 12px;text-align:left;vertical-align:top;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,monospace;font-size:12px}
-th{position:sticky;top:0;background:var(--panel);color:var(--dim);font-weight:500}
-td.obj{color:var(--acc);cursor:pointer}td.null{color:var(--dim)}
-.empty{padding:40px;color:var(--dim)}pre{white-space:pre-wrap;margin:0}
-td.act button{background:none;border:0;color:var(--acc);cursor:pointer;font:inherit;padding:0}
-#ed{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center}
-#ed.on{display:flex}#ed>div{background:var(--panel);border:1px solid var(--line);border-radius:8px;width:min(720px,94vw);padding:16px}
-#ed textarea{width:100%;height:50vh;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;font:12px/1.5 ui-monospace,monospace;padding:10px}
-#ed .row{display:flex;gap:8px;margin-top:10px}#ed .row .sp{flex:1}#ed button{background:#1f2530;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer}
-#ed button.danger{border-color:#7a2b2b;color:#ff8a8a}#ed .err{color:#ff8a8a;white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;margin-top:8px}
-</style></head><body>
-<aside><h1>EFC STUDIO <span id="engine"></span></h1><div id="list"></div></aside>
-<main><header><b id="title">Select a table</b><span id="meta"></span><span class="sp"></span>
-<button id="ins" hidden>+ Insert</button><button id="view" disabled>Structure</button><button id="prev" disabled>‹ Prev</button><button id="next" disabled>Next ›</button></header>
-<div class="wrap" id="grid"><div class="empty">Select a table on the left.</div></div></main>
-<div id="ed"><div><b id="edTitle"></b><textarea id="edText" spellcheck="false"></textarea><div class="err" id="edErr"></div>
-<div class="row"><button class="danger" id="edDel">Delete</button><span class="sp"></span><button id="edCancel">Cancel</button><button id="edSave">Save</button></div></div></div>
-<script>
-const TOKEN=__EFC_TOKEN__;const LIMIT=50;let cur=null,skip=0,mode='rows',write=false,writable=new Set(),editing=null;
-const SKIP=new Set(['_id','id','__v','createdAt','updatedAt']);
-async function send(method,p,body){const r=await fetch(p,{method,headers:{'Content-Type':'application/json','X-EFC-Studio-Token':TOKEN},body:body===undefined?undefined:JSON.stringify(body)});
-const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.error||r.statusText);e.issues=d.issues;throw e}return d}
-function openEditor(row){editing=row;const v={};if(row)for(const[k,x]of Object.entries(row))if(!SKIP.has(k))v[k]=x;
-document.getElementById('edTitle').textContent=row?'Edit '+cur+' '+(row.id??row._id):'Insert into '+cur;
-document.getElementById('edText').value=JSON.stringify(v,null,2);document.getElementById('edErr').textContent='';
-document.getElementById('edDel').hidden=!row;document.getElementById('ed').classList.add('on')}
-function closeEditor(){document.getElementById('ed').classList.remove('on');editing=null}
-document.getElementById('edCancel').onclick=closeEditor;
-document.getElementById('edSave').onclick=async()=>{const err=document.getElementById('edErr');let v;
-try{v=JSON.parse(document.getElementById('edText').value)}catch(e){err.textContent='Not valid JSON: '+e.message;return}
-const base='/api/collections/'+encodeURIComponent(cur);
-try{if(editing){const ch={};for(const[k,x]of Object.entries(v))if(JSON.stringify(x)!==JSON.stringify(editing[k]))ch[k]=x;
-if(Object.keys(ch).length)await send('PATCH',base+'/'+encodeURIComponent(editing.id??editing._id),ch)}else await send('POST',base,v);
-closeEditor();await loadList();await loadRows()}catch(e){err.textContent=e.message+(e.issues?'\\n'+JSON.stringify(e.issues,null,2):'')}};
-document.getElementById('edDel').onclick=async()=>{if(!confirm('Delete this record?'))return;
-try{await send('DELETE','/api/collections/'+encodeURIComponent(cur)+'/'+encodeURIComponent(editing.id??editing._id));closeEditor();await loadList();await loadRows()}
-catch(e){document.getElementById('edErr').textContent=e.message}};
-document.getElementById('ins').onclick=()=>openEditor(null);
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function api(p){const r=await fetch(p);if(!r.ok)throw new Error((await r.json()).error);return r.json()}
-async function loadList(){const d=await api('/api/collections');write=d.write;writable=new Set(d.collections.filter(c=>c.writable).map(c=>c.name));
-document.getElementById('engine').textContent='· '+d.engine+(write?' · write':' · read-only');
-const el=document.getElementById('list');el.innerHTML='';
-for(const c of d.collections){const b=document.createElement('button');b.innerHTML=esc(c.name)+'<small>'+c.count+'</small>';
-if(cur===c.name)b.classList.add('on');
-b.onclick=()=>{cur=c.name;skip=0;[...el.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');document.getElementById('view').disabled=false;show()};el.appendChild(b)}
-if(!d.collections.length)el.innerHTML='<div class="empty">No tables yet.</div>'}
-async function loadRows(){const d=await api('/api/collections/'+encodeURIComponent(cur)+'?skip='+skip+'&limit='+LIMIT);
-document.getElementById('title').textContent=cur;
-document.getElementById('meta').textContent=d.total?(skip+1)+'–'+Math.min(skip+LIMIT,d.total)+' of '+d.total:'empty';
-document.getElementById('prev').disabled=skip===0;document.getElementById('next').disabled=skip+LIMIT>=d.total;
-const canWrite=writable.has(cur);document.getElementById('ins').hidden=!canWrite;
-const cols=[...new Set(d.rows.flatMap(r=>Object.keys(r)))];const g=document.getElementById('grid');
-if(!d.rows.length){g.innerHTML='<div class="empty">No rows.</div>';return}
-let h='<table><thead><tr>'+(canWrite?'<th></th>':'')+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>';
-d.rows.forEach((r,i)=>{h+='<tr>'+(canWrite?'<td class="act"><button data-i="'+i+'" title="edit">✎</button></td>':'')+cols.map(c=>{const v=r[c];if(v===null||v===undefined)return '<td class="null">null</td>';
-if(typeof v==='object'){const j=JSON.stringify(v);return '<td class="obj" title="click to expand" data-j="'+esc(j)+'">'+esc(j)+'</td>'}
-return '<td title="'+esc(v)+'">'+esc(v)+'</td>'}).join('')+'</tr>'});
-g.innerHTML=h+'</tbody></table>';
-g.querySelectorAll('td.act button').forEach(b=>b.onclick=()=>openEditor(d.rows[Number(b.dataset.i)]));
-g.querySelectorAll('td.obj').forEach(td=>td.onclick=()=>{td.innerHTML='<pre>'+esc(JSON.stringify(JSON.parse(td.dataset.j),null,2))+'</pre>';td.style.whiteSpace='normal';td.onclick=null})}
-function show(){document.getElementById('view').textContent=mode==='rows'?'Structure':'Rows';if(mode!=='rows')document.getElementById('ins').hidden=true;return mode==='rows'?loadRows():loadStructure()}
-async function loadStructure(){const d=await api('/api/collections/'+encodeURIComponent(cur)+'/structure');
-document.getElementById('title').textContent=cur;document.getElementById('meta').textContent=d.columns.length+' columns · '+d.indexes.length+' indexes';
-document.getElementById('prev').disabled=true;document.getElementById('next').disabled=true;
-const row=(cells)=>'<tr>'+cells.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>';
-document.getElementById('grid').innerHTML='<table><thead><tr><th>column</th><th>type</th><th>nullable</th></tr></thead><tbody>'+
-d.columns.map(c=>row([c.name,c.type,c.nullable===undefined?'':String(c.nullable)])).join('')+'</tbody></table>'+
-'<table style="margin-top:18px"><thead><tr><th>index</th><th>definition</th></tr></thead><tbody>'+d.indexes.map(i=>row([i.name,i.definition])).join('')+'</tbody></table>'}
-document.getElementById('view').onclick=()=>{mode=mode==='rows'?'structure':'rows';skip=0;show()};
-document.getElementById('prev').onclick=()=>{skip=Math.max(0,skip-LIMIT);loadRows()};
-document.getElementById('next').onclick=()=>{skip+=LIMIT;loadRows()};
-loadList().catch(e=>document.getElementById('grid').innerHTML='<div class="empty">'+esc(e.message)+'</div>');
-</script></body></html>`;
+import { STUDIO_HTML } from './studio-page.js';
 
 /** Reads a JSON body (at most 1 MB). */
 function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
@@ -259,7 +171,7 @@ export function startStudio(
     res.end(JSON.stringify(body, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v)));
   };
   const token = crypto.randomBytes(32).toString('hex');
-  const page = PAGE.replace('__EFC_TOKEN__', JSON.stringify(options.write ? token : ''));
+  const page = STUDIO_HTML.replace('__EFC_TOKEN__', JSON.stringify(options.write ? token : ''));
 
   // Table/collection name → the model that stores there (write mode only).
   let writers: Promise<Map<string, StudioWriter>> | undefined;
