@@ -99,9 +99,10 @@ enqueue('ResizeImage', payload)
 ```
 
 `runInThread` in `thread-runner.ts`:
-- Spawns `new Worker(thread-runner.js, { workerData: { handlerPath, payload } })`
-- Worker-side: imports `handlerPath`, reads `mod.default`, calls `def.handler(payload)`
-- Resolves on `{ ok: true }`, rejects on `{ ok: false, error }`
+- Spawns `new Worker(thread-runner.js, { workerData: { efcTask: true, handlerPath, payload } })` — `dist/thread-runner.js` is its own tsup entry (loaded by path; before 0.10.0 it wasn't emitted and every thread task failed)
+- Worker-side: imports `handlerPath`, reads `mod.default`, calls `def.handler(payload)`, posts `{ type: 'done', ok, error? }`
+- `enqueue()` inside the thread goes through `globalThis[Symbol.for('efc.enqueueBridge')]` → `{ type: 'enqueue' }` message → main thread's real `enqueue()` → `{ type: 'enqueued', error? }`; the port is ref'd only while a call waits, so the thread still exits
+- Tested against the built package: `integration/thread-tasks.test.ts`
 
 `thread: true` requires `def.filePath` to be set. This is only guaranteed when the task was registered via `scanTasks` (which stores the file path). If you call `registerTask` manually without `filePath`, `thread: true` will silently fall through to the event loop (the `&&` short-circuits).
 
