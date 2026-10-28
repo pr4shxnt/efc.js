@@ -44,7 +44,7 @@ Pass `{ thread: true }` as the first argument. The handler runs in a dedicated `
 
 ```ts
 // src/tasks/ResizeImage.ts
-import { defineTask } from 'express-file-cluster/tasks';
+import { defineTask, enqueue } from 'express-file-cluster/tasks';
 import sharp from 'sharp';
 
 interface ResizePayload {
@@ -58,9 +58,12 @@ export default defineTask<ResizePayload>(
     const input = await downloadFromStorage(key);
     const out = await sharp(input).resize(width).toBuffer();
     await uploadToStorage(`${key}@${width}`, out);
+    await enqueue('NotifyUploaded', { key, width }); // works from a thread too
   },
 );
 ```
+
+`enqueue()` works inside a thread task: the call is forwarded to the main thread, which owns the queue, and resolves (or rejects with the same error) once the job is queued — so a CPU-heavy step can hand off to the next one. The thread is a fresh module scope: open its own clients (database, storage) if it needs them, and don't rely on state from the main thread. The task module's `default` export must be the `defineTask(...)` result.
 
 ---
 
@@ -210,8 +213,8 @@ The backend is inferred — BullMQ when `REDIS_URL` is set, pg-boss for a `postg
 
 `packages/core/src/tasks/thread-runner.ts` is a dual-purpose module:
 
-- **Worker-thread side** — when loaded inside a `worker_threads` worker, reads `workerData.handlerPath` and `workerData.payload`, imports the task file, calls `def.handler(payload)`, and posts `{ ok: true }` or `{ ok: false, error }` back to the main thread.
-- **Main-thread side** — exports `runInThread(handlerPath, payload)` which spawns a `new Worker(thread-runner.js, { workerData })` and returns a `Promise<void>` that resolves on `{ ok: true }` or rejects on error.
+- **Worker-thread side** — when loaded inside a `worker_threads` worker (`workerData.efcTask`), imports the task file, calls `def.handler(payload)`, and posts `{ type: 'done', ok }` back. `enqueue()` in the thread posts `{ type: 'enqueue', id, name, payload }` and waits for `{ type: 'enqueued', id, error? }`; the port only keeps the thread alive while such a call is waiting, so a finished task's thread exits.
+- **Main-thread side** — exports `runInThread(handlerPath, payload)` which spawns a `new Worker(thread-runner.js, { workerData })`, answers `enqueue` messages with the real `enqueue()`, and returns a `Promise<void>` that resolves on `done` / rejects on error. The build emits `dist/thread-runner.js` as its own file because the worker loads it by path.
 
 ---
 

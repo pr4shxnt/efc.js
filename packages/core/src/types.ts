@@ -105,6 +105,12 @@ export interface DatabasePoolConfig {
 
 export interface EFCConfig {
   port?: number;
+  /**
+   * Express's `trust proxy`: set it when the app runs behind a proxy or load balancer
+   * (Render, Fly, Heroku, nginx, a cloud LB) so `req.ip` is the client, not the proxy —
+   * `true`, the number of hops, or addresses / subnets. `rateLimit` keys on `req.ip`.
+   */
+  trustProxy?: boolean | number | string | string[];
   basePath?: string;
   dashboard?: boolean;
   database?: DatabaseEngine;

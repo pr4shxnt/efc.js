@@ -37,7 +37,12 @@ export function setEnqueueImpl(impl: EnqueueImpl): void {
   _impl = impl;
 }
 
+/** Set inside `{ thread: true }` task threads: forwards enqueue() to the main thread. */
+export const ENQUEUE_BRIDGE = Symbol.for('efc.enqueueBridge');
+
 export async function enqueue<T>(name: string, payload: T): Promise<void> {
+  const bridge = (globalThis as Record<symbol, unknown>)[ENQUEUE_BRIDGE] as EnqueueImpl | undefined;
+  if (!_impl && bridge) return bridge(name, payload as unknown);
   if (!_impl) {
     throw new Error(
       `[EFC] Cannot enqueue task "${name}": task queue not initialised. Set tasks.backend in ignite() config.`,

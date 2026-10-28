@@ -205,6 +205,17 @@ describe('ignite() — server integration', () => {
     expect(res.body).toMatchObject({ error: 'Invalid input', statusCode: 422 });
   });
 
+  it('trustProxy makes req.ip the client behind a proxy', async () => {
+    writeRoute(apiDir, 'ip.js', `export const GET = (req, res) => res.json({ ip: req.ip });`);
+    server = await ignite({ basePath: '/', cluster: false, port: 0 });
+    const direct = await request(server!).get('/ip').set('X-Forwarded-For', '203.0.113.7');
+    expect(direct.body.ip).not.toBe('203.0.113.7'); // not trusted by default: can't be spoofed
+    await closeServer(server!);
+    server = await ignite({ basePath: '/', cluster: false, port: 0, trustProxy: true });
+    const proxied = await request(server!).get('/ip').set('X-Forwarded-For', '203.0.113.7');
+    expect(proxied.body.ip).toBe('203.0.113.7');
+  });
+
   it("hides a library error's 5xx message", async () => {
     // e.g. a driver error carrying statusCode 500 and a message naming hosts or SQL.
     writeRoute(

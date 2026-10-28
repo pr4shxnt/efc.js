@@ -843,7 +843,17 @@ function entityLoginContent(pascal: string, slug: string, cfg: EfcJson): string 
   const typedArgs = ts ? '(req: Request, res: Response)' : '(req, res)';
   const typeImport = ts ? "import type { Request, Response } from 'express';\n" : '';
   return `${typeImport}import { issueToken, verifyPassword } from 'express-file-cluster/auth';
+import { rateLimit } from 'express-file-cluster';
 import { ${pascal} } from '../../../model/${pascal}.js';
+
+// 10 attempts per 15 minutes per address and account (see TRUST_PROXY behind a proxy).
+export const middlewares = [
+  rateLimit({
+    window: '15m',
+    max: 10,
+    key: (req) => \`\${req.ip}:\${String(req.body?.email ?? '').toLowerCase()}\`,
+  }),
+];
 
 export const POST = async ${typedArgs} => {
   const { email, password } = req.body;

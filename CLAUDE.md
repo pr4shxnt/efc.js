@@ -27,7 +27,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - Cache (`cache`, `cacheResponse`) on Redis or memory, also used as the JWT session-revocation store
 - CLI (`efc` binary) incl. migrations (hand-written or generated from model diffs: `efc db generate`), seeds, `efc db pull`, `efc import-prisma`, a studio (read-only; `--write` edits through the models, page-token + origin checked) and a shadcn-style feature registry (`efc add | list | view | diff | init`)
 
-**Status: v0.9.6 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6a query logging; custom auth entities; `efc add` feature registry). Fixes ship as patch releases (0.9.5, 0.9.6, …); features as minor bumps.** See `README.md` and `docs/` for full documentation.
+**Status: v0.10.0 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6a query logging; custom auth entities; `efc add` feature registry). Fixes ship as patch releases (0.9.5, 0.9.6, …); features as minor bumps.** See `README.md` and `docs/` for full documentation.
 
 ---
 
@@ -48,7 +48,7 @@ Skills/efc/              ← dense reference cards (/efc skill)
 
 ```ts
 import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, defineTable, defineCollection, transaction,
-         ModelValidationError, logger, getLogger, cache, cacheResponse } from 'express-file-cluster'
+         ModelValidationError, logger, getLogger, cache, cacheResponse, rateLimit } from 'express-file-cluster'
 import { issueToken, revokeToken, revokeSession, revokeAllSessions, signToken, requireAuth,
          getCurrentUser, hashPassword, verifyPassword, passwordNeedsRehash } from 'express-file-cluster/auth'
 import { defineTask, enqueue } from 'express-file-cluster/tasks'
@@ -143,6 +143,7 @@ Do not suggest or generate code for these features.
 - `requireAuth` is dual-purpose: bare (`requireAuth`) it just verifies the JWT; called with role names (`requireAuth('admin')`) it returns a middleware that also enforces `payload.role`
 - `revokeToken` only clears the cookie — the JWT remains valid until expiry. `revokeSession(req, res?)` / `revokeAllSessions(userId)` actually revoke, but need `cache` configured. If the cache is unreachable, `requireAuth` answers 503 by default (`cache.onRevocationCheckError: 'allow'` passes requests instead); the revoke calls throw
 - The `memory` cache backend lives in the cluster primary and workers use it over IPC (shared per machine, lost on restart, not shared across instances) — use `redis` for multiple instances
+- `rateLimit` counts with `cache.incr` (needs `cache`; atomic: Redis Lua / the primary's memory store), clock-aligned fixed windows, default key `req.ip` — behind a proxy without `trustProxy` every client shares one bucket, so generated login/forgot-password key on the email too. `cache.incr` resolves `undefined` when Redis is down; `rateLimit` then allows (default) or 503s
 - Scaffolded apps set `cache` (Redis if `REDIS_URL`, else memory); their logout uses `revokeSession` and password reset calls `revokeAllSessions`
 - Scaffolded PostgreSQL apps use `defineTable` and MongoDB apps `defineCollection` by default (prompt "Models:"; `ScaffoldOptions.modelApi: 'defineModel'` keeps the portable API; `usesTables` / `usesCollections` in scaffold.ts): feature models reference `User`/`Admin`/`Plan`/… by FK (no back-`relations` — each feature stays self-contained), and `src/model/index.ts` registers every model and declares `Tables`. Route code is generated through `orm(opts)` in scaffold.ts — never hand-write `User.findOne(...)` in templates
 - Generated routes must check that request values are strings (`typeof x !== 'string'` → 400) before they reach a filter, and strip `password`, `refreshToken`, `resetToken`, `verifyToken` (+ expiries) from records they return (e2e `validates request value types…` guards it)

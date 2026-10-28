@@ -12,7 +12,7 @@ import { getLogger } from '../logger.js';
 const TAG = '__efcCache';
 const TIMEOUT_MS = 2000;
 
-type Op = 'ping' | 'get' | 'set' | 'del' | 'clear';
+type Op = 'ping' | 'get' | 'set' | 'del' | 'clear' | 'incr';
 interface Request {
   [TAG]: true;
   id: string;
@@ -52,6 +52,8 @@ export function servePrimaryCache(maxEntries: number): void {
           return store.del(req.args[0] as string[]);
         case 'clear':
           return store.clear(req.args[0] as string);
+        case 'incr':
+          return store.incr(req.args[0] as string, req.args[1] as number | undefined);
       }
     };
     run().then(
@@ -117,6 +119,8 @@ export async function connectPrimaryCache(): Promise<Backend | null> {
     },
     del: async (keys) => (await call('del', keys)) as number,
     clear: async (prefix) => (await call('clear', prefix)) as number,
+    incr: async (key, ttl) =>
+      (await call('incr', key, ttl)) as { value: number; ttlMs: number | null },
     close: async () => {
       process.off('message', onMessage);
       for (const p of pending.values()) clearTimeout(p.timer);
