@@ -105,7 +105,6 @@ describe('custom auth entities', () => {
         'src/api/auth/merchant/me.ts',
       ]);
       expect(result.conflicts).toEqual([]);
-      expect(result.installNeeded).toBe(true);
 
       // Verify Model file
       const modelContent = fs.readFileSync(path.join(dir, 'src/model/Merchant.ts'), 'utf8');
@@ -122,7 +121,7 @@ describe('custom auth entities', () => {
 
       // Verify Login route
       const loginContent = fs.readFileSync(path.join(dir, 'src/api/auth/merchant/login.ts'), 'utf8');
-      expect(loginContent).toContain("import { issueToken } from 'express-file-cluster/auth';");
+      expect(loginContent).toContain("import { issueToken, verifyPassword } from 'express-file-cluster/auth';");
       expect(loginContent).toContain("Merchant.findFirst({ where: { email } })");
       expect(loginContent).toContain("issueToken(res, { id: record.id, role: record.role, email: record.email })");
       expect(loginContent).toContain("Logged in as merchant");
@@ -146,10 +145,10 @@ describe('custom auth entities', () => {
       expect(cfg.files['src/model/Merchant.ts']).toBeDefined();
       expect(cfg.files['src/api/auth/merchant/login.ts']).toBeDefined();
 
-      // Verify dependencies added to package.json
+      // Passwords hash through express-file-cluster/auth — no bcrypt dependency
       const pkg = fs.readJsonSync(path.join(dir, 'package.json'));
-      expect(pkg.dependencies['bcrypt']).toBe('^5.1.0');
-      expect(pkg.devDependencies['@types/bcrypt']).toBe('^5.0.0');
+      expect(pkg.dependencies?.['bcrypt']).toBeUndefined();
+      expect(fs.readFileSync(path.join(dir, 'src/api/auth/merchant/login.ts'), 'utf8')).toContain('verifyPassword');
 
       // Verify JWT_SECRET added to .env
       const env = fs.readFileSync(path.join(dir, '.env'), 'utf8');

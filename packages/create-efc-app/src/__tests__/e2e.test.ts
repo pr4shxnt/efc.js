@@ -486,12 +486,11 @@ describe.skipIf(!RUN).each([STACKS[1], STACKS[2]])('base app + efc add ($label)'
     expect(added).toMatch(/update\s+src\/tasks\/SendEmail/);
     const pkg = fs.readJsonSync(path.join(appDir, 'package.json'));
     expect(pkg.dependencies).toMatchObject({
-      bcrypt: expect.any(String),
       nodemailer: expect.any(String),
       jose: expect.any(String),
     });
     expect(fs.existsSync(path.join(appDir, 'node_modules', 'jose'))).toBe(true);
-    expect(fs.existsSync(path.join(appDir, 'node_modules', 'bcrypt'))).toBe(true);
+    expect(pkg.dependencies).not.toHaveProperty('bcrypt');
     expect(fs.existsSync(path.join(appDir, 'node_modules', 'nodemailer'))).toBe(true);
     const manifest = fs.readJsonSync(path.join(appDir, 'efc.json'));
     expect(manifest.items).toEqual([

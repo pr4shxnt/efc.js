@@ -225,6 +225,12 @@ Goal: define a model and use it — no table chores, on either engine.
 - [ ] Benchmarks vs bare Express / Fastify
 - [ ] Semver + LTS policy
 - [ ] Docs site
+- [x] Zero `npm audit` findings (2026-10-28, 0.9.2): scaffolded auth drops `bcrypt` (vulnerable `tar` via
+      `@mapbox/node-pre-gyp`) for `hashPassword`/`verifyPassword` in `express-file-cluster/auth` (node:crypto
+      scrypt); nodemailer ^10.2.1 + esbuild override in scaffolded apps; repo lockfile refreshed (zod, vite,
+      vitest, qs, body-parser, …)
+- [ ] Friendlier `connectPostgres` error when `DATABASE_URL` has no password (`SASL: client password must be a
+      string`) + scaffolder note to create the database/user (bugs/e2e-bugs.txt)
 
 ---
 

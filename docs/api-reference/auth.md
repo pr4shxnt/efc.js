@@ -11,6 +11,9 @@ import {
   signToken,
   requireAuth,
   getCurrentUser,
+  hashPassword,
+  verifyPassword,
+  passwordNeedsRehash,
 } from 'express-file-cluster/auth';
 ```
 
@@ -216,6 +219,38 @@ export const GET = async (req, res) => {
 ```
 
 This is also what powers the `'$currentUser'` / `'$currentUser.<key>'` `defineModel` default operator codes — see the [`db` API reference](./db.md#default-value-operator-codes) — so a `createdBy` field can be populated automatically on `.create()` without threading `req.user` through every route handler.
+
+---
+
+## `hashPassword()` / `verifyPassword()` / `passwordNeedsRehash()`
+
+Password hashing on `node:crypto`'s scrypt — no native addon and no extra dependency. These don't
+need `jwtSecret`; they work anywhere.
+
+```ts
+function hashPassword(password: string): Promise<string>
+function verifyPassword(password: string, hash: string): Promise<boolean>
+function passwordNeedsRehash(hash: string): boolean
+```
+
+- `hashPassword` uses a random 16-byte salt and N=2^15, r=8, p=1 (32 MiB, a 64-byte key) and returns
+  `scrypt$<N>$<r>$<p>$<salt base64>$<key base64>`. It throws on an empty password. The password is
+  NFKC-normalised first, so the same characters typed differently hash the same.
+- `verifyPassword` compares in constant time. It returns `false` for a wrong password or a malformed
+  hash, and also for cost parameters far above the defaults (N > 2^20, r > 32 or p > 16), so a planted
+  hash can't tie up a worker.
+- **bcrypt hashes are not supported.** EFC has no bcrypt fallback (no `bcrypt`, no `bcryptjs`):
+  `verifyPassword` returns `false` for `$2a$` / `$2b$` / `$2y$` hashes (from apps scaffolded before
+  0.9.2) and logs a warning. Those accounts sign in again after a password reset, which stores a
+  `hashPassword()` hash.
+- `passwordNeedsRehash` is `true` for any hash not made with the current defaults. Check it after a
+  successful login and store a fresh `hashPassword()` result.
+
+```ts
+const user = await User.findOne({ email });
+if (!user || !(await verifyPassword(password, user.password))) throw new HttpError(401, 'Invalid credentials');
+if (passwordNeedsRehash(user.password)) await User.update(user.id, { password: await hashPassword(password) });
+```
 
 ---
 

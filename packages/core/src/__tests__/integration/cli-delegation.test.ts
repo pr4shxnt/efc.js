@@ -33,10 +33,13 @@ describe.skipIf(!fs.existsSync(CLI))('efc CLI — delegation to the project-loca
         path.join(local, 'package.json'),
         JSON.stringify({ ...pkg, version: '9.9.9-local' }),
       );
-      // What `npm install` would put next to it: the package's runtime dependencies.
+      // What `npm install` would put next to it: the package's runtime dependencies. Take
+      // core's own copy when npm nested it (a hoisted one may be another package's version).
       const repoModules = path.resolve(CORE, '..', '..', 'node_modules');
       for (const dep of Object.keys(pkg.dependencies as Record<string, string>)) {
-        fs.symlinkSync(path.join(repoModules, dep), path.join(root, 'node_modules', dep), 'dir');
+        const nested = path.join(CORE, 'node_modules', dep);
+        const source = fs.existsSync(nested) ? nested : path.join(repoModules, dep);
+        fs.symlinkSync(source, path.join(root, 'node_modules', dep), 'dir');
       }
     }
     fs.mkdirSync(path.join(root, 'src', 'deep'), { recursive: true });

@@ -229,3 +229,4 @@ export const requireAuth: RequireAuth = ((...args: unknown[]) => {
 // anywhere — not just where `req` is in scope. Returns undefined outside a
 // request, or on a request that never ran through requireAuth.
 export { getCurrentUser } from '../context.js';
+export { hashPassword, verifyPassword, passwordNeedsRehash } from './password.js';

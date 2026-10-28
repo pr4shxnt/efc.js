@@ -95,10 +95,11 @@ describe('registry items', () => {
 
   it('carry their npm packages and env vars', () => {
     const auth = registry.item('ts-pg-table', 'auth');
-    expect(auth.dependencies).toEqual({ bcrypt: '^5.1.0' });
-    expect(auth.devDependencies).toEqual({ '@types/bcrypt': '^5.0.0' });
+    // Password hashing is node:crypto scrypt in express-file-cluster/auth — no extra package.
+    expect(auth.dependencies).toEqual({});
+    expect(auth.devDependencies).toEqual({});
     const mailer = registry.item('js-mongo', 'mailer');
-    expect(mailer.dependencies).toEqual({ nodemailer: '^6.9.0' });
+    expect(mailer.dependencies).toEqual({ nodemailer: '^10.2.1' });
     expect(mailer.devDependencies).toEqual({});
     expect(mailer.env.map((e) => e.key)).toEqual([
       'APP_URL',
@@ -184,7 +185,7 @@ describe('efc add', () => {
     expect(fs.readFileSync(path.join(app, '.env'), 'utf8')).toContain('SMTP_HOST=');
     expect(
       JSON.parse(fs.readFileSync(path.join(app, 'package.json'), 'utf8')).dependencies.nodemailer,
-    ).toBe('^6.9.0');
+    ).toBe('^10.2.1');
 
     // Already installed → nothing to do unless named again; named again → all identical.
     expect(planAdd(app, registry, ['auth', 'mailer']).items).toEqual(['auth', 'email-client']);
@@ -293,8 +294,8 @@ describe('item prompts', () => {
     expect(plan.items).toEqual(['auth', 'auth@google', 'auth@apple']);
     expect(plan.dependencies).toMatchObject({
       jose: expect.any(String),
-      bcrypt: expect.any(String),
     });
+    expect(plan.dependencies).not.toHaveProperty('bcrypt');
     expect(plan.prompts.map((p) => p.name)).toEqual([
       'GOOGLE_CLIENT_ID',
       'GOOGLE_CLIENT_SECRET',

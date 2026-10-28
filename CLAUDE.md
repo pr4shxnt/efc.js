@@ -27,7 +27,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - Cache (`cache`, `cacheResponse`) on Redis or memory, also used as the JWT session-revocation store
 - CLI (`efc` binary) incl. migrations (hand-written or generated from model diffs: `efc db generate`), seeds, `efc db pull`, `efc import-prisma`, a read-only studio and a shadcn-style feature registry (`efc add | list | view | diff | init`)
 
-**Status: v0.10.0 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6a query logging; custom auth entities; `efc add` feature registry). Releases from here are minor bumps (0.10.0, 0.11.0, …).** See `README.md` and `docs/` for full documentation.
+**Status: v0.9.2 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6a query logging; custom auth entities; `efc add` feature registry). Fixes ship as patch releases (0.9.2, 0.9.3, …); features as minor bumps.** See `README.md` and `docs/` for full documentation.
 
 ---
 
@@ -50,7 +50,7 @@ Skills/efc/              ← dense reference cards (/efc skill)
 import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, defineTable, defineCollection, transaction,
          ModelValidationError, logger, getLogger, cache, cacheResponse } from 'express-file-cluster'
 import { issueToken, revokeToken, revokeSession, revokeAllSessions, signToken, requireAuth,
-         getCurrentUser } from 'express-file-cluster/auth'
+         getCurrentUser, hashPassword, verifyPassword, passwordNeedsRehash } from 'express-file-cluster/auth'
 import { defineTask, enqueue } from 'express-file-cluster/tasks'
 ```
 

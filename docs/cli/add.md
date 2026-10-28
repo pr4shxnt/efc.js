@@ -99,7 +99,7 @@ For `efc add auth:merchant`:
 
 - **No existing routes modified:** Existing `/auth/login` and `/auth/register` remain untouched.
 - **Model registered:** On PostgreSQL with `defineTable`, registers the model in `src/model/index.ts`.
-- **Packages ensured:** Adds `bcrypt` (and `@types/bcrypt` in TypeScript) to `package.json` and runs package manager install if missing.
+- **No extra packages:** Passwords are hashed with `hashPassword` / `verifyPassword` from `express-file-cluster/auth` (scrypt, built into Node).
 - **Tracked in efc.json:** Recorded as `auth:<slug>` in `efc.json`.
 
 
@@ -140,7 +140,7 @@ Wrong answers are asked again. A question is only asked for a variable the app d
 
 ```json
 {
-  "registry": "0.9.0",
+  "registry": "0.9.2",
   "language": "typescript",
   "database": "postgresql",
   "modelApi": "defineTable",

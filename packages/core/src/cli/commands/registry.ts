@@ -305,8 +305,6 @@ function addCommand(): Command {
             );
           }
 
-          let anyInstallNeeded = false;
-
           if (entityNames.length > 0) {
             const { cwd, cfg, detected } = load();
             if (detected) {
@@ -339,26 +337,8 @@ function addCommand(): Command {
               console.log(
                 pc.dim(`  Protect routes with: requireAuth('${slug}')`),
               );
-
-              if (result.installNeeded) anyInstallNeeded = true;
             }
             console.log();
-
-            if (anyInstallNeeded && !opts.dryRun) {
-              const pm = packageManager(cwd);
-              if (opts.install) {
-                console.log(pc.dim(`  $ ${pm} install`));
-                const r = spawnSync(pm, ['install'], {
-                  cwd,
-                  stdio: 'inherit',
-                  shell: process.platform === 'win32',
-                });
-                if (r.status !== 0)
-                  console.log(pc.yellow(`  ${pm} install failed — run it yourself.`));
-              } else {
-                console.log(pc.yellow(`  Run \`${pm} install\` for the new packages.`));
-              }
-            }
 
             // If there are no registry items to add, we're done.
             if (registryNames.length === 0) return;
