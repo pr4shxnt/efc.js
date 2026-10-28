@@ -31,12 +31,16 @@ function mongoSource(conn: Connection): Source {
         .map((c) => c.name)
         .filter((n) => !n.startsWith('system.'))
         .sort();
-      return Promise.all(
-        cols.map(async (name) => ({
-          name,
-          count: await db.collection(name).estimatedDocumentCount(),
-        })),
+      const counted = await Promise.all(
+        cols.map(async (name) => {
+          try {
+            return { name, count: await db.collection(name).estimatedDocumentCount() };
+          } catch {
+            return undefined; // dropped meanwhile
+          }
+        }),
       );
+      return counted.filter((c): c is { name: string; count: number } => c !== undefined);
     },
     async rows(name, skip, limit) {
       const col = db.collection(name);
@@ -88,13 +92,21 @@ function pgSource(pool: Pool): Source {
   const q = (ident: string) => `"${ident.replace(/"/g, '""')}"`;
   return {
     async collections() {
-      return Promise.all(
-        (await tables()).map(async (name) => ({
-          name,
-          count: (await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${q(name)}`))
-            .rows[0]!.n,
-        })),
+      // A table dropped between listing and counting (a migration, another process) is
+      // left out instead of failing the whole list.
+      const counted = await Promise.all(
+        (await tables()).map(async (name) => {
+          try {
+            const { rows } = await pool.query<{ n: number }>(
+              `SELECT count(*)::int AS n FROM ${q(name)}`,
+            );
+            return { name, count: rows[0]!.n };
+          } catch {
+            return undefined;
+          }
+        }),
       );
+      return counted.filter((c): c is { name: string; count: number } => c !== undefined);
     },
     async rows(name, skip, limit) {
       // Only names that exist in information_schema are ever interpolated.
