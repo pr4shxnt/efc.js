@@ -11,11 +11,15 @@ import { configureLogger } from '../../logger.js';
 import { runWithContext } from '../../context.js';
 import type { DatabaseEngine } from '../../types.js';
 
+// CI points every test file at one database (EFC_TEST_MONGO_URL); files that drop theirs need
+// their own, or they wipe each other's data mid-run. Keep the server, use this file's name.
+const perFileDb = (url: string | undefined, db: string) =>
+  url ? url.replace(/\/[^/?]*(\?|$)/, `/${db}$1`) : `mongodb://127.0.0.1:27017/${db}`;
+
 // Query logging (logging.queries): one event per model operation with its statement
 // count, slow-query warnings and the N+1 detector, on both engines. Skips an engine whose
 // database isn't reachable (CI provides both).
-const MONGO_URL =
-  process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/efc_querylog_test';
+const MONGO_URL = perFileDb(process.env['EFC_TEST_MONGO_URL'], 'efc_querylog_test');
 const PG_URL = process.env['EFC_TEST_PG_URL'] ?? 'postgres://postgres@127.0.0.1:5433/efc_test';
 
 async function reachableMongo(url: string): Promise<boolean> {

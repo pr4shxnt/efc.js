@@ -3,12 +3,17 @@ import mongoose from 'mongoose';
 import { defineModel } from '../../db/model.js';
 import { runWithContext } from '../../context.js';
 
+// CI points every test file at one database (EFC_TEST_MONGO_URL); files that drop theirs need
+// their own, or they wipe each other's data mid-run. Keep the server, use this file's name.
+const perFileDb = (url: string | undefined, db: string) =>
+  url ? url.replace(/\/[^/?]*(\?|$)/, `/${db}$1`) : `mongodb://127.0.0.1:27017/${db}`;
+
 // These exercise behavior that genuinely needs a live MongoDB round trip
 // (sequence/$increment counters, and the full validate+save pipeline) rather
 // than schema-only compilation — unlike model.smoke.test.ts, which never
 // connects. Skips itself, rather than failing CI, when no MongoDB is reachable
 // (e.g. no local `mongod` and no CI service container wired up yet).
-const MONGO_URL = process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/efc_core_test';
+const MONGO_URL = perFileDb(process.env['EFC_TEST_MONGO_URL'], 'efc_core_test');
 
 let mongoAvailable = false;
 try {
