@@ -79,6 +79,29 @@ const Widget = defineCollection(`StudioWidget${s}`, {
   price: { type: 'decimal128' },
 });
 
+describe('efc db studio — table list', () => {
+  it('leaves out a table dropped between listing and counting', async () => {
+    // A pool where "gone" disappears after information_schema listed it.
+    const pool = {
+      query: async (sql: string) => {
+        if (sql.includes('information_schema.tables')) {
+          return { rows: [{ table_name: 'kept' }, { table_name: 'gone' }] };
+        }
+        if (sql.includes('"gone"')) throw new Error('relation "gone" does not exist');
+        return { rows: [{ n: 3 }] };
+      },
+    };
+    const { server, url } = await startStudio('postgresql', pool, 0);
+    try {
+      const res = await fetch(`${url}/api/collections`);
+      expect(res.status).toBe(200);
+      expect((await res.json()).collections).toEqual([{ name: 'kept', count: 3, writable: false }]);
+    } finally {
+      server.close();
+    }
+  });
+});
+
 describe.skipIf(!(await reachablePg()))('efc db studio (PostgreSQL)', () => {
   let server: http.Server;
   let url: string;
