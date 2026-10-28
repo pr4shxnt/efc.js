@@ -119,12 +119,23 @@ export function dbCommand(): Command {
   common(
     cmd
       .command('pull')
-      .description('Write defineTable models for the tables in the database (PostgreSQL)'),
+      .description(
+        'Write models for the database: defineTable from PostgreSQL tables, defineCollection from sampled MongoDB documents',
+      ),
   )
     .option('--out <dir>', 'where to write the models', 'src/model')
     .option('--force', 'overwrite model files that already exist')
-    .action((opts: { databaseUrl?: string; dist?: boolean; out: string; force?: boolean }) =>
-      run('pull', opts),
+    .option('--sample <n>', 'MongoDB: documents sampled per collection (default 1000)', (v) =>
+      Number.parseInt(v, 10),
+    )
+    .action(
+      (opts: {
+        databaseUrl?: string;
+        dist?: boolean;
+        out: string;
+        force?: boolean;
+        sample?: number;
+      }) => run('pull', opts),
     );
 
   common(cmd.command('status').description('List applied and pending migrations')).action(
@@ -140,9 +151,14 @@ export function dbCommand(): Command {
     run('seed', { ...opts, ...(name !== undefined && { seed: name }) }),
   );
 
-  common(cmd.command('studio').description('Open a local, read-only database browser'))
+  common(
+    cmd
+      .command('studio')
+      .description('Open a local database browser (read-only; --write edits through your models)'),
+  )
     .option('-p, --port <port>', 'port to listen on (127.0.0.1 only)', '4983')
-    .action((opts: { port: string; databaseUrl?: string; dist?: boolean }) =>
+    .option('--write', 'allow inserting, editing and deleting rows (through src/model, validated)')
+    .action((opts: { port: string; databaseUrl?: string; dist?: boolean; write?: boolean }) =>
       run('studio', { ...opts, port: Number(opts.port) }),
     );
 

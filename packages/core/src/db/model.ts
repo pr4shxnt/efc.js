@@ -158,6 +158,16 @@ export function createModel<T extends object, C = Partial<T>>(
     drop: model.drop,
     findByIds: (ids) => model.find({ id: { $in: ids as string[] } } as never),
     pgTarget: () => ({ table: options.collection ?? tableNameFor(name), idKind: 'uuid' }),
+    studio: {
+      storage: async () =>
+        getDbEngine() === 'mongodb'
+          ? ((await model.raw()) as { collection: { collectionName: string } }).collection
+              .collectionName
+          : (options.collection ?? tableNameFor(name)),
+      create: (data) => model.create(data as never),
+      update: (id, data) => model.update(id, data as never),
+      delete: (id) => model.delete(id),
+    },
   });
   return model;
 }

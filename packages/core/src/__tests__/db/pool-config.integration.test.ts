@@ -3,10 +3,15 @@ import { connectPostgres, closePostgres } from '../../db/postgres.js';
 import { connectMongo } from '../../db/mongo.js';
 import { loadMongoose } from '../../db/mongo-model.js';
 
+// CI points every test file at one database (EFC_TEST_MONGO_URL); files that drop theirs need
+// their own, or they wipe each other's data mid-run. Keep the server, use this file's name.
+const perFileDb = (url: string | undefined, db: string) =>
+  url ? url.replace(/\/[^/?]*(\?|$)/, `/${db}$1`) : `mongodb://127.0.0.1:27017/${db}`;
+
 // `databasePool` reaches each driver under its own option names. Skips a database that
 // isn't reachable.
 const PG_URL = process.env['EFC_TEST_PG_URL'] ?? 'postgres://postgres@127.0.0.1:5433/efc_test';
-const MONGO_URL = process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/efc_pool_test';
+const MONGO_URL = perFileDb(process.env['EFC_TEST_MONGO_URL'], 'efc_pool_test');
 
 async function reachablePg(url: string): Promise<boolean> {
   const { default: pg } = await import('pg');

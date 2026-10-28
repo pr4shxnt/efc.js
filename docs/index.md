@@ -2,7 +2,7 @@
 
 **express-file-cluster (EFC)** is an opinionated backend framework built on Express. It removes routing ceremony, saturates every CPU core automatically, and ships a production-grade background-task subsystem — all from a single `ignite()` call.
 
-> **Status: v0.9.6 — Beta.** File-based routing (incl. catch-all and optional segments), request validation, clustering, auth, structured logging, MongoDB and PostgreSQL models with types inferred from the schema, PostgreSQL-native `defineTable` (Prisma-style queries and relations: foreign keys, many-to-many, `include`, relation filters, nested writes), query logging, BullMQ and pg-boss tasks with cron and dead-letter tooling, migrations (written for you from model changes: `efc db generate`, plus `efc db pull` and `efc import-prisma`), and the `efc add` feature registry (auth, admin, billing… copied into your app as source you own) are all implemented.
+> **Status: v0.10.0 — Beta.** File-based routing (incl. catch-all and optional segments), request validation, clustering, auth, structured logging, MongoDB and PostgreSQL models with types inferred from the schema, PostgreSQL-native `defineTable` (Prisma-style queries and relations: foreign keys, many-to-many, `include`, relation filters, nested writes), query logging, BullMQ and pg-boss tasks with cron and dead-letter tooling, migrations (written for you from model changes: `efc db generate`, plus `efc db pull` and `efc import-prisma`), and the `efc add` feature registry (auth, admin, billing… copied into your app as source you own) are all implemented.
 
 ---
 
@@ -39,6 +39,8 @@
 | [RBAC](./guides/rbac.md) | Role-based route protection via the `requireAuth('role')` shorthand |
 | [Database](./guides/database.md) | `defineModel`, queries, transactions, MongoDB vs PostgreSQL |
 | [Which model API?](./guides/which-api.md) | `defineModel` vs `defineTable` vs `defineCollection`, and moving between them |
+| [Feature matrix](./guides/feature-matrix.md) | What each model API does on which engine, with the test that proves each row |
+| [Type inference](./api-reference/types.md) | What every schema type becomes in records and inputs, ids, timestamps, typed queries |
 | [Relations](./guides/relations.md) | Foreign keys, many-to-many, `include`, relation filters, nested writes |
 | [defineTable](./api-reference/table.md) | PostgreSQL-native models: Prisma-style queries, SQL types, aggregation |
 | [defineCollection](./api-reference/collection.md) | MongoDB-native models: mongoose-style queries, BSON types, geo, bulk writes, change streams |

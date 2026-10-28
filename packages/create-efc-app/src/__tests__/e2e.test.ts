@@ -71,7 +71,8 @@ async function createApp(
   const variant = {
     language: stack.language,
     database: stack.database,
-    modelApi: 'defineTable' as const,
+    // What the scaffolder picks by default: defineCollection on MongoDB, defineTable on PostgreSQL.
+    modelApi: stack.database === 'mongodb' ? ('defineCollection' as const) : ('defineTable' as const),
   };
   const extra = { taskBackend: stack.taskBackend };
   await scaffold(registryOptions(variant, items, { ...extra, projectName: appDir }));
@@ -159,6 +160,9 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
     }
     await fs.writeFile(envPath, env);
 
+    expect(await fs.readFile(path.join(appDir, 'src', 'model', `User.${ts ? 'ts' : 'js'}`), 'utf8')).toContain(
+      stack.database === 'mongodb' ? "defineCollection('User'" : "defineTable('User'",
+    );
     run('npm', ['install', '--no-audit', '--no-fund'], appDir);
   }, 300_000);
 
@@ -391,6 +395,29 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       body: JSON.stringify({ email, password: 'other-pass-123' }),
     });
     expect(other.status).toBe(401);
+
+    // Brute force: the 11th wrong password in 15 minutes for one account is refused, and
+    // other accounts are unaffected.
+    const target = `brute-${Date.now()}@example.com`;
+    const tries: number[] = [];
+    let limited!: Response;
+    for (let i = 0; i < 11; i++) {
+      limited = await fetch(`${base}/auth/login`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ email: target, password: `wrong-${i}` }),
+      });
+      tries.push(limited.status);
+    }
+    expect(tries.slice(0, 10).every((s) => s === 401), JSON.stringify(tries)).toBe(true);
+    expect(tries[10]).toBe(429);
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+    const otherAccount = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ email: `nobody-${Date.now()}@example.com`, password: 'x' }),
+    });
+    expect(otherAccount.status).toBe(401);
   }, 60_000);
 
   it('signs in with Google and Apple', async () => {

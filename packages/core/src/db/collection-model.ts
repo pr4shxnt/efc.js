@@ -11,6 +11,7 @@ import { normalizeSchema, type FieldNode, type SchemaTree } from './schema.js';
 import { currentTx, getDbEngine, registerModel } from './engine.js';
 import { mongoModel, normalise, translateError, mapFilter, mapSort } from './mongo-model.js';
 import { traceOps } from './query-log.js';
+import { Pipeline, type LookedUp, type LookupTarget } from './pipeline.js';
 
 // defineCollection: a MongoDB-native model with mongoose's vocabulary — find with
 // projections, findOneAndUpdate, bulkWrite, aggregation, change streams — and BSON types
@@ -176,6 +177,32 @@ function createCollection(name: string, schema: CollectionSchema, options: Colle
     const s = session();
     return s ? { session: s } : {};
   };
+
+  // The typed builder's stages. mongoose doesn't cast aggregation pipelines, so while the
+  // records still have this collection's shape, $match and $sort get the same treatment as
+  // find(): `id` → `_id`, string ids → ObjectIds, schema casting. Later stages (after a
+  // group, lookup, project…) describe a different shape and pass through as written.
+  const runPipeline = (stages: AnyRecord[]): Promise<unknown[]> =>
+    guard(async (M) => {
+      let sourceShape = true;
+      const prepared = stages.map((stage) => {
+        const [op] = Object.keys(stage);
+        if (!sourceShape) return stage;
+        if (op === '$match') {
+          const filter = mapFilter(stage['$match'] as AnyRecord);
+          return { $match: M.find().cast(M, filter) as AnyRecord };
+        }
+        if (op === '$sort') return { $sort: mapSort(stage['$sort'] as Record<string, SortDirection>) };
+        if (op !== '$skip' && op !== '$limit' && op !== '$sample') sourceShape = false;
+        return stage;
+      });
+      const agg = M.aggregate(prepared as unknown as MongooseNS.PipelineStage[]);
+      const s = session();
+      if (s) agg.session(s);
+      if (options.collation)
+        agg.collation(options.collation as unknown as MongooseNS.mongo.CollationOptions);
+      return ((await agg) as unknown[]).map(toRecord);
+    });
 
   const guard = async <R>(fn: (M: MongooseNS.Model<AnyRecord>) => Promise<R>): Promise<R> => {
     const M = await model();
@@ -380,6 +407,11 @@ function createCollection(name: string, schema: CollectionSchema, options: Colle
         return ((await agg) as unknown[]).map(toRecord);
       }),
 
+    pipeline: () => new Pipeline(runPipeline),
+
+    lookup: (field: string, target: LookupTarget, filter?: AnyRecord) =>
+      new Pipeline(runPipeline).match(filter ?? {}).lookup(field as never, target).exec(),
+
     bulkWrite: (ops: AnyRecord[], opts?: { ordered?: boolean }) =>
       guard(async (M): Promise<CollectionBulkResult> => {
         if (ops.length === 0) {
@@ -474,6 +506,13 @@ function createCollection(name: string, schema: CollectionSchema, options: Colle
     findByIds: (ids) => model$.find({ _id: { $in: ids } }) as Promise<AnyRecord[]>,
     pgTarget: () => {
       throw new Error(`[EFC] ${name} is a MongoDB collection (defineCollection)`);
+    },
+    studio: {
+      storage: async () => (await model()).collection.collectionName,
+      create: (data) => model$.create(data as never),
+      update: (id, data) =>
+        model$.findByIdAndUpdate(id, data as never, { returnDocument: 'after' }),
+      delete: (id) => model$.findByIdAndDelete(id),
     },
   });
   return model$;
@@ -594,6 +633,20 @@ export interface CollectionModel<S, O = object, R = Rec<S, O>, C = InferCreateIn
   findByIdAndDelete(id: string): Promise<R | null>;
   deleteOne(filter: CollectionFilter<R>): Promise<{ deletedCount: number }>;
   deleteMany(filter?: CollectionFilter<R>): Promise<{ deletedCount: number }>;
+  /**
+   * A typed aggregation pipeline: `Order.pipeline().match({ … }).group({ _id: '$customer',
+   * total: { $sum: '$amount' } })` — each stage's output type is inferred. Await it (or `.exec()`).
+   */
+  pipeline(): Pipeline<R>;
+  /**
+   * `$lookup` for a ref field: `Post.lookup('author', User)` → posts whose `author` is the User
+   * record (or null); an array of refs becomes an array of records. Optional filter first.
+   */
+  lookup<K extends keyof R & string, M extends LookupTarget>(
+    field: K,
+    from: M,
+    filter?: CollectionFilter<R>,
+  ): Promise<LookedUp<R, K, M>[]>;
   /** An aggregation pipeline; type the output with the generic: `aggregate<{ _id: string; n: number }>(…)`. */
   aggregate<T = Record<string, unknown>>(pipeline: Record<string, unknown>[]): Promise<T[]>;
   bulkWrite(

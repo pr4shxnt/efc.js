@@ -71,7 +71,7 @@ export interface EfcJson {
   registry: string;
   language: 'typescript' | 'javascript';
   database: 'mongodb' | 'postgresql';
-  modelApi: 'defineModel' | 'defineTable';
+  modelApi: 'defineModel' | 'defineTable' | 'defineCollection';
   tasks: 'bullmq' | 'pg-boss' | null;
   items: string[];
   /** sha256 of every file as efc last wrote it. */
@@ -158,7 +158,8 @@ export class Registry {
 
 export function variantOf(cfg: Pick<EfcJson, 'language' | 'database' | 'modelApi'>): string {
   const lang = cfg.language === 'typescript' ? 'ts' : 'js';
-  if (cfg.database === 'mongodb') return `${lang}-mongo`;
+  if (cfg.database === 'mongodb')
+    return cfg.modelApi === 'defineCollection' ? `${lang}-mongo-collection` : `${lang}-mongo`;
   return `${lang}-pg-${cfg.modelApi === 'defineTable' ? 'table' : 'model'}`;
 }
 
@@ -208,6 +209,14 @@ export function detectProject(cwd: string, version: string): EfcJson {
 
   let modelApi: EfcJson['modelApi'] = database === 'postgresql' ? 'defineTable' : 'defineModel';
   const modelDir = path.join(cwd, 'src', 'model');
+  if (database === 'mongodb' && fs.existsSync(modelDir)) {
+    const sources = fs
+      .readdirSync(modelDir)
+      .filter((f) => /\.[jt]s$/.test(f))
+      .map((f) => fs.readFileSync(path.join(modelDir, f), 'utf8'))
+      .join('\n');
+    if (/\bdefineCollection\(/.test(sources)) modelApi = 'defineCollection';
+  }
   if (database === 'postgresql' && fs.existsSync(modelDir)) {
     const sources = fs
       .readdirSync(modelDir)
@@ -834,7 +843,17 @@ function entityLoginContent(pascal: string, slug: string, cfg: EfcJson): string 
   const typedArgs = ts ? '(req: Request, res: Response)' : '(req, res)';
   const typeImport = ts ? "import type { Request, Response } from 'express';\n" : '';
   return `${typeImport}import { issueToken, verifyPassword } from 'express-file-cluster/auth';
+import { rateLimit } from 'express-file-cluster';
 import { ${pascal} } from '../../../model/${pascal}.js';
+
+// 10 attempts per 15 minutes per address and account (see TRUST_PROXY behind a proxy).
+export const middlewares = [
+  rateLimit({
+    window: '15m',
+    max: 10,
+    key: (req) => \`\${req.ip}:\${String(req.body?.email ?? '').toLowerCase()}\`,
+  }),
+];
 
 export const POST = async ${typedArgs} => {
   const { email, password } = req.body;

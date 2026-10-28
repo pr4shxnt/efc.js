@@ -18,6 +18,15 @@ export interface Backend {
   set(key: string, value: string, ttlSeconds: number | undefined): Promise<void>;
   del(keys: string[]): Promise<number>;
   clear(prefix: string): Promise<number>;
+  /**
+   * Atomically adds 1 to an integer value (a missing key counts as 0). The TTL is set only
+   * when the key is created, so it describes a fixed window. `ttlMs` is what's left of it
+   * (null: no expiry).
+   */
+  incr(
+    key: string,
+    ttlSeconds: number | undefined,
+  ): Promise<{ value: number; ttlMs: number | null }>;
   close(): Promise<void>;
 }
 
@@ -55,6 +64,21 @@ export function memoryBackend(maxEntries: number): Backend {
       let n = 0;
       for (const k of [...store.keys()]) if (k.startsWith(prefix) && store.delete(k)) n++;
       return n;
+    },
+    // One event-loop turn, no awaits: atomic within this process. Under clustering this
+    // store lives in the primary, so it's atomic across workers too.
+    async incr(key, ttl) {
+      const hit = live(key);
+      const current = hit ? Number(hit.value) : 0;
+      if (!Number.isInteger(current)) throw new Error(`cache incr: "${key}" is not an integer`);
+      const expires = hit ? hit.expires : ttl ? Date.now() + ttl * 1000 : 0;
+      store.delete(key);
+      store.set(key, { value: String(current + 1), expires });
+      while (store.size > maxEntries) store.delete(store.keys().next().value!);
+      return {
+        value: current + 1,
+        ttlMs: expires === 0 ? null : Math.max(0, expires - Date.now()),
+      };
     },
     async close() {
       store.clear();
@@ -107,6 +131,19 @@ async function redisBackend(url: string, timeout: number): Promise<Backend> {
       else await client.set(key, value);
     },
     del: (keys) => (keys.length ? client.del(...keys) : Promise.resolve(0)),
+    // INCR and the first EXPIRE in one script: a crash in between can't leave a counter
+    // that never expires.
+    async incr(key, ttl) {
+      const [value, pttl] = (await client.eval(
+        `local n = redis.call('INCR', KEYS[1])
+         if n == 1 and tonumber(ARGV[1]) > 0 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+         return {n, redis.call('PTTL', KEYS[1])}`,
+        1,
+        key,
+        ttl ? Math.max(1, Math.ceil(ttl * 1000)) : 0,
+      )) as [number, number];
+      return { value, ttlMs: pttl < 0 ? null : pttl };
+    },
     async clear(prefix) {
       let n = 0;
       let cursor = '0';
@@ -195,6 +232,12 @@ export interface Cache {
   wrap<T>(key: string, options: CacheSetOptions | number, fn: () => Promise<T>): Promise<T>;
   /** Deletes every key starting with `keyPrefix` (all of this app's keys when omitted). */
   clear(keyPrefix?: string): Promise<number>;
+  /**
+   * Atomically adds 1 and returns the new count — across workers and instances (Redis) or
+   * this machine's workers (memory). `ttl` applies when the key is created (a fixed
+   * window). Resolves `undefined` when the backend is unreachable: a count can't be made up.
+   */
+  incr(key: string, options?: CacheSetOptions): Promise<number | undefined>;
 }
 
 export const cache: Cache = {
@@ -232,7 +275,19 @@ export const cache: Cache = {
   async clear(keyPrefix = '') {
     return safely('clear', (b) => b.clear(prefix + keyPrefix), 0);
   },
+  async incr(key, options) {
+    const r = await safely('incr', (b) => b.incr(prefix + key, options?.ttl), undefined);
+    return r?.value;
+  },
 };
+
+/** For rateLimit: the count and the window's remaining time; throws when the backend is down. */
+export async function rawIncr(
+  key: string,
+  ttlSeconds: number,
+): Promise<{ value: number; ttlMs: number | null }> {
+  return requireBackend().incr(prefix + key, ttlSeconds);
+}
 
 /** For auth's revocation checks, which must distinguish "absent" from "backend down". */
 export async function rawGet(key: string): Promise<string | null> {

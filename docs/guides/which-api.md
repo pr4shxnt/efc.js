@@ -8,12 +8,12 @@ EFC has three ways to define a model. They share one foundation: the schema form
 | Queries | portable subset: `find(filter, { sort, limit, populate })`, `$set`, `$inc` | Prisma-style: `findMany({ where, include, orderBy, take, cursor })`, `findUnique`, `upsert`, `groupBy`, `aggregate` | mongoose-style: every query operator, `find(filter, { projection })`, `findOneAndUpdate`, `bulkWrite`, `aggregate(pipeline)`, `watch` |
 | Relations | `ref` + `populate` (a plain column on PostgreSQL) | real foreign keys, many-to-many join tables, `include` in one SQL statement, relation filters, nested writes | `ref` + `populate`, `$lookup`, embedded documents |
 | Field types | the portable set (`string`, `number`, `boolean`, `date`, `objectId`, objects, arrays) | + `integer`, `bigint`, `decimal`, `uuid`, `json`, `varchar`, native arrays and enums, `serial` ids | + `decimal128`, `long`, `geoPoint`, `binary`; `2dsphere`, `text`, `hashed` and partial indexes |
-| Migrations | auto-sync, `efc db generate` | auto-sync, `efc db generate`, `efc db pull`, `efc import-prisma` | auto-sync, `efc db generate` |
+| Migrations | auto-sync, `efc db generate` | auto-sync, `efc db generate`, `efc db pull`, `efc import-prisma` | auto-sync, `efc db generate`, `efc db pull` |
 | Wrong engine | — | fails at first use with an `[EFC]` error naming the model | the same |
 
 ## Pick one
 
-- **Building on PostgreSQL:** use `defineTable`. You get foreign keys, joins and SQL types. `create-efc-app` generates `defineTable` models for PostgreSQL apps.
+- **Building on PostgreSQL:** use `defineTable`. You get foreign keys, joins and SQL types. `create-efc-app` generates `defineTable` models for PostgreSQL apps (and `defineCollection` for MongoDB apps).
 - **Building on MongoDB:** use `defineCollection`. You get the full query language, geo and text search, BSON types, `bulkWrite` and change streams. It is mongoose underneath (`raw()` hands you the mongoose model).
 - **The app may switch engines, or ships to both:** use `defineModel` and stay inside the shared filter and update subset (`$eq $ne $gt $gte $lt $lte $in $nin $exists $regex $and $or`; `$set $unset $inc $push $pull`).
 - **Coming from Prisma:** use `defineTable`. `efc import-prisma` writes the models for you. See [Coming from Prisma](./coming-from-prisma.md).

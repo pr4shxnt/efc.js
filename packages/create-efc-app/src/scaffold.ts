@@ -73,7 +73,8 @@ export interface ScaffoldOptions {
    * queries) or the portable `defineModel` (same API as on MongoDB). MongoDB always uses
    * `defineModel`.
    */
-  modelApi?: 'defineTable' | 'defineModel';
+  /** PostgreSQL: defineTable (default) | defineModel. MongoDB: defineCollection (default) | defineModel. */
+  modelApi?: 'defineTable' | 'defineModel' | 'defineCollection';
   /**
    * Registry mode (`efc add`): every file renders the same way whatever else is generated,
    * so a feature's files can be added to an app on their own. Login and the password flows
@@ -108,6 +109,11 @@ export function usesTables(opts: ScaffoldOptions): boolean {
   return opts.database === 'postgresql' && opts.modelApi !== 'defineModel';
 }
 
+/** MongoDB apps get defineCollection unless they asked for the portable defineModel. */
+export function usesCollections(opts: ScaffoldOptions): boolean {
+  return opts.database === 'mongodb' && opts.modelApi !== 'defineModel';
+}
+
 /**
  * Code for model calls in generated routes, in the vocabulary of the chosen API:
  * `defineModel` (`User.findOne({ email })`) or `defineTable` (`User.findFirst({ where: … })`).
@@ -115,6 +121,7 @@ export function usesTables(opts: ScaffoldOptions): boolean {
  */
 function orm(opts: ScaffoldOptions) {
   const t = usesTables(opts);
+  const c = usesCollections(opts);
   const where = (filter: string) =>
     filter.replace(/\s/g, '') === '{}' ? '' : `{ where: ${filter} }`;
   const byId = (id: string) => (id === 'id' ? '{ id }' : `{ id: ${id} }`);
@@ -126,13 +133,25 @@ function orm(opts: ScaffoldOptions) {
     find: (m: string, filter: string) =>
       t ? `${m}.findMany(${where(filter)})` : `${m}.find(${filter})`,
     count: (m: string, filter: string) =>
-      t ? `${m}.count(${where(filter)})` : `${m}.count(${filter})`,
+      t
+        ? `${m}.count(${where(filter)})`
+        : c
+          ? `${m}.countDocuments(${filter})`
+          : `${m}.count(${filter})`,
     create: (m: string, data: string) =>
       t ? `${m}.create({ data: ${data} })` : `${m}.create(${data})`,
     update: (m: string, id: string, data: string) =>
-      t ? `${m}.update({ where: ${byId(id)}, data: ${data} })` : `${m}.update(${id}, ${data})`,
+      t
+        ? `${m}.update({ where: ${byId(id)}, data: ${data} })`
+        : c
+          ? `${m}.findByIdAndUpdate(${id}, ${data}, { returnDocument: 'after' })`
+          : `${m}.update(${id}, ${data})`,
     delete: (m: string, id: string) =>
-      t ? `${m}.delete({ where: ${byId(id)} })` : `${m}.delete(${id})`,
+      t
+        ? `${m}.delete({ where: ${byId(id)} })`
+        : c
+          ? `${m}.findByIdAndDelete(${id})`
+          : `${m}.delete(${id})`,
   };
 }
 
@@ -166,7 +185,11 @@ export function generatedModels(opts: ScaffoldOptions): Set<string> {
 
 /** `import { defineTable }` / `import { defineModel }` and the function's name. */
 function modelApi(opts: ScaffoldOptions): { name: string; import: string } {
-  const name = usesTables(opts) ? 'defineTable' : 'defineModel';
+  const name = usesTables(opts)
+    ? 'defineTable'
+    : usesCollections(opts)
+      ? 'defineCollection'
+      : 'defineModel';
   return { name, import: `import { ${name} } from 'express-file-cluster';` };
 }
 
@@ -257,7 +280,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
 
 async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<void> {
   const deps: Record<string, string> = {
-    'express-file-cluster': '^0.9.6',
+    'express-file-cluster': '^0.10.0',
   };
   if (opts.database === 'mongodb') deps['mongoose'] = '^9.7.2';
   if (opts.database === 'postgresql') {
@@ -357,6 +380,9 @@ ${declaration}
   jwtExpiresIn: process.env.JWT_EXPIRES_IN,
   cookieDomain: process.env.COOKIE_DOMAIN,
   cors: corsOrigins ? { origin: corsOrigins } : true,
+  // Behind a proxy / load balancer (Render, Fly, Heroku, nginx): the number of hops, e.g. 1,
+  // so req.ip is the client and rate limits count per client.
+  trustProxy: process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : undefined,
   authStrategy: '${opts.authStrategy}',
   tasks: ${tasks},
   // Cache + session-revocation store (logout really invalidates tokens). Redis when
@@ -440,7 +466,10 @@ ${
   \`findMany({ where, include })\`, \`create({ data })\`, \`update({ where, data })\`). A \`ref\` is a
   foreign key; ${opts.registry ? "add back-relations to a model's `relations` when you need `include`" : "back-relations are in each model's `relations`"}. \`src/model/index.${ext}\` imports
   them all${opts.language === 'typescript' ? ' and declares `Tables` (typed `include`)' : ''} — add new models there.`
-    : `- \`src/model/*.${ext}\` — \`defineModel\` models.`
+    : usesCollections(opts)
+      ? `- \`src/model/*.${ext}\` — \`defineCollection\` models (MongoDB-native, mongoose-style queries:
+  \`find(filter, { projection, sort })\`, \`findByIdAndUpdate\`, typed \`pipeline()\`, \`lookup()\`).`
+      : `- \`src/model/*.${ext}\` — \`defineModel\` models.`
 }
 - \`src/index.${ext}\` is the entry point; it imports \`efc.config.${ext}\` and passes it to \`ignite()\`.
 - Only three import paths exist: \`express-file-cluster\`, \`express-file-cluster/auth\`,
@@ -530,7 +559,7 @@ async function writeEnvFiles(dest: string, opts: ScaffoldOptions): Promise<void>
   const oauthEnv = oauthVars.map(([k, v]) => `\n${k}=${v}`).join('');
   const oauthExample = oauthVars.map(([k, , ex]) => `\n${k}=${ex}`).join('');
   const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbUrl}\nJWT_SECRET=${secret}${redis}\nCORS_ORIGINS=http://localhost:3000${smtpVars}${oauthEnv}`;
-  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>${redis}\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com${smtpExample}${oauthExample}`;
+  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>${redis}\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com\n# Behind a proxy / load balancer: how many hops to trust, so rate limits see client IPs\n# TRUST_PROXY=1${smtpExample}${oauthExample}`;
   await fs.outputFile(path.join(dest, '.env'), dotenv);
   await fs.outputFile(path.join(dest, '.env.example'), example);
 }
@@ -761,14 +790,28 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     ? ts
       ? `import { issueToken, verifyPassword } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
-${loginDbImports}${loginMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+import { rateLimit } from 'express-file-cluster';
+${loginDbImports}${loginMeta}// 10 attempts per 15 minutes per address and account. Keyed on the email too, so behind a
+// proxy without TRUST_PROXY (every client then has the proxy's IP) it still limits one
+// account at a time, never everyone.
+export const middlewares = [
+  rateLimit({
+    window: '15m',
+    max: 10,
+    key: (req) => \`\${req.ip}:\${String(req.body?.email ?? '').toLowerCase()}\`,
+  }),
+];
+
+const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 async function issueRefreshToken(
   res: Response,
   model: ${
     usesTables(opts)
       ? '{ update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }'
-      : '{ update: (id: string, data: Record<string, unknown>) => Promise<unknown> }'
+      : usesCollections(opts)
+        ? '{ findByIdAndUpdate: (id: string, data: Record<string, unknown>, options: { returnDocument: \'after\' }) => Promise<unknown> }'
+        : '{ update: (id: string, data: Record<string, unknown>) => Promise<unknown> }'
   },
   id: string,
 ): Promise<string> {
@@ -794,7 +837,19 @@ ${loginBody}
 };
 `
       : `import { issueToken, verifyPassword } from 'express-file-cluster/auth';
-${loginDbImports}${loginMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+import { rateLimit } from 'express-file-cluster';
+${loginDbImports}${loginMeta}// 10 attempts per 15 minutes per address and account. Keyed on the email too, so behind a
+// proxy without TRUST_PROXY (every client then has the proxy's IP) it still limits one
+// account at a time, never everyone.
+export const middlewares = [
+  rateLimit({
+    window: '15m',
+    max: 10,
+    key: (req) => \`\${req.ip}:\${String(req.body?.email ?? '').toLowerCase()}\`,
+  }),
+];
+
+const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 async function issueRefreshToken(res, model, id) {
   const refreshToken = crypto.randomBytes(40).toString('hex');
@@ -1710,7 +1765,13 @@ ${sendVerifyEmailResend}  }
     const fpContent = ts
       ? `import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
-${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
+import { rateLimit } from 'express-file-cluster';
+${mailerTaskImport}${fpModelImports}${fpMeta}// 5 reset emails per hour per address — keeps the endpoint from mail-bombing someone.
+export const middlewares = [
+  rateLimit({ window: '1h', max: 5, key: (req) => String(req.body?.email ?? '').toLowerCase() }),
+];
+
+const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
 export const POST = async (req: Request, res: Response) => {
   const { email } = req.body;
@@ -1731,7 +1792,13 @@ ${sendResetEmail}  }
 };
 `
       : `import crypto from 'node:crypto';
-${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
+import { rateLimit } from 'express-file-cluster';
+${mailerTaskImport}${fpModelImports}${fpMeta}// 5 reset emails per hour per address — keeps the endpoint from mail-bombing someone.
+export const middlewares = [
+  rateLimit({ window: '1h', max: 5, key: (req) => String(req.body?.email ?? '').toLowerCase() }),
+];
+
+const RESET_TOKEN_TTL_MS = 1000 * 60 * 60; // 1 hour
 
 export const POST = async (req, res) => {
   const { email } = req.body;

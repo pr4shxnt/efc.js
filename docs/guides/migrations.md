@@ -10,8 +10,8 @@
 | `efc db status` | Lists applied (with batch) and pending migrations |
 | `efc db seed [name]` | Runs every seed in `src/seeds/`, or just one |
 | `efc db sync [--dry-run] [--exit-code]` | Brings the database in line with the models (or reports what would change) |
-| `efc db pull` | Writes `defineTable` models for an existing PostgreSQL database |
-| `efc db studio [-p 4983]` | Opens a read-only database browser on `127.0.0.1` |
+| `efc db pull` | Writes `defineTable` models for an existing PostgreSQL database, `defineCollection` models for a MongoDB one |
+| `efc db studio [-p 4983] [--write]` | Opens a database browser on `127.0.0.1` — read-only unless `--write` |
 
 All of them read `DATABASE_URL` from the environment or `.env` (override with `--database-url`); the engine follows the URL scheme.
 
@@ -119,6 +119,23 @@ efc db pull --out pulled      # somewhere else, to compare
 
 A schema EFC created pulls back to models that sync finds nothing to change in. For a schema EFC didn't create, anything that has no EFC equivalent is noted at the top of the file: expression or partial indexes, other CHECKs, composite keys, and other defaults. Existing files are kept unless you pass `--force`.
 
+## Pulling an existing database (MongoDB)
+
+```bash
+efc db pull                   # → src/model/<Model>.ts + index.ts (defineCollection)
+efc db pull --sample 5000     # sample more documents per collection (default 1000)
+```
+
+MongoDB has no schema to read, so `pull` samples each collection (`$sample`) and infers one from the documents:
+
+- **Types:** `string`, `number`, `boolean`, `date`, `objectId`, `decimal128`, `long`, `binary` and GeoJSON points (`geoPoint`); embedded objects become nested schemas, arrays of objects `[{ … }]`, other arrays `{ type: 'array', of }`.
+- **Required:** only when every sampled document had a non-null value. A field with mixed types (or only nulls) becomes `{ type: 'object' }` (any value) with a note.
+- **Refs:** an `objectId` field gets `ref` when its name matches another collection (`owner`, `ownerId` → `Owner`) or when every sampled id exists in exactly one other collection; otherwise a note asks you to add it.
+- **Indexes:** single-field unique, plain, `text`, `2dsphere` and `hashed` indexes go on the field; compound, partial and TTL indexes into `indexes`.
+- **Names and timestamps:** a model per collection (`audit_log` → `AuditLog`, with `collection: 'audit_log'` when mongoose wouldn't pick that name); `createdAt`/`updatedAt` dates map to the default `timestamps`, otherwise `timestamps: false`.
+
+`_id` and `__v` are left to defineCollection. Read the generated files before using them: a sample shows what the data *has*, not what it must have.
+
 `required` and `default` live in the model, not the database. A table created by `sync` or a migration without `--tighten` has nullable columns and no defaults, so its fields pull back as optional. Generate with `--tighten` if you want `required` enforced (and pulled back).
 
 Coming from Prisma? See [Coming from Prisma](./coming-from-prisma.md).
@@ -215,3 +232,7 @@ CMD ["sh", "-c", "npx efc db migrate --dist && npx efc start prod"]
 ## Studio
 
 `efc db studio` serves a read-only browser at `http://127.0.0.1:4983`: every table/collection with its row count, paginated rows, and expandable JSON cells. It binds to localhost only and rejects anything but `GET`.
+
+`efc db studio --write` adds **Insert**, **edit** (✎) and **Delete**. Writes go through your models in `src/model`, so validation, defaults, casting and timestamps apply exactly as in your app; a validation error is shown next to the editor. Tables or collections that no model stores in stay read-only. Ids, `createdAt`/`updatedAt` and `__v` are never written from the editor.
+
+Only the studio page can write: every write must carry a random token embedded in that page, come from the studio's own origin, and be JSON — so another site open in your browser can't reach it. Writes change real data; point `DATABASE_URL` at a development database.

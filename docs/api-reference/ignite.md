@@ -90,6 +90,15 @@ ignite({ dashboard: true });
 
 ---
 
+### `trustProxy`
+
+Express's `trust proxy`. Set it when the app runs behind a proxy or load balancer (Render, Fly, Heroku, nginx, a cloud LB) so `req.ip` is the client, not the proxy: `true`, the number of hops (usually `1`), or addresses / subnets. Off by default, so `X-Forwarded-For` can't be spoofed. [`rateLimit`](../guides/caching.md#rate-limiting) keys on `req.ip`.
+
+```ts
+// efc.config.ts (scaffolded)
+trustProxy: process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : undefined,
+```
+
 ### `port`
 
 HTTP listen port. Default: `3000`. `ignite()` never reads `PORT` from the environment itself — pass it explicitly, typically by reading `process.env.PORT` in `efc.config.ts` (see [Environment Variables](../guides/environment-variables.md)).

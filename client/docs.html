@@ -145,6 +145,8 @@
               <a href="#database">Database</a>
               <a href="#which-api">Which Model API?</a>
               <a href="#relations">Relations</a>
+              <a href="#from-prisma">Coming from Prisma</a>
+              <a href="#from-mongoose">Coming from mongoose</a>
               <a href="#mailer">Mailer</a>
               <a href="#dashboard">API Dashboard</a>
             </div>
@@ -154,6 +156,8 @@
             <div class="group"><h2>Reference</h2>
               <a href="#cli">CLI Reference</a>
               <a href="#envvars">Environment Variables</a>
+              <a href="#types">Type Inference</a>
+              <a href="#matrix">Feature Matrix</a>
               <a href="#versioning">Versioning &amp; Support</a>
             </div>
           </nav>
@@ -175,7 +179,8 @@
 <pre data-file="create-efc-app"><code>? Project name:          my-api
 ? Language:              TypeScript | JavaScript
 ? Database:              MongoDB | PostgreSQL
-? Models:                defineTable | defineModel        (PostgreSQL only)
+? Models:                defineTable | defineModel        (PostgreSQL)
+                         defineCollection | defineModel   (MongoDB)
 ? Task queue backend:    BullMQ | pg-boss
 ? Multi-core clustering? Yes
 ? Authentication:        http-only cookie   browsers — websites and SPAs (recommended)
@@ -824,7 +829,7 @@ export default defineTask(async (payload) => {
     <tr><td><code>efc db rollback [--steps 2]</code></td><td>Revert the last batch(es).</td></tr>
     <tr><td><code>efc db status</code></td><td>Applied vs pending migrations.</td></tr>
     <tr><td><code>efc db seed [name]</code></td><td>Run all seeds, or one.</td></tr>
-    <tr><td><code>efc db studio</code></td><td>Read-only database browser on 127.0.0.1.</td></tr>
+    <tr><td><code>efc db studio [--write]</code></td><td>Database browser on 127.0.0.1 — read-only, or with <code>--write</code> insert/edit/delete through your models (validated).</td></tr>
   </tbody>
 </table>
 
@@ -897,6 +902,45 @@ await Post.create({ data: {
 <aside class="note">Typed <code>include</code> results need the model registry: <code>declare module 'express-file-cluster' { interface Tables { User: typeof User } }</code> — scaffolded apps generate it in <code>src/model/index.ts</code>.</aside>
 </article>
 
+<article data-page="from-prisma" data-group="Features" data-src="guides/coming-from-prisma.md">
+<h1>Coming from Prisma</h1>
+<p class="lead"><code>defineTable</code> speaks Prisma's query language on PostgreSQL — the schema in TypeScript instead of a <code>.prisma</code> file, and no generate step.</p>
+<pre data-file="terminal"><code data-lang="bash">$ npx efc import-prisma prisma/schema.prisma
+# → src/model/User.ts, Post.ts, … over the same tables and columns</code></pre>
+<table>
+  <thead><tr><th>Prisma</th><th>EFC</th></tr></thead>
+  <tbody>
+    <tr><td><code>prisma.post.findMany({ where, include, orderBy, take })</code></td><td><code>Post.findMany({ where, include, orderBy, take })</code> — same shape</td></tr>
+    <tr><td><code>id Int @id @default(autoincrement())</code></td><td><code>{ id: 'serial' }</code></td></tr>
+    <tr><td><code>author User @relation(…)</code> + <code>authorId Int</code></td><td>one field: <code>author: { type: 'integer', ref: 'User', column: 'authorId' }</code></td></tr>
+    <tr><td><code>posts Post[]</code></td><td><code>relations: { posts: { hasMany: 'Post', foreignKey: 'author' } }</code></td></tr>
+    <tr><td><code>prisma db push</code> / <code>migrate dev</code></td><td>auto-sync on first use · <code>efc db generate</code></td></tr>
+  </tbody>
+</table>
+<aside class="note">The one naming difference: Prisma has <code>author</code> and <code>authorId</code>; EFC has <code>author</code>, holding the id, and <code>include: { author: true }</code> swaps in the record.</aside>
+</article>
+
+<article data-page="from-mongoose" data-group="Features" data-src="guides/coming-from-mongoose.md">
+<h1>Coming from mongoose</h1>
+<p class="lead"><code>defineCollection</code> keeps mongoose's query language with the schema as a plain object and types inferred from it. It is mongoose underneath — your data and indexes stay as they are.</p>
+<pre data-file="src/model/Place.ts"><code data-lang="ts">export const Place = defineCollection('Place', {
+  name:     { type: 'string', required: true },
+  price:    { type: 'decimal128' },
+  location: { type: 'geoPoint', index: '2dsphere' },
+  owner:    { type: 'objectId', ref: 'User' },
+})
+export type Place = InferRecord&lt;typeof Place&gt;   // no interface to keep in step</code></pre>
+<table>
+  <thead><tr><th>mongoose</th><th>EFC</th></tr></thead>
+  <tbody>
+    <tr><td><code>find(f).select('name').sort('-createdAt').limit(10).lean()</code></td><td><code>find(f, { projection: { name: 1 }, sort: { createdAt: -1 }, limit: 10 })</code></td></tr>
+    <tr><td><code>.populate('owner')</code></td><td><code>{ populate: 'owner' }</code> · or <code>Place.lookup('owner', User)</code></td></tr>
+    <tr><td><code>Model.aggregate([...])</code></td><td><code>Place.pipeline().match(…).group(…)</code> — typed per stage</td></tr>
+    <tr><td>an existing database</td><td><code>efc db pull</code> writes the models from sampled documents</td></tr>
+  </tbody>
+</table>
+</article>
+
 <article data-page="envvars" data-group="Reference" data-src="guides/environment-variables.md">
 <h1>Environment Variables</h1>
 <p class="lead"><code>ignite()</code> doesn't read <code>process.env</code> for configuration — the scaffolded <code>efc.config.ts</code> does, and passes the values in. <code>NODE_ENV</code> is the one variable the framework reads directly.</p>
@@ -922,6 +966,39 @@ await Post.create({ data: {
   </tbody>
 </table>
 <aside class="note">Never commit <code>.env</code>, and use a different <code>JWT_SECRET</code> per environment — rotating it invalidates every issued token.</aside>
+</article>
+
+<article data-page="types" data-group="Reference" data-src="api-reference/types.md">
+<h1>Type Inference</h1>
+<p class="lead">Models are typed from their schema literal — <code>InferRecord&lt;typeof M&gt;</code> for reads, <code>InferCreate&lt;typeof M&gt;</code> for writes. No interfaces to keep in step.</p>
+<table>
+  <thead><tr><th>Schema type</th><th>Record</th><th>Input</th><th>APIs</th></tr></thead>
+  <tbody>
+    <tr><td><code>string</code> · <code>number</code> · <code>boolean</code></td><td>same</td><td>same</td><td>all</td></tr>
+    <tr><td><code>date</code></td><td><code>Date</code></td><td><code>Date | string | number</code></td><td>all</td></tr>
+    <tr><td><code>decimal</code> / <code>decimal128</code></td><td><code>string</code> (exact)</td><td><code>string | number</code></td><td>table / collection</td></tr>
+    <tr><td><code>bigint</code> / <code>long</code></td><td><code>bigint</code></td><td><code>bigint | number</code></td><td>table / collection</td></tr>
+    <tr><td><code>enum: [...]</code></td><td>union of the literals</td><td>same</td><td>all</td></tr>
+    <tr><td><code>required</code> or <code>default</code></td><td>present</td><td>mandatory only if required without default</td><td>all</td></tr>
+  </tbody>
+</table>
+<p><code>defineTable</code>'s <code>select</code> / <code>include</code> and <code>defineCollection</code>'s <code>pipeline()</code> narrow result types further. Full table: <a href="https://github.com/pr4shxnt/efc.js/blob/main/docs/api-reference/types.md">docs/api-reference/types.md</a>.</p>
+</article>
+
+<article data-page="matrix" data-group="Reference" data-src="guides/feature-matrix.md">
+<h1>Feature Matrix</h1>
+<p class="lead">What each model API does on which engine — every row names the test that proves it against a real database, and CI fails if a cited test disappears.</p>
+<table>
+  <thead><tr><th>Feature</th><th>defineModel</th><th>defineTable</th><th>defineCollection</th></tr></thead>
+  <tbody>
+    <tr><td>Inferred types, validation → 400, unique → 409</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>Real foreign keys, many-to-many, <code>include</code>, nested writes</td><td>—</td><td>✓</td><td>—</td></tr>
+    <tr><td>Typed pipelines, <code>lookup()</code>, geo, <code>bulkWrite</code>, change streams</td><td>—</td><td>—</td><td>✓</td></tr>
+    <tr><td>Transactions, auto-sync, <code>efc db generate</code>, query logging, studio <code>--write</code></td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td><code>efc db pull</code></td><td>—</td><td>✓</td><td>✓</td></tr>
+  </tbody>
+</table>
+<p>The full matrix with test citations: <a href="https://github.com/pr4shxnt/efc.js/blob/main/docs/guides/feature-matrix.md">docs/guides/feature-matrix.md</a>.</p>
 </article>
 
 <article data-page="versioning" data-group="Reference" data-src="versioning.md">

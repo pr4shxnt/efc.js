@@ -56,6 +56,11 @@ const Place = defineCollection(
 );
 type PlaceRecord = InferRecord<typeof Place>;
 
+const Board = defineCollection(`CBoard${s}`, {
+  title: { type: 'string', required: true },
+  members: { type: 'array', of: 'objectId', ref: `COwner${s}`, default: [] },
+});
+
 const point = (lng: number, lat: number) => ({
   type: 'Point' as const,
   coordinates: [lng, lat] as [number, number],
@@ -68,10 +73,12 @@ describe.skipIf(!available)('defineCollection', () => {
     await connectMongo(RS_URL);
     await Owner.sync();
     await Place.sync();
+    await Board.sync();
   });
 
   afterAll(async () => {
     await Place.drop();
+    await Board.drop();
     await Owner.drop();
     await (await loadMongoose()).disconnect();
   });
@@ -181,6 +188,86 @@ describe.skipIf(!available)('defineCollection', () => {
     const withOwner = await Place.findOne({ name: 'X' }, { populate: 'owner' });
     expect((withOwner?.owner as unknown as { name: string }).name).toBe('Ann');
     await Place.deleteMany();
+    await Owner.deleteMany();
+  });
+
+  it('typed pipeline: match (ids cast), unwind, group, project, count, sort by id', async () => {
+    const ann = await Owner.create({ name: 'Ann' });
+    const bob = await Owner.create({ name: 'Bob' });
+    await Place.insertMany([
+      { name: 'X', owner: ann.id, price: '10.10', reviews: [{ rating: 4 }, { rating: 2 }] },
+      { name: 'Y', owner: ann.id, price: '0.20', reviews: [{ rating: 5 }] },
+      { name: 'Z', owner: bob.id, price: '1.00', reviews: [] },
+    ]);
+
+    // A string id in $match is cast to an ObjectId (raw aggregate() wouldn't match).
+    const anns = await Place.pipeline().match({ owner: ann.id }).sort({ name: 1 });
+    expect(anns.map((p) => p.name)).toEqual(['X', 'Y']);
+    expect(await Place.aggregate([{ $match: { owner: ann.id } }])).toEqual([]);
+
+    const ratings = await Place.pipeline()
+      .unwind('$reviews')
+      .group({ _id: '$name', avg: { $avg: '$reviews.rating' }, n: { $sum: 1 } })
+      .stage({ $sort: { _id: 1 } });
+    expect(ratings.map((r) => [r._id, r.avg, r.n])).toEqual([
+      ['X', 3, 2],
+      ['Y', 5, 1],
+    ]);
+
+    // $sum over decimal128 stays an exact decimal string.
+    const [totals] = await Place.pipeline().group({ _id: null, revenue: { $sum: '$price' } });
+    expect(totals!.revenue).toBe('11.30');
+
+    const names = await Place.pipeline().project({ name: 1 }).stage({ $sort: { name: -1 } });
+    expect(names).toEqual([
+      expect.objectContaining({ name: 'Z', id: expect.any(String) }),
+      expect.objectContaining({ name: 'Y' }),
+      expect.objectContaining({ name: 'X' }),
+    ]);
+    expect(Object.keys(names[0]!).sort()).toEqual(['_id', 'id', 'name']);
+
+    expect(await Place.pipeline().match({ name: { $in: ['X', 'Z'] } }).count('n')).toEqual([{ n: 2 }]);
+    // `id` sorts by _id.
+    const byId = await Place.pipeline().sort({ id: 1 });
+    expect(byId.map((p) => p.name)).toEqual(['X', 'Y', 'Z']);
+
+    await Place.deleteMany();
+    await Owner.deleteMany();
+  });
+
+  it('lookup: a ref becomes its record (or null), an array of refs becomes records', async () => {
+    const ann = await Owner.create({ name: 'Ann' });
+    const bob = await Owner.create({ name: 'Bob' });
+    await Place.insertMany([
+      { name: 'Owned', owner: ann.id },
+      { name: 'Orphan', owner: '64b000000000000000000000' }, // points at no one
+      { name: 'Unowned' },
+    ]);
+    const places = await Place.lookup('owner', Owner, { name: { $ne: 'Nope' } });
+    const byName = Object.fromEntries(places.map((p) => [p.name, p.owner]));
+    expect(byName['Owned']).toMatchObject({ name: 'Ann', id: ann.id });
+    expect(byName['Orphan']).toBeNull();
+    expect(byName['Unowned']).toBeNull();
+
+    await Board.create({ title: 'Team', members: [ann.id, bob.id] });
+    await Board.create({ title: 'Empty' });
+    const boards = await Board.pipeline().lookup('members', Owner).sort({ title: 1 });
+    expect(boards.map((b) => [b.title, b.members.map((m) => m.name).sort()])).toEqual([
+      ['Empty', []],
+      ['Team', ['Ann', 'Bob']],
+    ]);
+
+    // The full form: owners with their places.
+    const owners = await Owner.pipeline()
+      .lookup({ from: Place, localField: 'id', foreignField: 'owner', as: 'places' })
+      .sort({ name: 1 });
+    expect(owners.map((o) => [o.name, o.places.map((p) => p.name)])).toEqual([
+      ['Ann', ['Owned']],
+      ['Bob', []],
+    ]);
+
+    await Place.deleteMany();
+    await Board.deleteMany();
     await Owner.deleteMany();
   });
 

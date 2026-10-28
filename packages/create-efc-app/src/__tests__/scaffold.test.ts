@@ -219,10 +219,10 @@ describe('scaffold() — model API', () => {
     expect(read(dest, 'src', 'model', 'Admin.ts')).not.toContain("'Session'");
   }, 60_000);
 
-  it("defineModel stays available on PostgreSQL, and MongoDB apps don't change", async () => {
+  it('defineModel stays available on both engines', async () => {
     for (const extra of [
       { database: 'postgresql', taskBackend: 'pg-boss', modelApi: 'defineModel' },
-      { database: 'mongodb', taskBackend: 'bullmq' },
+      { database: 'mongodb', taskBackend: 'bullmq', modelApi: 'defineModel' },
     ] as const) {
       const dest = tmpDest(`model-${extra.database}`);
       await scaffold(full(dest, extra));
@@ -235,5 +235,21 @@ describe('scaffold() — model API', () => {
       expect(src).toContain('User.findOne({ email })');
       expect(src).toContain('model.update(id, {');
     }
+  }, 60_000);
+
+  it('MongoDB apps get defineCollection by default, with its query vocabulary', async () => {
+    const dest = tmpDest('model-collection');
+    await scaffold(full(dest, { database: 'mongodb', taskBackend: 'bullmq' }));
+    const user = read(dest, 'src', 'model', 'User.ts');
+    expect(user).toContain("import { defineCollection } from 'express-file-cluster';");
+    expect(user).toContain("export const User = defineCollection('User', {");
+    expect(fs.existsSync(path.join(dest, 'src', 'model', 'index.ts'))).toBe(false);
+    const src = allSource(dest);
+    expect(src).toContain('User.findOne({ email })');
+    expect(src).toContain("model.findByIdAndUpdate(id, {");
+    expect(src).toContain("{ returnDocument: 'after' })");
+    expect(src).toContain('User.countDocuments(');
+    expect(src).not.toMatch(/\bUser\.(update|delete|count)\(/);
+    expect(read(dest, 'AGENTS.md')).toContain('`defineCollection` models (MongoDB-native');
   }, 60_000);
 });
