@@ -98,18 +98,21 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   const database = config.database ?? detectDatabase(databaseUrl);
   const jwtSecret = config.jwtSecret;
   const authStrategy = config.authStrategy ?? 'http-only';
-  // Any other value used to fall through to bearer silently (a typo of 'http-only' meant
-  // no cookie and every request 401).
-  if (!['http-only', 'bearer', 'localStorage'].includes(authStrategy)) {
-    throw new Error(
-      `[EFC] Unknown authStrategy "${String(authStrategy)}" — use 'http-only' or 'bearer'.`,
-    );
-  }
   // NODE_ENV is a Node/Express-wide runtime-mode signal set by the platform, not an app
   // secret — unlike PORT/DATABASE_URL/JWT_SECRET/etc. this one is still read directly.
   const clusterEnabled = config.cluster ?? process.env['NODE_ENV'] === 'production';
 
   configureLogger(config.logging);
+  // Any value but 'http-only' acts as bearer, as it always has — an app may rely on that, so
+  // 0.9.x only warns (a typo of 'http-only' silently means no cookie). 1.0 makes it an error.
+  if (
+    !['http-only', 'bearer', 'localStorage'].includes(authStrategy) &&
+    (!clusterEnabled || cluster.isPrimary) // once, not once per worker
+  ) {
+    getLogger().warn(
+      `[EFC] Unknown authStrategy "${String(authStrategy)}" — treated as 'bearer'. Use 'http-only' or 'bearer'; this will be an error in 1.0.`,
+    );
+  }
   configureQueryLog(config.logging);
 
   if (clusterEnabled && cluster.isPrimary) {

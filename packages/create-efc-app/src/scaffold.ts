@@ -4041,7 +4041,7 @@ async function writeOAuth(dest: string, opts: ScaffoldOptions): Promise<void> {
   const userField = usesTables(opts) && generatedModels(opts).has('User') ? 'user' : 'userId';
 
   const lib = `import crypto from 'node:crypto';
-import { HttpError } from 'express-file-cluster';
+import { HttpError, cache } from 'express-file-cluster';
 import { hashPassword, issueToken } from 'express-file-cluster/auth';
 ${T("import type { Request, Response } from 'express';\n")}import { User } from '../model/User.js';
 import { OAuthAccount } from '../model/OAuthAccount.js';
@@ -4049,6 +4049,7 @@ import { OAuthAccount } from '../model/OAuthAccount.js';
 // Shared by the OAuth sign-in routes (src/api/auth/<provider>/).
 
 const STATE_TTL_MS = 10 * 60 * 1000; // a sign-in attempt has 10 minutes to come back
+const CODE_TTL_S = 60; // a bearer app has a minute to exchange its sign-in code
 ${T(`
 export interface OAuthState {
   state: string;
@@ -4160,12 +4161,28 @@ export async function signInWithOAuth(res${T(': Response')}, profile${T(': OAuth
 }
 
 /**
- * Where the browser goes once signed in. With authStrategy 'bearer' the token rides in the
- * URL fragment, which browsers never send to a server (e.g. an app's myapp://signed-in link).
+ * Where the browser goes once signed in. With authStrategy 'bearer' the JWT never goes in the
+ * URL (history, screenshots, logs): it gets a one-time code, valid for a minute, which the app
+ * (e.g. its myapp://signed-in link) trades for the token at POST /auth/oauth/exchange.
  */
-export function successRedirect(token${T('?: string')})${T(': string')} {
+export async function successRedirect(token${T('?: string')})${T(': Promise<string>')} {
   const to = process.env.OAUTH_SUCCESS_REDIRECT || '/';
-  return token ? \`\${to}#token=\${encodeURIComponent(token)}\` : to;
+  if (!token) return to;
+  const code = randomToken();
+  await cache.set(\`oauth:code:\${code}\`, token, { ttl: CODE_TTL_S });
+  return \`\${to}#code=\${code}\`;
+}
+
+/** The token for a one-time sign-in code — once: a second use (or after a minute) gets 400. */
+export async function exchangeCode(code${T(': unknown')})${T(': Promise<string>')} {
+  if (typeof code !== 'string' || !code) throw new HttpError(400, 'code is required');
+  const key = \`oauth:code:\${code}\`;
+  const token = await cache.get${T('<string>')}(key);
+  // del is atomic: of two requests racing with the same code, only one removes it.
+  if (!token || (await cache.del(key)) !== 1) {
+    throw new HttpError(400, 'Invalid or expired sign-in code');
+  }
+  return token;
 }
 `;
 
@@ -4239,7 +4256,7 @@ export const GET = async ${reqRes('req')} => {
     emailVerified: payload.email_verified === true,
     name: ${ts ? 'payload.name as string | undefined' : 'payload.name'},
   });
-  res.redirect(successRedirect(token));
+  res.redirect(await successRedirect(token));
 };
 `;
 
@@ -4326,12 +4343,19 @@ export const POST = async ${reqRes('req')} => {
     emailVerified: payload.email_verified === true || payload.email_verified === 'true',
     name,
   });
-  res.redirect(303, successRedirect(token));
+  res.redirect(303, await successRedirect(token));
+};
+`;
+
+  const exchange = `${typeImport}import { exchangeCode } from '../../../lib/oauth.js';
+${meta('POST', 'Bearer apps: trade the one-time code from the sign-in redirect for a token.')}export const POST = async ${reqRes('req')} => {
+  res.json({ token: await exchangeCode(req.body?.code) });
 };
 `;
 
   const oauth = opts.oauth ?? {};
   await fs.outputFile(path.join(dest, 'src', 'lib', `oauth.${ext}`), lib);
+  await fs.outputFile(path.join(dest, 'src', 'api', 'auth', 'oauth', `exchange.${ext}`), exchange);
   if (oauth.google) {
     await fs.outputFile(
       path.join(dest, 'src', 'api', 'auth', 'google', `index.${ext}`),

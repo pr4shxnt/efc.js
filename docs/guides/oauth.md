@@ -61,7 +61,13 @@ Send the browser (not `fetch`) to the start route:
 
 After the provider sends the user back, the callback sets the usual `efc_token` cookie (the same one `/auth/login` sets) and redirects to `OAUTH_SUCCESS_REDIRECT`. From there, requests with credentials work as after a password login, and `GET /auth/me` returns the user.
 
-> With `authStrategy: 'http-only'` the callbacks set the session cookie and redirect to `OAUTH_SUCCESS_REDIRECT`. With `'bearer'` they redirect to `OAUTH_SUCCESS_REDIRECT#token=<jwt>` instead — the fragment never reaches a server, so an app deep link (e.g. `myapp://signed-in`) reads the token from it.
+> With `authStrategy: 'http-only'` the callbacks set the session cookie and redirect to `OAUTH_SUCCESS_REDIRECT`. With `'bearer'` they redirect to `OAUTH_SUCCESS_REDIRECT#code=<code>` instead — a one-time code, never the JWT itself (URLs end up in history, logs and screenshots). The app (e.g. its `myapp://signed-in` deep link) trades it for the token:
+>
+> ```http
+> POST /auth/oauth/exchange   { "code": "<code>" }   →   200 { "token": "<jwt>" }
+> ```
+>
+> The code is kept in `cache` for 60 seconds and works once; a second use, even a simultaneous one, gets 400.
 
 ---
 

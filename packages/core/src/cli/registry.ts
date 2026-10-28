@@ -466,8 +466,11 @@ export function setConfigValues(cwd: string, values: Record<string, string>): st
   let text = fs.readFileSync(file, 'utf8');
   const manual: string[] = [];
   for (const [key, value] of entries) {
-    const re = new RegExp(`^(\\s*)${key}:\\s*(['"])[^'"\\n]*\\2`, 'm');
-    if (re.test(text)) text = text.replace(re, `$1${key}: '${value}'`);
+    // Only a single plain `key: '…'` line is rewritten. Zero (computed, or removed) or several
+    // (a nested object with the same key) → reported for a human instead of guessed.
+    const re = new RegExp(`^(\\s*)${key}:\\s*(['"])[^'"\\n]*\\2`, 'gm');
+    const found = text.match(re)?.length ?? 0;
+    if (found === 1) text = text.replace(re, `$1${key}: '${value}'`);
     else manual.push(`${path.basename(file)}: set \`${key}: '${value}'\``);
   }
   fs.writeFileSync(file, text);

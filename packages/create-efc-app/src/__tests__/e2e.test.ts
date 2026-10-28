@@ -437,6 +437,18 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
         "authStrategy: 'bearer'",
       ),
     );
+    // Test-only: the redirect a bearer app gets after Google/Apple sign-in, for a real user.
+    const ts = stack.language === 'typescript';
+    await fs.outputFile(
+      path.join(appDir, 'src', 'api', `oauth-code-test.${ts ? 'ts' : 'js'}`),
+      `${ts ? "import type { Request, Response } from 'express';\n" : ''}import { signInWithOAuth, successRedirect } from '../lib/oauth.js';
+
+export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' : ''}) => {
+  const token = await signInWithOAuth(res, req.body);
+  res.json({ location: await successRedirect(token) });
+};
+`,
+    );
     const efc = path.join(appDir, 'node_modules', '.bin', 'efc');
     run(efc, ['build', 'prod'], appDir);
 
@@ -502,6 +514,36 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       const next = (await refresh.json()) as { token: string; refreshToken: string };
       expect(next.refreshToken).not.toBe(tokens.refreshToken);
       expect((await fetch(`${base}/auth/me`, { headers: bearer(next.token) })).status).toBe(200);
+
+      // OAuth in bearer mode: the redirect carries a one-time code, never the JWT.
+      const signedIn = await fetch(`${base}/oauth-code-test`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({
+          provider: 'google',
+          providerId: `bearer-${Date.now()}`,
+          email: `oauth-bearer-${Date.now()}@example.com`,
+          emailVerified: true,
+          name: 'OAuth Bearer',
+        }),
+      });
+      expect(signedIn.status, await signedIn.clone().text()).toBe(200);
+      const { location } = (await signedIn.json()) as { location: string };
+      expect(location).toMatch(/#code=[\w-]+$/);
+      expect(location).not.toContain('.ey'); // no JWT in the URL
+      const code = location.split('#code=')[1]!;
+      const exchange = (c: string) =>
+        fetch(`${base}/auth/oauth/exchange`, {
+          method: 'POST',
+          headers: { ...json, connection: 'close' },
+          body: JSON.stringify({ code: c }),
+        });
+      // Two racing requests with the same code: exactly one gets the token.
+      const [a, b] = await Promise.all([exchange(code), exchange(code)]);
+      expect([a.status, b.status].sort()).toEqual([200, 400]);
+      const { token: oauthToken } = (await (a.status === 200 ? a : b).json()) as { token: string };
+      expect((await fetch(`${base}/auth/me`, { headers: bearer(oauthToken) })).status).toBe(200);
+      expect((await exchange(code)).status).toBe(400);
 
       // Logout revokes the bearer token on every worker.
       const logout = await fetch(`${base}/auth/logout`, {

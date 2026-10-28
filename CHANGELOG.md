@@ -12,8 +12,10 @@ mirrors this file — see `AGENTS.md` §5.
   (`efc add auth:<name>`) and Google/Apple sign-in only ever set a cookie, and `requireAuth` only reads
   the `Authorization` header — so a Bearer app could not log anyone in. `issueToken` now returns the
   token under `'bearer'` (and sets no cookie); the generated routes send `token` (and `refreshToken`)
-  in the body, and OAuth redirects to `OAUTH_SUCCESS_REDIRECT#token=<jwt>`. Under `'http-only'` nothing
-  changes: cookie set, `issueToken` resolves `undefined`, no token in the body.
+  in the body. Google/Apple sign-in redirects to `OAUTH_SUCCESS_REDIRECT#code=<code>` — a one-time
+  code (60 s, single use) the app posts to the new `/auth/oauth/exchange` for the token, so the JWT never
+  appears in a URL. Under `'http-only'` nothing changes: cookie set, `issueToken` resolves `undefined`,
+  no token in the body.
 - **Changed:** `create-efc-app` asks **Authentication:** up front — `http-only cookie` (browsers:
   websites and SPAs, recommended), `Bearer token` (mobile/desktop apps, API clients) or `None`. Before,
   the question only appeared when an auth feature happened to be ticked, so it was easy to skip.
@@ -22,7 +24,8 @@ mirrors this file — see `AGENTS.md` §5.
   left as it is.
 - **New:** `authStrategy: 'bearer'`. `'localStorage'` is the old name and keeps working — it never
   decided where the client stores the token, and a token in browser `localStorage` is readable by any
-  script on the page. Any other value now throws at startup instead of silently acting as Bearer.
+  script on the page. Any other value still acts as Bearer, as before, but now logs a warning at
+  startup (a typo of `'http-only'` used to fail silently); it becomes an error in 1.0.
 - **Upgrading a Bearer app:** use the return value — `const token = await issueToken(res, payload);
   res.json({ ...(token ? { token } : {}) })` — or re-add the routes with `efc add auth --overwrite`.
   New apps depend on `express-file-cluster@^0.9.4`.

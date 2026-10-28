@@ -10,7 +10,7 @@ Source: `packages/core/src/auth/index.ts`
 // Called by ignite() at Pre-Flight step 2
 configureAuth({
   secret: jwtSecret,
-  strategy: authStrategy,          // 'http-only' | 'bearer' ('localStorage' = old name); ignite() throws on anything else
+  strategy: authStrategy,          // 'http-only' | 'bearer' ('localStorage' = old name); anything else = bearer + startup warning (error in 1.0)
   expiresIn: JWT_EXPIRES_IN ?? '7d',
   cookieDomain: COOKIE_DOMAIN,     // optional
 })

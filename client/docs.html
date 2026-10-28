@@ -282,7 +282,7 @@ ignite({ ...config, cluster: true })
     <tr><td><code>workers</code></td><td>CPU count</td><td>Number of workers to fork.</td></tr>
     <tr><td><code>database</code></td><td>from URL</td><td><code>'mongodb'</code> or <code>'postgresql'</code>; detected from <code>databaseUrl</code> when omitted.</td></tr>
     <tr><td><code>databaseUrl</code></td><td>—</td><td>Connection string.</td></tr>
-    <tr><td><code>authStrategy</code></td><td><code>'http-only'</code></td><td><code>'http-only'</code> cookie (browsers) or <code>'bearer'</code> token (mobile/desktop apps, API clients). Anything else fails at startup.</td></tr>
+    <tr><td><code>authStrategy</code></td><td><code>'http-only'</code></td><td><code>'http-only'</code> cookie (browsers) or <code>'bearer'</code> token (mobile/desktop apps, API clients).</td></tr>
     <tr><td><code>jwtSecret</code></td><td>—</td><td>Enables auth. At least 32 random bytes in production.</td></tr>
     <tr><td><code>jwtExpiresIn</code></td><td><code>'7d'</code></td><td>Token lifetime: <code>'15m'</code>, <code>'1h'</code>, <code>'30d'</code>…</td></tr>
     <tr><td><code>tasks</code></td><td>off</td><td>Queue backend. See <a href="#tasks">Background Tasks</a>.</td></tr>

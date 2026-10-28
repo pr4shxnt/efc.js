@@ -178,7 +178,7 @@ How JWTs are delivered to clients:
 | `'http-only'` | `HttpOnly + Secure + SameSite=Strict` cookie named `efc_token` |
 | `'bearer'` | `issueToken` returns the token for the response body; the client sends `Authorization: Bearer <token>` |
 
-Default: `'http-only'`. Use `'http-only'` for browsers (websites and SPAs) and `'bearer'` for mobile/desktop apps and API clients — see [Choosing a strategy](../guides/authentication.md#choosing-a-strategy). `'localStorage'` is the pre-0.9.4 name for `'bearer'` and still works; any other value throws at startup.
+Default: `'http-only'`. Use `'http-only'` for browsers (websites and SPAs) and `'bearer'` for mobile/desktop apps and API clients — see [Choosing a strategy](../guides/authentication.md#choosing-a-strategy). `'localStorage'` is the pre-0.9.4 name for `'bearer'` and still works; any other value is treated as `'bearer'` with a startup warning (an error from 1.0).
 
 ---
 

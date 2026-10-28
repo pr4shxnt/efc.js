@@ -100,7 +100,7 @@ interface EFCConfig {
   database?: 'mongodb' | 'postgresql'; // default: inferred from databaseUrl scheme
   databaseUrl?: string;
   databasePool?: { max?: number; idleTimeoutMs?: number; connectionTimeoutMs?: number }; // per worker
-  authStrategy?: 'http-only' | 'bearer'; // default 'http-only'; 'localStorage' = old name for 'bearer'; anything else throws
+  authStrategy?: 'http-only' | 'bearer'; // default 'http-only'; 'localStorage' = old name for 'bearer'; anything else = bearer + warning (error in 1.0)
   jwtSecret?: string;
   jwtExpiresIn?: string;            // default '7d'
   cookieDomain?: string;

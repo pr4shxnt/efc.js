@@ -275,6 +275,23 @@ describe('item prompts', () => {
     expect(result.manual).toEqual(["efc.config.js: set `authStrategy: 'bearer'`"]);
   });
 
+  it('a config key written twice is reported, not rewritten', async () => {
+    const v = VARIANTS.find((x) => x.key === 'ts-mongo')!;
+    const app = await createApp(v, [], 'strategy-twice');
+    const file = path.join(app, 'efc.config.ts');
+    const before = fs
+      .readFileSync(file, 'utf8')
+      .replace(
+        '  globalMiddlewares: [],',
+        "  nested: {\n    authStrategy: 'other',\n  },\n  globalMiddlewares: [],",
+      );
+    fs.writeFileSync(file, before);
+    const plan = planAdd(app, registry, ['auth']);
+    const result = applyAdd(app, plan, registry, {}, { authStrategy: 'bearer' });
+    expect(result.manual).toEqual(["efc.config.ts: set `authStrategy: 'bearer'`"]);
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  });
+
   it('email-client asks for SMTP, and Gmail fills in host and port', async () => {
     const v = VARIANTS.find((x) => x.key === 'ts-mongo')!;
     const app = await createApp(v, [], 'mail');

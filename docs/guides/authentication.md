@@ -28,7 +28,7 @@ Pick `http-only` for anything that runs in a browser — including SPAs. `bearer
 authStrategy: 'http-only',   // or 'bearer'
 ```
 
-> `'localStorage'` is the pre-0.9.4 name for `'bearer'` and still works. Any other value fails at startup.
+> `'localStorage'` is the pre-0.9.4 name for `'bearer'` and still works. Any other value is treated as `'bearer'` and logs a warning at startup; from 1.0 it's an error.
 
 ---
 
@@ -122,7 +122,7 @@ export const POST = async (req: Request, res: Response) => {
 };
 ```
 
-The scaffolded login and `/auth/refresh` routes also return `refreshToken` in bearer mode; post it back as `{ refreshToken }` to `/auth/refresh` for a new pair. Google/Apple sign-in redirects to `OAUTH_SUCCESS_REDIRECT#token=<jwt>` — the URL fragment never reaches a server, so an app deep link (`myapp://signed-in`) can read it.
+The scaffolded login and `/auth/refresh` routes also return `refreshToken` in bearer mode; post it back as `{ refreshToken }` to `/auth/refresh` for a new pair. Google/Apple sign-in never puts the JWT in a URL: it redirects to `OAUTH_SUCCESS_REDIRECT#code=<code>`, and the app (e.g. its `myapp://signed-in` link) posts `{ code }` to `/auth/oauth/exchange` for the token. The code works once, for 60 seconds — see [Sign in with Google & Apple](./oauth.md).
 
 The client keeps the token in secure storage and sends it on every request:
 
