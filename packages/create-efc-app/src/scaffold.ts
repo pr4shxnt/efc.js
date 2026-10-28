@@ -73,7 +73,8 @@ export interface ScaffoldOptions {
    * queries) or the portable `defineModel` (same API as on MongoDB). MongoDB always uses
    * `defineModel`.
    */
-  modelApi?: 'defineTable' | 'defineModel';
+  /** PostgreSQL: defineTable (default) | defineModel. MongoDB: defineCollection (default) | defineModel. */
+  modelApi?: 'defineTable' | 'defineModel' | 'defineCollection';
   /**
    * Registry mode (`efc add`): every file renders the same way whatever else is generated,
    * so a feature's files can be added to an app on their own. Login and the password flows
@@ -108,6 +109,11 @@ export function usesTables(opts: ScaffoldOptions): boolean {
   return opts.database === 'postgresql' && opts.modelApi !== 'defineModel';
 }
 
+/** MongoDB apps get defineCollection unless they asked for the portable defineModel. */
+export function usesCollections(opts: ScaffoldOptions): boolean {
+  return opts.database === 'mongodb' && opts.modelApi !== 'defineModel';
+}
+
 /**
  * Code for model calls in generated routes, in the vocabulary of the chosen API:
  * `defineModel` (`User.findOne({ email })`) or `defineTable` (`User.findFirst({ where: … })`).
@@ -115,6 +121,7 @@ export function usesTables(opts: ScaffoldOptions): boolean {
  */
 function orm(opts: ScaffoldOptions) {
   const t = usesTables(opts);
+  const c = usesCollections(opts);
   const where = (filter: string) =>
     filter.replace(/\s/g, '') === '{}' ? '' : `{ where: ${filter} }`;
   const byId = (id: string) => (id === 'id' ? '{ id }' : `{ id: ${id} }`);
@@ -126,13 +133,25 @@ function orm(opts: ScaffoldOptions) {
     find: (m: string, filter: string) =>
       t ? `${m}.findMany(${where(filter)})` : `${m}.find(${filter})`,
     count: (m: string, filter: string) =>
-      t ? `${m}.count(${where(filter)})` : `${m}.count(${filter})`,
+      t
+        ? `${m}.count(${where(filter)})`
+        : c
+          ? `${m}.countDocuments(${filter})`
+          : `${m}.count(${filter})`,
     create: (m: string, data: string) =>
       t ? `${m}.create({ data: ${data} })` : `${m}.create(${data})`,
     update: (m: string, id: string, data: string) =>
-      t ? `${m}.update({ where: ${byId(id)}, data: ${data} })` : `${m}.update(${id}, ${data})`,
+      t
+        ? `${m}.update({ where: ${byId(id)}, data: ${data} })`
+        : c
+          ? `${m}.findByIdAndUpdate(${id}, ${data}, { returnDocument: 'after' })`
+          : `${m}.update(${id}, ${data})`,
     delete: (m: string, id: string) =>
-      t ? `${m}.delete({ where: ${byId(id)} })` : `${m}.delete(${id})`,
+      t
+        ? `${m}.delete({ where: ${byId(id)} })`
+        : c
+          ? `${m}.findByIdAndDelete(${id})`
+          : `${m}.delete(${id})`,
   };
 }
 
@@ -166,7 +185,11 @@ export function generatedModels(opts: ScaffoldOptions): Set<string> {
 
 /** `import { defineTable }` / `import { defineModel }` and the function's name. */
 function modelApi(opts: ScaffoldOptions): { name: string; import: string } {
-  const name = usesTables(opts) ? 'defineTable' : 'defineModel';
+  const name = usesTables(opts)
+    ? 'defineTable'
+    : usesCollections(opts)
+      ? 'defineCollection'
+      : 'defineModel';
   return { name, import: `import { ${name} } from 'express-file-cluster';` };
 }
 
@@ -440,7 +463,10 @@ ${
   \`findMany({ where, include })\`, \`create({ data })\`, \`update({ where, data })\`). A \`ref\` is a
   foreign key; ${opts.registry ? "add back-relations to a model's `relations` when you need `include`" : "back-relations are in each model's `relations`"}. \`src/model/index.${ext}\` imports
   them all${opts.language === 'typescript' ? ' and declares `Tables` (typed `include`)' : ''} — add new models there.`
-    : `- \`src/model/*.${ext}\` — \`defineModel\` models.`
+    : usesCollections(opts)
+      ? `- \`src/model/*.${ext}\` — \`defineCollection\` models (MongoDB-native, mongoose-style queries:
+  \`find(filter, { projection, sort })\`, \`findByIdAndUpdate\`, typed \`pipeline()\`, \`lookup()\`).`
+      : `- \`src/model/*.${ext}\` — \`defineModel\` models.`
 }
 - \`src/index.${ext}\` is the entry point; it imports \`efc.config.${ext}\` and passes it to \`ignite()\`.
 - Only three import paths exist: \`express-file-cluster\`, \`express-file-cluster/auth\`,
@@ -768,7 +794,9 @@ async function issueRefreshToken(
   model: ${
     usesTables(opts)
       ? '{ update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }'
-      : '{ update: (id: string, data: Record<string, unknown>) => Promise<unknown> }'
+      : usesCollections(opts)
+        ? '{ findByIdAndUpdate: (id: string, data: Record<string, unknown>, options: { returnDocument: \'after\' }) => Promise<unknown> }'
+        : '{ update: (id: string, data: Record<string, unknown>) => Promise<unknown> }'
   },
   id: string,
 ): Promise<string> {

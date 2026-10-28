@@ -136,7 +136,7 @@ efc lint            # NOT IMPLEMENTED
 efc deploy          # NOT IMPLEMENTED
 efc db reset / fresh # NOT IMPLEMENTED
 efc db push         # NOT IMPLEMENTED — that's `efc db sync` (or autoSync)
-efc db pull         # PostgreSQL only — MongoDB is NOT supported (exits with an error)
+efc db pull         # PostgreSQL → defineTable; MongoDB → defineCollection inferred from sampled docs (--sample)
 efc remove <item>   # NOT IMPLEMENTED — `efc add` copies files; delete them yourself
 efc add <url|@ns/x> # NOT IMPLEMENTED — only the built-in registry (efc list); no third-party registries
 ```
@@ -168,8 +168,9 @@ drift), `efc db migrate --baseline` (record as applied without running).
 // ❌ Sync never DROPS columns, never adds NOT NULL and never deletes rows — that's
 //    `efc db generate <name> --allow-drop` / `--tighten` (explicit, reviewed migrations).
 //    Splits and backfills still need a hand-written migration (db.query()).
-// ✅ `efc db generate` writes migrations from model diffs; `efc db pull` (PostgreSQL) and
-//    `efc import-prisma` write defineTable model files.
+// ✅ `efc db generate` writes migrations from model diffs; `efc db pull` writes defineTable
+//    (PostgreSQL) or defineCollection (MongoDB, from sampled documents) files, and
+//    `efc import-prisma` writes defineTable files.
 // ❌ No joins in the model API — populate does a second query; for SQL joins use
 //    Drizzle via Model.raw() or db.query().
 // ❌ aggregate() is MongoDB-only (rejects on PostgreSQL).

@@ -20,7 +20,8 @@ The interactive wizard asks for the **base** app, then offers features:
 ? Project name:            my-api
 ? Language:                TypeScript | JavaScript
 ? Database:                MongoDB | PostgreSQL
-? Models:                  defineTable | defineModel        (PostgreSQL only)
+? Models:                  defineTable | defineModel        (PostgreSQL)
+                           defineCollection | defineModel   (MongoDB)
 ? Task queue backend:      pg-boss | BullMQ                 (BullMQ on MongoDB)
 ? Multi-core clustering?   Yes
 ? Add features now?        (none by default — or add any later with `efc add`)
