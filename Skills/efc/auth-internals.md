@@ -10,7 +10,7 @@ Source: `packages/core/src/auth/index.ts`
 // Called by ignite() at Pre-Flight step 2
 configureAuth({
   secret: jwtSecret,
-  strategy: authStrategy,          // 'http-only' | 'localStorage'
+  strategy: authStrategy,          // 'http-only' | 'bearer' ('localStorage' = old name); ignite() throws on anything else
   expiresIn: JWT_EXPIRES_IN ?? '7d',
   cookieDomain: COOKIE_DOMAIN,     // optional
 })
@@ -23,7 +23,7 @@ configureAuth({
 ## `issueToken(res, payload)`
 
 ```ts
-// Signs JWT (HS256), sets HttpOnly cookie
+// Signs JWT (HS256). bearer → `return token` (no cookie). http-only → sets the cookie, returns undefined
 const token = await new SignJWT(payload)
   .setProtectedHeader({ alg: 'HS256' })
   .setExpirationTime(expiresIn)
@@ -99,7 +99,7 @@ export const middlewares = [requireAuth('user', 'admin')];  // multiple allowed
 
 ```ts
 // Strategy 'http-only': reads req.cookies.efc_token
-// Strategy 'localStorage': reads Authorization header → strips 'Bearer '
+// Strategy 'bearer' / 'localStorage': reads Authorization header → strips 'Bearer '
 
 if (!token) → res.status(401).json({ error: 'Unauthorized' }); return
 

@@ -1,6 +1,6 @@
 # Authentication Guide
 
-EFC ships a complete JWT authentication system. Choose between two delivery strategies depending on your frontend architecture.
+EFC ships a complete JWT authentication system. Choose between two delivery strategies depending on who your clients are.
 
 > Ready-made routes: `efc add auth` (register / login / logout / me) and `efc add auth@google` / `auth@apple` ([Sign in with Google & Apple](./oauth.md)). See [efc add](../cli/add.md).
 
@@ -8,20 +8,27 @@ EFC ships a complete JWT authentication system. Choose between two delivery stra
 
 ## Choosing a strategy
 
-| | `http-only` | `localStorage` |
-|---|---|---|
-| **Token location** | `HttpOnly` cookie | Response body → client storage |
-| **XSS risk** | Immune (JS can't read the cookie) | Exposed (JS reads `localStorage`) |
-| **CSRF risk** | Mitigated by `SameSite=Strict` | Not applicable (no cookie) |
-| **Best for** | SSR / SSG frontends, same-origin SPAs | SPAs on a different origin, mobile apps |
-| **`requireAuth` reads from** | `req.cookies.efc_token` | `Authorization: Bearer` header |
+The question is **who the client is**, not "website or app":
 
-Configure the strategy in `ignite()`:
+| | `http-only` (default) | `bearer` |
+|---|---|---|
+| **For** | Browsers — websites **and** SPAs (React, Vue, …) | Mobile / desktop apps, CLIs, server-to-server API clients |
+| **Token travels as** | `HttpOnly` cookie | `Authorization: Bearer <token>` header |
+| **Client stores it in** | Nothing — the browser handles the cookie | iOS Keychain / Android Keystore / OS credential store |
+| **XSS** | Script can't read the token | A token kept in browser `localStorage` can be stolen by any script on the page |
+| **CSRF** | Mitigated by `SameSite=Strict` | Not applicable (no cookie) |
+| **`requireAuth` reads** | `req.cookies.efc_token` | the `Authorization` header |
+
+Pick `http-only` for anything that runs in a browser — including SPAs. `bearer` is for clients that have no cookie jar (native apps) or that call the API on behalf of something else. The one browser case for `bearer` is an SPA on a completely different site than the API, where cookies would need `SameSite=None` and credentialed CORS.
+
+`create-efc-app` asks this up front; `efc add auth` asks it too and writes the answer to `efc.config`. To switch later, change one line — the generated routes work with both:
 
 ```ts
-ignite({ authStrategy: 'http-only' });   // default
-ignite({ authStrategy: 'localStorage' });
+// efc.config.ts
+authStrategy: 'http-only',   // or 'bearer'
 ```
+
+> `'localStorage'` is the pre-0.9.4 name for `'bearer'` and still works. Any other value fails at startup.
 
 ---
 
@@ -90,15 +97,17 @@ export const GET = async (req, res) => {
 
 ---
 
-## `localStorage` strategy
+## `bearer` strategy
 
 ### Login
+
+`issueToken` hands the token back instead of setting a cookie, so the same route serves both strategies:
 
 ```ts
 // src/api/auth/login.ts
 import type { Request, Response } from 'express';
 import { HttpError } from 'express-file-cluster';
-import { signToken, verifyPassword } from 'express-file-cluster/auth';
+import { issueToken, verifyPassword } from 'express-file-cluster/auth';
 import { User } from '../../model/User.js';
 
 export const POST = async (req: Request, res: Response) => {
@@ -107,26 +116,27 @@ export const POST = async (req: Request, res: Response) => {
     throw new HttpError(401, 'Invalid credentials');
   }
 
-  const token = await signToken({ sub: user.id, role: user.role });
-  res.json({ token });
+  // http-only: sets the cookie, returns undefined. bearer: returns the token.
+  const token = await issueToken(res, { sub: user.id, role: user.role });
+  res.json({ message: 'Logged in', ...(token ? { token } : {}) });
 };
 ```
 
-The client stores the token:
+The scaffolded login and `/auth/refresh` routes also return `refreshToken` in bearer mode; post it back as `{ refreshToken }` to `/auth/refresh` for a new pair. Google/Apple sign-in redirects to `OAUTH_SUCCESS_REDIRECT#token=<jwt>` — the URL fragment never reaches a server, so an app deep link (`myapp://signed-in`) can read it.
+
+The client keeps the token in secure storage and sends it on every request:
 
 ```js
-// frontend
-const { token } = await fetch('/auth/login', { method: 'POST', body: ... }).then(r => r.json());
-localStorage.setItem('authToken', token);
-```
+// React Native (expo-secure-store); on iOS/Android natively: Keychain / Keystore
+const { token } = await fetch(`${API}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }).then(r => r.json());
+await SecureStore.setItemAsync('token', token);
 
-And attaches it on protected requests:
-
-```js
-fetch('/profile', {
-  headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+await fetch(`${API}/profile`, {
+  headers: { Authorization: `Bearer ${await SecureStore.getItemAsync('token')}` },
 });
 ```
+
+Avoid browser `localStorage` for the token — that's what `http-only` is for.
 
 ### Protecting routes
 

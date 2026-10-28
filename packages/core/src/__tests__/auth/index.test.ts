@@ -96,10 +96,50 @@ describe('requireAuth', () => {
     expect(res.status).toBe(401);
   });
 
-  it('supports the localStorage strategy via the Authorization header', async () => {
+  it('supports the bearer strategy via the Authorization header', async () => {
+    configureAuth({ secret: 'test-secret', strategy: 'bearer', expiresIn: '1h' });
+    const token = await signToken({ id: '2', role: 'admin' });
+    const res = await request(makeApp()).get('/admin').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  it("still accepts 'localStorage' as the old name for bearer", async () => {
     configureAuth({ secret: 'test-secret', strategy: 'localStorage', expiresIn: '1h' });
     const token = await signToken({ id: '2', role: 'admin' });
     const res = await request(makeApp()).get('/admin').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
+  });
+});
+
+describe('issueToken', () => {
+  function tokenApp() {
+    const app = express();
+    app.use(cookieParser());
+    app.post('/login', async (_req, res) => {
+      const token = await issueToken(res, { id: '1', role: 'user' });
+      res.json({ ...(token ? { token } : {}) });
+    });
+    app.get('/whoami', requireAuth, (req, res) => {
+      res.json({ user: (req as typeof req & { user: unknown }).user });
+    });
+    return app;
+  }
+
+  it('http-only: sets the cookie and keeps the token out of the body', async () => {
+    configureAuth({ secret: 'test-secret', strategy: 'http-only', expiresIn: '1h' });
+    const res = await request(tokenApp()).post('/login');
+    expect(res.body).toEqual({});
+    expect(String(res.headers['set-cookie'])).toMatch(/efc_token=.+HttpOnly/);
+  });
+
+  it('bearer: returns a token that works as a Bearer header, and sets no cookie', async () => {
+    configureAuth({ secret: 'test-secret', strategy: 'bearer', expiresIn: '1h' });
+    const app = tokenApp();
+    const login = await request(app).post('/login');
+    expect(login.headers['set-cookie']).toBeUndefined();
+    expect(typeof login.body.token).toBe('string');
+    const me = await request(app).get('/whoami').set('Authorization', `Bearer ${login.body.token}`);
+    expect(me.status).toBe(200);
+    expect(me.body.user).toMatchObject({ id: '1', role: 'user' });
   });
 });

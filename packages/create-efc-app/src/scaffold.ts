@@ -52,7 +52,7 @@ export interface ScaffoldOptions {
   projectName: string;
   language: 'typescript' | 'javascript';
   database: 'mongodb' | 'postgresql';
-  authStrategy: 'http-only' | 'localStorage';
+  authStrategy: 'http-only' | 'bearer';
   cluster: boolean;
   tasks: boolean;
   taskBackend?: 'bullmq' | 'pg-boss';
@@ -257,7 +257,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
 
 async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<void> {
   const deps: Record<string, string> = {
-    'express-file-cluster': '^0.9.3',
+    'express-file-cluster': '^0.9.4',
   };
   if (opts.database === 'mongodb') deps['mongoose'] = '^9.7.2';
   if (opts.database === 'postgresql') {
@@ -723,9 +723,9 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     const match = await verifyPassword(password, admin.password);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
     if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
-    await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
-    await issueRefreshToken(res, Admin, admin.id);
-    return res.json({ message: 'Logged in as admin' });
+    const token = await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
+    const refreshToken = await issueRefreshToken(res, Admin, admin.id);
+    return res.json({ message: 'Logged in as admin', ...(token ? { token, refreshToken } : {}) });
   }
 
   const user = await ${db.findOne('User', `{ email }`)};
@@ -733,26 +733,29 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   const match = await verifyPassword(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
-  await issueToken(res, { id: user.id, role: user.role, email: user.email });
-  await issueRefreshToken(res, User, user.id);
-  res.json({ message: 'Logged in' });`
+  const token = await issueToken(res, { id: user.id, role: user.role, email: user.email });
+  const refreshToken = await issueRefreshToken(res, User, user.id);
+  // bearer: the client stores both tokens itself; http-only: they travel as cookies.
+  res.json({ message: 'Logged in', ...(token ? { token, refreshToken } : {}) });`
       : hasAdmin
         ? `  const admin = await ${db.findOne('Admin', `{ email }`)};
   if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await verifyPassword(password, admin.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
-  await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
-  await issueRefreshToken(res, Admin, admin.id);
-  res.json({ message: 'Logged in as admin' });`
+  const token = await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
+  const refreshToken = await issueRefreshToken(res, Admin, admin.id);
+  // bearer: the client stores both tokens itself; http-only: they travel as cookies.
+  res.json({ message: 'Logged in as admin', ...(token ? { token, refreshToken } : {}) });`
         : `  const user = await ${db.findOne('User', `{ email }`)};
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await verifyPassword(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
-  await issueToken(res, { id: user.id, role: user.role, email: user.email });
-  await issueRefreshToken(res, User, user.id);
-  res.json({ message: 'Logged in' });`;
+  const token = await issueToken(res, { id: user.id, role: user.role, email: user.email });
+  const refreshToken = await issueRefreshToken(res, User, user.id);
+  // bearer: the client stores both tokens itself; http-only: they travel as cookies.
+  res.json({ message: 'Logged in', ...(token ? { token, refreshToken } : {}) });`;
 
   const loginContent = hasModels
     ? ts
@@ -768,7 +771,7 @@ async function issueRefreshToken(
       : '{ update: (id: string, data: Record<string, unknown>) => Promise<unknown> }'
   },
   id: string,
-): Promise<void> {
+): Promise<string> {
   const refreshToken = crypto.randomBytes(40).toString('hex');
   await ${db.update('model', 'id', '{ refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) }')};
   res.cookie('efc_refresh_token', refreshToken, {
@@ -777,6 +780,7 @@ async function issueRefreshToken(
     sameSite: 'strict',
     maxAge: REFRESH_TOKEN_TTL_MS,
   });
+  return refreshToken;
 }
 
 export const POST = async (req: Request, res: Response) => {
@@ -798,6 +802,7 @@ async function issueRefreshToken(res, model, id) {
     sameSite: 'strict',
     maxAge: REFRESH_TOKEN_TTL_MS,
   });
+  return refreshToken;
 }
 
 export const POST = async (req, res) => {
@@ -1538,8 +1543,12 @@ ${refreshPersist}
     maxAge: REFRESH_TOKEN_TTL_MS,
   });
 
-  await issueToken(res, { id: account.id, role: account.role, email: account.email });
-  res.json({ message: 'Token refreshed' });
+  const accessToken = await issueToken(res, { id: account.id, role: account.role, email: account.email });
+  // bearer: the client stores both tokens itself; http-only: they travel as cookies.
+  res.json({
+    message: 'Token refreshed',
+    ...(accessToken ? { token: accessToken, refreshToken: newRefreshToken } : {}),
+  });
 };
 `
       : `import { issueToken } from 'express-file-cluster/auth';
@@ -1567,8 +1576,12 @@ ${refreshPersist}
     maxAge: REFRESH_TOKEN_TTL_MS,
   });
 
-  await issueToken(res, { id: account.id, role: account.role, email: account.email });
-  res.json({ message: 'Token refreshed' });
+  const accessToken = await issueToken(res, { id: account.id, role: account.role, email: account.email });
+  // bearer: the client stores both tokens itself; http-only: they travel as cookies.
+  res.json({
+    message: 'Token refreshed',
+    ...(accessToken ? { token: accessToken, refreshToken: newRefreshToken } : {}),
+  });
 };
 `;
     await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `refresh.${ext}`), refreshContent);
@@ -4107,7 +4120,7 @@ export function takeState(
  * user with the same (provider-verified) email, else a new user. New users get a random
  * password — they can set a real one with the forgot-password flow.
  */
-export async function signInWithOAuth(res${T(': Response')}, profile${T(': OAuthProfile')})${T(': Promise<void>')} {
+export async function signInWithOAuth(res${T(': Response')}, profile${T(': OAuthProfile')})${T(': Promise<string | undefined>')} {
   const key = \`\${profile.provider}:\${profile.providerId}\`;
   const account = await ${db.findOne('OAuthAccount', '{ key }')};
   let user = account ? await ${db.findById('User', `account.${userField}`)} : null;
@@ -4142,12 +4155,17 @@ export async function signInWithOAuth(res${T(': Response')}, profile${T(': OAuth
     }
   }
   if (!user.isActive) throw new HttpError(403, 'Account suspended');
-  await issueToken(res, { id: user.id, role: user.role, email: user.email });
+  // http-only: sets the cookie, returns undefined. bearer: returns the token.
+  return issueToken(res, { id: user.id, role: user.role, email: user.email });
 }
 
-/** Where the browser goes once signed in. */
-export function successRedirect()${T(': string')} {
-  return process.env.OAUTH_SUCCESS_REDIRECT || '/';
+/**
+ * Where the browser goes once signed in. With authStrategy 'bearer' the token rides in the
+ * URL fragment, which browsers never send to a server (e.g. an app's myapp://signed-in link).
+ */
+export function successRedirect(token${T('?: string')})${T(': string')} {
+  const to = process.env.OAUTH_SUCCESS_REDIRECT || '/';
+  return token ? \`\${to}#token=\${encodeURIComponent(token)}\` : to;
 }
 `;
 
@@ -4214,14 +4232,14 @@ export const GET = async ${reqRes('req')} => {
   });
   if (payload.nonce !== saved.nonce) throw new HttpError(400, 'Invalid sign-in response');
 
-  await signInWithOAuth(res, {
+  const token = await signInWithOAuth(res, {
     provider: 'google',
     providerId: String(payload.sub),
     email: ${ts ? 'payload.email as string | undefined' : 'payload.email'},
     emailVerified: payload.email_verified === true,
     name: ${ts ? 'payload.name as string | undefined' : 'payload.name'},
   });
-  res.redirect(successRedirect());
+  res.redirect(successRedirect(token));
 };
 `;
 
@@ -4301,14 +4319,14 @@ export const POST = async ${reqRes('req')} => {
     name = undefined;
   }
 
-  await signInWithOAuth(res, {
+  const token = await signInWithOAuth(res, {
     provider: 'apple',
     providerId: String(payload.sub),
     email: ${ts ? 'payload.email as string | undefined' : 'payload.email'},
     emailVerified: payload.email_verified === true || payload.email_verified === 'true',
     name,
   });
-  res.redirect(303, successRedirect());
+  res.redirect(303, successRedirect(token));
 };
 `;
 

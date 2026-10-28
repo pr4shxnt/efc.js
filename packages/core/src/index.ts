@@ -98,6 +98,13 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   const database = config.database ?? detectDatabase(databaseUrl);
   const jwtSecret = config.jwtSecret;
   const authStrategy = config.authStrategy ?? 'http-only';
+  // Any other value used to fall through to bearer silently (a typo of 'http-only' meant
+  // no cookie and every request 401).
+  if (!['http-only', 'bearer', 'localStorage'].includes(authStrategy)) {
+    throw new Error(
+      `[EFC] Unknown authStrategy "${String(authStrategy)}" — use 'http-only' or 'bearer'.`,
+    );
+  }
   // NODE_ENV is a Node/Express-wide runtime-mode signal set by the platform, not an app
   // secret — unlike PORT/DATABASE_URL/JWT_SECRET/etc. this one is still read directly.
   const clusterEnabled = config.cluster ?? process.env['NODE_ENV'] === 'production';

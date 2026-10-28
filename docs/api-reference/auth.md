@@ -23,13 +23,13 @@ Auth must be configured before any of these functions are called. Configuration 
 
 ## `issueToken(res, payload)`
 
-Signs a JWT and sets it as an `HttpOnly` cookie on the response. Use with the `'http-only'` auth strategy.
+Signs a JWT and delivers it the way `authStrategy` says: with `'http-only'` it sets an `HttpOnly` cookie and resolves `undefined`; with `'bearer'` it sets no cookie and resolves the token, for you to put in the response body. Writing `res.json({ ...(token ? { token } : {}) })` makes one route work under both.
 
 ```ts
 async function issueToken(
   res: Response,
   payload: Record<string, unknown>,
-): Promise<void>
+): Promise<string | undefined>
 ```
 
 | Parameter | Type | Description |
@@ -37,7 +37,7 @@ async function issueToken(
 | `res` | `Response` | Express response object |
 | `payload` | `Record<string, unknown>` | JWT claims (e.g. `{ sub: user.id, role: user.role }`) |
 
-The cookie is named `efc_token` and is set with:
+With `'http-only'`, the cookie is named `efc_token` and is set with:
 
 - `HttpOnly: true` — not accessible via `document.cookie`
 - `Secure: true` — only sent over HTTPS (when `NODE_ENV === 'production'`)
@@ -52,10 +52,12 @@ import { issueToken } from 'express-file-cluster/auth';
 
 export const POST = async (req, res) => {
   const user = await verifyCredentials(req.body.email, req.body.password);
-  await issueToken(res, { sub: user.id, role: user.role });
-  res.json({ message: 'Logged in' });
+  const token = await issueToken(res, { sub: user.id, role: user.role });
+  res.json({ message: 'Logged in', ...(token ? { token } : {}) });
 };
 ```
+
+> Before 0.9.4, `issueToken` always set the cookie and resolved `undefined`, even with the Bearer strategy — bearer clients never received a token. Use the return value.
 
 ---
 
@@ -105,7 +107,7 @@ Every token EFC signs carries a `jti` and an issue time, which these checks use.
 
 ## `signToken(payload)`
 
-Signs a JWT and returns the token string. Use with the `'localStorage'` strategy; the client stores the token and attaches it as `Authorization: Bearer <token>`.
+Signs a JWT and returns the token string, whatever the strategy — for tokens you hand out yourself (e.g. to a service). For login, prefer `issueToken`, which follows `authStrategy`.
 
 ```ts
 async function signToken(
@@ -126,7 +128,7 @@ export const POST = async (req, res) => {
 };
 ```
 
-The client then stores the token (e.g. `localStorage.setItem('token', token)`) and sends it on subsequent requests:
+A bearer client keeps the token in secure storage (Keychain / Keystore — not browser `localStorage`) and sends it on subsequent requests:
 
 ```http
 Authorization: Bearer <token>
@@ -153,7 +155,7 @@ Behaviour depends on the configured `authStrategy`:
 | Strategy | Token source |
 |---|---|
 | `'http-only'` | `req.cookies.efc_token` |
-| `'localStorage'` | `Authorization: Bearer <token>` header |
+| `'bearer'` (or the old name `'localStorage'`) | `Authorization: Bearer <token>` header |
 
 **Route-level, auth only (protects all handlers in the file):**
 

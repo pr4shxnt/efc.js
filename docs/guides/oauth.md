@@ -61,7 +61,7 @@ Send the browser (not `fetch`) to the start route:
 
 After the provider sends the user back, the callback sets the usual `efc_token` cookie (the same one `/auth/login` sets) and redirects to `OAUTH_SUCCESS_REDIRECT`. From there, requests with credentials work as after a password login, and `GET /auth/me` returns the user.
 
-> The callbacks issue the session as an http-only cookie, so they fit `authStrategy: 'http-only'`. With the `localStorage` (Bearer) strategy, change the callback to hand the token to your SPA, for example with `signToken()` and a redirect to your frontend that carries it.
+> With `authStrategy: 'http-only'` the callbacks set the session cookie and redirect to `OAUTH_SUCCESS_REDIRECT`. With `'bearer'` they redirect to `OAUTH_SUCCESS_REDIRECT#token=<jwt>` instead — the fragment never reaches a server, so an app deep link (e.g. `myapp://signed-in`) reads the token from it.
 
 ---
 

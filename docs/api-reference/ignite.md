@@ -34,7 +34,7 @@ interface EFCConfig {
   databasePool?: { max?: number; idleTimeoutMs?: number; connectionTimeoutMs?: number };
 
   // Auth
-  authStrategy?: 'http-only' | 'localStorage';
+  authStrategy?: 'http-only' | 'bearer';   // 'localStorage' = old name for 'bearer'
   jwtSecret?: string;
   jwtExpiresIn?: string;
   cookieDomain?: string;
@@ -176,9 +176,9 @@ How JWTs are delivered to clients:
 | Value | Mechanism |
 |---|---|
 | `'http-only'` | `HttpOnly + Secure + SameSite=Strict` cookie named `efc_token` |
-| `'localStorage'` | Token returned in response body; client attaches `Authorization: Bearer <token>` |
+| `'bearer'` | `issueToken` returns the token for the response body; the client sends `Authorization: Bearer <token>` |
 
-Default: `'http-only'`.
+Default: `'http-only'`. Use `'http-only'` for browsers (websites and SPAs) and `'bearer'` for mobile/desktop apps and API clients — see [Choosing a strategy](../guides/authentication.md#choosing-a-strategy). `'localStorage'` is the pre-0.9.4 name for `'bearer'` and still works; any other value throws at startup.
 
 ---
 

@@ -5,6 +5,7 @@ import fs from 'fs-extra';
 import {
   Registry,
   applyAdd,
+  configFromAnswers,
   envFromAnswers,
   normalizeAnswer,
   planAdd,
@@ -233,6 +234,47 @@ describe('efc add', () => {
 });
 
 describe('item prompts', () => {
+  it('efc add auth asks the token strategy and writes it to efc.config', async () => {
+    const v = VARIANTS.find((x) => x.key === 'ts-pg-table')!;
+    const app = await createApp(v, [], 'strategy');
+    const plan = planAdd(app, registry, ['auth']);
+    expect(plan.prompts.map((p) => p.name)).toEqual(['authStrategy']);
+    const q = plan.prompts[0]!;
+    expect(q.config).toBe('authStrategy');
+    expect(q.options?.map((o) => o.value)).toEqual(['http-only', 'bearer']);
+
+    const answers = { authStrategy: 'bearer' };
+    expect(envFromAnswers(plan.prompts, answers)).toEqual({});
+    const config = configFromAnswers(plan.prompts, answers);
+    expect(config).toEqual({ authStrategy: 'bearer' });
+    const result = applyAdd(app, plan, registry, {}, config);
+    expect(result.manual).toEqual([]);
+    const text = fs.readFileSync(path.join(app, 'efc.config.ts'), 'utf8');
+    expect(text).toContain("  authStrategy: 'bearer',\n");
+    expect(text).not.toContain("'http-only'");
+    expect(fs.readFileSync(path.join(app, '.env'), 'utf8')).not.toContain('authStrategy');
+
+    // Unanswered (no terminal, --no-prompt): efc.config is left as it was.
+    const other = await createApp(v, [], 'strategy-default');
+    applyAdd(other, planAdd(other, registry, ['auth']), registry);
+    expect(fs.readFileSync(path.join(other, 'efc.config.ts'), 'utf8')).toContain(
+      "authStrategy: 'http-only'",
+    );
+  });
+
+  it('a config key that efc.config no longer has is reported, not guessed', async () => {
+    const v = VARIANTS.find((x) => x.key === 'js-mongo')!;
+    const app = await createApp(v, [], 'strategy-manual');
+    const file = path.join(app, 'efc.config.js');
+    fs.writeFileSync(
+      file,
+      fs.readFileSync(file, 'utf8').replace(/^\s*authStrategy:.*\n/m, ''),
+    );
+    const plan = planAdd(app, registry, ['auth']);
+    const result = applyAdd(app, plan, registry, {}, { authStrategy: 'bearer' });
+    expect(result.manual).toEqual(["efc.config.js: set `authStrategy: 'bearer'`"]);
+  });
+
   it('email-client asks for SMTP, and Gmail fills in host and port', async () => {
     const v = VARIANTS.find((x) => x.key === 'ts-mongo')!;
     const app = await createApp(v, [], 'mail');
@@ -297,6 +339,7 @@ describe('item prompts', () => {
     });
     expect(plan.dependencies).not.toHaveProperty('bcrypt');
     expect(plan.prompts.map((p) => p.name)).toEqual([
+      'authStrategy',
       'GOOGLE_CLIENT_ID',
       'GOOGLE_CLIENT_SECRET',
       'GOOGLE_REDIRECT_URI',

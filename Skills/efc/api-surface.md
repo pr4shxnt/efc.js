@@ -100,7 +100,7 @@ interface EFCConfig {
   database?: 'mongodb' | 'postgresql'; // default: inferred from databaseUrl scheme
   databaseUrl?: string;
   databasePool?: { max?: number; idleTimeoutMs?: number; connectionTimeoutMs?: number }; // per worker
-  authStrategy?: 'http-only' | 'localStorage';
+  authStrategy?: 'http-only' | 'bearer'; // default 'http-only'; 'localStorage' = old name for 'bearer'; anything else throws
   jwtSecret?: string;
   jwtExpiresIn?: string;            // default '7d'
   cookieDomain?: string;
@@ -233,13 +233,14 @@ interface MigrationContext { db: unknown; engine: 'mongodb' | 'postgresql' } // 
 Source: `packages/core/src/auth/index.ts`
 
 ```ts
-// Set cookie (http-only strategy)
-async function issueToken(res: Response, payload: Record<string, unknown>): Promise<void>
+// http-only: sets the efc_token cookie, resolves undefined. bearer: no cookie, resolves the token.
+// One route for both: const token = await issueToken(res, p); res.json({ ...(token ? { token } : {}) })
+async function issueToken(res: Response, payload: Record<string, unknown>): Promise<string | undefined>
 
 // Clear cookie (http-only strategy)
 function revokeToken(res: Response): void
 
-// Return token string (localStorage strategy)
+// Always returns the token string, no cookie (any strategy)
 async function signToken(payload: Record<string, unknown>): Promise<string>
 
 // Need ignite({ cache }). Every signed token carries jti + iat + efc_iat (ms).

@@ -41,7 +41,7 @@ On **PostgreSQL**, models default to [`defineTable`](../api-reference/table.md):
 Depending on what you pick, you'll see follow-up questions:
 
 - **Task queue backend.** `pg-boss` stores jobs in your PostgreSQL, so there's no Redis to run. `BullMQ` uses Redis (`REDIS_URL` in `.env`).
-- **Authentication** (or any feature that needs it) → pick a strategy: `http-only` (cookie) or `localStorage` (Bearer token).
+- **Authentication** → `http-only cookie` (browsers — websites and SPAs, recommended), `Bearer token` (mobile/desktop apps, API clients), or `None` (add it later with `efc add auth`). Asked before the feature list; picking a strategy ticks the Authentication feature.
 - **Sign in with Google / Apple** → the OAuth client credentials (Apple: Services ID, Team ID, Key ID and the path to your `.p8` key). See [Sign in with Google & Apple](../guides/oauth.md).
 - **Email client** → pick an email provider: `Gmail` (preconfigured `smtp.gmail.com`, no host or port to type) or `Other (custom SMTP)` (asks for host + port). Either way you're then asked for the sending email address and password. **For Gmail this must be a 16-character App Password, not your normal Gmail password.** The prompt rejects anything that isn't 16 characters. See [Mailer](../guides/mailer.md) for the full walkthrough, including how to generate an App Password.
 
