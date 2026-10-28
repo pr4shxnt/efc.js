@@ -143,6 +143,8 @@
               <a href="#auth">Authentication</a>
               <a href="#rbac">RBAC</a>
               <a href="#database">Database</a>
+              <a href="#which-api">Which Model API?</a>
+              <a href="#relations">Relations</a>
               <a href="#mailer">Mailer</a>
               <a href="#dashboard">API Dashboard</a>
             </div>
@@ -152,6 +154,7 @@
             <div class="group"><h2>Reference</h2>
               <a href="#cli">CLI Reference</a>
               <a href="#envvars">Environment Variables</a>
+              <a href="#versioning">Versioning &amp; Support</a>
             </div>
           </nav>
           <p class="no-hits" id="noHits" hidden>No page matches.</p>
@@ -164,31 +167,24 @@
 <!-- ════════ GETTING STARTED ════════ -->
 <article data-page="quickstart" data-group="Getting Started" data-src="getting-started/index.md">
 <h1>Quick Start</h1>
-<p class="lead">Scaffold and run your first EFC API in under a minute. You need Node.js 18 or later; MongoDB, PostgreSQL or Redis only if you choose features that use them.</p>
+<p class="lead">Scaffold and run your first EFC API in under a minute. You need Node.js 22 or later (24 recommended); MongoDB, PostgreSQL or Redis only if you choose features that use them.</p>
 
 <h2>Create a project</h2>
 <pre data-file="terminal"><code data-lang="bash">$ npx create-efc-app my-api</code></pre>
 <p>The interactive wizard asks:</p>
-<pre data-file="create-efc-app"><code>? Project name:            my-api
-? Language:                TypeScript | JavaScript
-? Database:                MongoDB | PostgreSQL
-? Models:                  defineTable | defineModel        (PostgreSQL only)
-? Authentication strategy: http-only | localStorage
-? Features: (space to toggle)
-    ◉ Multi-core clustering
-    ◉ Background tasks
-    ◉ API route documentation
-    ◉ User portal
-    ◉ Admin portal
-    ◉ Role-based access control
-    ◯ Mailer</code></pre>
-<p>Some choices ask a follow-up:</p>
-<ul>
-  <li><strong>Background tasks</strong> → a queue backend: <code>BullMQ</code> (Redis) or <code>pg-boss</code> (stores jobs in your PostgreSQL — no Redis to run).</li>
-  <li><strong>Mailer</strong> → <code>Gmail</code> (preconfigured, App Password prompt) or a custom SMTP host. See <a href="#mailer">Mailer</a>.</li>
-  <li><strong>User / Admin portal</strong> → which sub-features to generate. See <a href="#portals">Generated Portals</a>.</li>
-  <li><strong>RBAC</strong> → a <code>Role</code> model and <code>requireAuth('role')</code> on protected routes. See <a href="#rbac">RBAC</a>.</li>
-</ul>
+<pre data-file="create-efc-app"><code>? Project name:          my-api
+? Language:              TypeScript | JavaScript
+? Database:              MongoDB | PostgreSQL
+? Models:                defineTable | defineModel        (PostgreSQL only)
+? Task queue backend:    BullMQ | pg-boss
+? Multi-core clustering? Yes
+? Authentication:        http-only cookie   browsers — websites and SPAs (recommended)
+                         Bearer token       mobile/desktop apps, API clients
+                         None               add later with `efc add auth`
+? Add features now? (space to toggle)
+    ◉ Authentication
+    ◯ User portal …   ◯ Admin portal …   ◯ Email client …</code></pre>
+<p>Every feature is a registry item — tick it now or add it later with <code>efc add &lt;item&gt;</code>. Some ask a follow-up: the <strong>Email client</strong> asks for <code>Gmail</code> or a custom SMTP host (see <a href="#mailer">Mailer</a>); <strong>Sign in with Google / Apple</strong> ask for their credentials.</p>
 <p>It then writes the project, generates <code>.env</code> with a real <code>JWT_SECRET</code>, and runs <code>npm install</code>.</p>
 
 <h2>Start the dev server</h2>
@@ -289,7 +285,7 @@ ignite({ ...config, cluster: true })
     <tr><td><code>workers</code></td><td>CPU count</td><td>Number of workers to fork.</td></tr>
     <tr><td><code>database</code></td><td>from URL</td><td><code>'mongodb'</code> or <code>'postgresql'</code>; detected from <code>databaseUrl</code> when omitted.</td></tr>
     <tr><td><code>databaseUrl</code></td><td>—</td><td>Connection string.</td></tr>
-    <tr><td><code>authStrategy</code></td><td><code>'http-only'</code></td><td><code>'http-only'</code> cookie or <code>'localStorage'</code> Bearer token.</td></tr>
+    <tr><td><code>authStrategy</code></td><td><code>'http-only'</code></td><td><code>'http-only'</code> cookie (browsers) or <code>'bearer'</code> token (mobile/desktop apps, API clients).</td></tr>
     <tr><td><code>jwtSecret</code></td><td>—</td><td>Enables auth. At least 32 random bytes in production.</td></tr>
     <tr><td><code>jwtExpiresIn</code></td><td><code>'7d'</code></td><td>Token lifetime: <code>'15m'</code>, <code>'1h'</code>, <code>'30d'</code>…</td></tr>
     <tr><td><code>tasks</code></td><td>off</td><td>Queue backend. See <a href="#tasks">Background Tasks</a>.</td></tr>
@@ -579,18 +575,13 @@ $ efc tasks purge --all                 # delete failed jobs</code></pre>
 
 export const POST = async (req, res) => {
   const user = await verifyCredentials(req.body)
-  await issueToken(res, { sub: user.id, role: user.role })
-  res.json({ message: 'Logged in' })
+  // http-only: sets the cookie, returns undefined. bearer: returns the token.
+  const token = await issueToken(res, { sub: user.id, role: user.role })
+  res.json({ message: 'Logged in', ...(token ? { token } : {}) })
 }</code></pre>
 
-<h2>Bearer token (SPAs, mobile)</h2>
-<p>With <code>authStrategy: 'localStorage'</code>, return the token and send it back as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
-<pre data-file="src/api/auth/login.ts"><code data-lang="ts">import { signToken } from 'express-file-cluster/auth'
-
-export const POST = async (req, res) => {
-  const user = await verifyCredentials(req.body)
-  res.json({ token: await signToken({ sub: user.id, role: user.role }) })
-}</code></pre>
+<h2>Bearer token (mobile / desktop apps, API clients)</h2>
+<p>With <code>authStrategy: 'bearer'</code> the same route sends the token in the body instead of a cookie. The client keeps it in secure storage (Keychain / Keystore) and sends <code>Authorization: Bearer &lt;token&gt;</code>. Browsers — SPAs included — should stay on <code>'http-only'</code>: any script on the page can read a token kept in <code>localStorage</code>. (<code>'localStorage'</code> is the old name for <code>'bearer'</code> and still works.)</p>
 
 <h2>Protecting routes</h2>
 <pre data-file="src/api/users/index.ts"><code data-lang="ts">import { requireAuth, getCurrentUser } from 'express-file-cluster/auth'
@@ -850,6 +841,62 @@ export default defineTask(async (payload) => {
 </table>
 </article>
 
+<article data-page="which-api" data-group="Features" data-src="guides/which-api.md">
+<h1>Which Model API?</h1>
+<p class="lead">Three ways to define a model, one foundation: the schema format, inferred types, validation, auto-sync, <code>transaction()</code> and errors are shared. They differ in engine and query vocabulary.</p>
+<table>
+  <thead><tr><th></th><th><code>defineModel</code></th><th><code>defineTable</code></th><th><code>defineCollection</code></th></tr></thead>
+  <tbody>
+    <tr><td>Engine</td><td>MongoDB or PostgreSQL</td><td>PostgreSQL only</td><td>MongoDB only</td></tr>
+    <tr><td>Queries</td><td>Portable subset: <code>find(filter, { sort, limit, populate })</code></td><td>Prisma-style: <code>findMany({ where, include, orderBy, take })</code>, <code>upsert</code>, <code>groupBy</code></td><td>mongoose-style: every operator, <code>aggregate</code>, <code>bulkWrite</code>, <code>watch</code></td></tr>
+    <tr><td>Relations</td><td><code>ref</code> + <code>populate</code></td><td>Foreign keys, many-to-many, <code>include</code> in one SQL statement, nested writes</td><td><code>ref</code> + <code>populate</code>, <code>$lookup</code>, embedded documents</td></tr>
+  </tbody>
+</table>
+<ul>
+  <li><strong>On PostgreSQL:</strong> <code>defineTable</code> — what <code>create-efc-app</code> generates.</li>
+  <li><strong>On MongoDB:</strong> <code>defineCollection</code> — mongoose underneath.</li>
+  <li><strong>Might switch engines:</strong> <code>defineModel</code>, inside the shared filter subset.</li>
+  <li><strong>Coming from Prisma:</strong> <code>defineTable</code>; <code>efc import-prisma</code> writes the models.</li>
+</ul>
+<pre data-file="src/api/posts/index.ts"><code data-lang="ts">// defineTable
+const posts = await Post.findMany({
+  where: { status: 'published', views: { gte: 100 } },
+  orderBy: { createdAt: 'desc' },
+  take: 20,
+  include: { author: true },
+})</code></pre>
+</article>
+
+<article data-page="relations" data-group="Features" data-src="guides/relations.md">
+<h1>Relations</h1>
+<p class="lead">With <code>defineTable</code>, a top-level <code>ref</code> is a real foreign key, an array of refs is a many-to-many join table, and <code>relations</code> declares the other side.</p>
+<pre data-file="src/model/index.ts"><code data-lang="ts">export const User = defineTable('User', {
+  email: { type: 'string', required: true, unique: true },
+}, {
+  relations: { posts: { hasMany: 'Post', foreignKey: 'author' } },
+})
+
+export const Post = defineTable('Post', {
+  title:  { type: 'string', required: true },
+  author: { type: 'uuid', ref: 'User', required: true, onDelete: 'cascade' },
+  tags:   { type: 'array', of: 'uuid', ref: 'Tag' },  // many-to-many
+})</code></pre>
+<h2>Read, filter, write</h2>
+<pre data-file="src/api/users/[id].ts"><code data-lang="ts">// One SQL statement, any depth
+const user = await User.findUnique({ where: { id }, include: { posts: { include: { tags: true } } } })
+
+// Relation filters: some / every / none, is / isNot
+const writers = await User.findMany({ where: { posts: { some: { title: { contains: 'EFC' } } } } })
+
+// Nested writes, one transaction
+await Post.create({ data: {
+  title: 'Hi',
+  author: { connect: { id } },
+  tags: { connectOrCreate: [{ where: { label: 'news' }, create: { label: 'news' } }] },
+} })</code></pre>
+<aside class="note">Typed <code>include</code> results need the model registry: <code>declare module 'express-file-cluster' { interface Tables { User: typeof User } }</code> — scaffolded apps generate it in <code>src/model/index.ts</code>.</aside>
+</article>
+
 <article data-page="envvars" data-group="Reference" data-src="guides/environment-variables.md">
 <h1>Environment Variables</h1>
 <p class="lead"><code>ignite()</code> doesn't read <code>process.env</code> for configuration — the scaffolded <code>efc.config.ts</code> does, and passes the values in. <code>NODE_ENV</code> is the one variable the framework reads directly.</p>
@@ -875,6 +922,23 @@ export default defineTask(async (payload) => {
   </tbody>
 </table>
 <aside class="note">Never commit <code>.env</code>, and use a different <code>JWT_SECRET</code> per environment — rotating it invalidates every issued token.</aside>
+</article>
+
+<article data-page="versioning" data-group="Reference" data-src="versioning.md">
+<h1>Versioning &amp; Support</h1>
+<p class="lead">All three packages ship together under one version, following semver.</p>
+<table>
+  <thead><tr><th>Bump</th><th>Before 1.0</th><th>From 1.0</th></tr></thead>
+  <tbody>
+    <tr><td>Patch</td><td>Fixes, security fixes, clearer errors — no new API</td><td>Fixes and security fixes only</td></tr>
+    <tr><td>Minor</td><td>Features; breaking changes listed with upgrade steps</td><td>Backwards-compatible features</td></tr>
+    <tr><td>Major</td><td>—</td><td>Breaking changes, with upgrade steps</td></tr>
+  </tbody>
+</table>
+<p><strong>LTS from 1.0:</strong> the current major gets everything; the previous major gets security and critical fixes for 12 months after the next one ships. Before 1.0, only the latest 0.x release gets fixes.</p>
+<p><strong>Node.js:</strong> active and maintenance LTS lines — tested on Node 22 and 24.</p>
+<p><strong>Generated code is yours:</strong> upgrading the package doesn't change files <code>create-efc-app</code> or <code>efc add</code> wrote. When a release fixes generated code, the changelog names the files — re-add them with <code>efc add &lt;item&gt; --overwrite</code> or apply the change by hand.</p>
+<aside class="note">Found a vulnerability? Report it privately through the repository's <strong>Security → Report a vulnerability</strong>, not a public issue.</aside>
 </article>
 
         <footer class="doc-foot">

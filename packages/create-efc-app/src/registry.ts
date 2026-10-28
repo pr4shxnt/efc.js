@@ -76,6 +76,8 @@ export interface ItemPrompt {
   stripSpaces?: boolean;
   /** Shown before the question. */
   note?: string;
+  /** Write the answer to this efc.config key instead of .env (e.g. `authStrategy`). */
+  config?: string;
 }
 
 export interface ItemDef {
@@ -109,6 +111,20 @@ const admin =
     o.adminFeatures = { ...o.adminFeatures, [flag]: true };
   };
 
+/** The token strategies, as create-efc-app and `efc add auth` offer them. */
+export const AUTH_STRATEGY_OPTIONS = [
+  {
+    value: 'http-only',
+    label: 'http-only cookie',
+    hint: 'browsers — websites and SPAs (recommended)',
+  },
+  {
+    value: 'bearer',
+    label: 'Bearer token',
+    hint: 'mobile/desktop apps, API clients — keep it in Keychain/Keystore, not localStorage',
+  },
+];
+
 export const ITEMS: ItemDef[] = [
   {
     name: 'auth',
@@ -116,7 +132,16 @@ export const ITEMS: ItemDef[] = [
     description: 'User & Admin models; register, login, logout and me routes',
     group: 'auth',
     registryDependencies: [],
-    docs: "Tokens are issued per `authStrategy` in efc.config — 'http-only' (cookie) or 'localStorage' (Bearer). Verification emails go through the SendEmail task; `efc add email-client` makes it send real mail.",
+    docs: "Tokens are issued per `authStrategy` in efc.config — 'http-only' (cookie) or 'bearer' (login returns the token; send it as Authorization: Bearer). Verification emails go through the SendEmail task; `efc add email-client` makes it send real mail.",
+    prompts: [
+      {
+        name: 'authStrategy',
+        config: 'authStrategy',
+        type: 'select',
+        message: 'Authentication strategy:',
+        options: AUTH_STRATEGY_OPTIONS,
+      },
+    ],
     enable: (o) => {
       o.userPortal = true;
     },

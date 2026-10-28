@@ -77,7 +77,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 ```
 feat(router): support catch-all wildcard routes
 fix(cluster): prevent infinite respawn loop on startup crash
-docs(auth): add localStorage strategy example
+docs(auth): add bearer strategy example
 chore(deps): upgrade jose to v5
 ```
 

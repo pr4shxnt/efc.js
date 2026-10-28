@@ -3,6 +3,7 @@ import type { TaskDefinition } from '../types.js';
 import { taskRegistry, setEnqueueImpl } from './index.js';
 import { runInThread } from './thread-runner.js';
 import { getLogger } from '../logger.js';
+import { explainPostgresError } from '../db/postgres.js';
 import type { FailedJob, TaskAdmin } from './admin.js';
 
 // pg-boss keeps one queue per job name, so each task gets its own pg-boss queue
@@ -66,7 +67,11 @@ export async function initPgBoss(opts: PgBossOpts): Promise<void> {
     ...(opts.schema !== undefined && { schema: opts.schema }),
   });
   boss.on('error', (err: Error) => getLogger().error({ err }, 'pg-boss error'));
-  await boss.start();
+  try {
+    await boss.start();
+  } catch (err) {
+    throw explainPostgresError(err, opts.connectionString);
+  }
 
   const queueFor = (name: string) => `${opts.queue}.${name}`;
   const wantedSchedules = new Set<string>();

@@ -4,6 +4,79 @@ All three packages (`express-file-cluster`, `create-efc-app`, `express-file-clus
 together under one version. Newest first. The public site's changelog (`client/index.html#changelog`)
 mirrors this file — see `AGENTS.md` §5.
 
+## 0.9.6 — 2026-10-28
+
+**Security release — update your generated auth routes.** Found by an internal review of the framework and
+the code `create-efc-app` / `efc add` generate. Upgrading the package does not change files already in your
+app; see *Updating an existing app* below. Full details will follow in a GitHub security advisory.
+
+- **Security (critical):** generated auth routes (login, register, refresh, forgot/reset password, email
+  verification, admin user creation, custom-entity `auth:<name>` routes) now validate the type of every
+  request value they look up by, and answer 400 otherwise.
+- **Security (high):** user objects returned by the profile, admin user and register routes no longer
+  include `refreshToken`, `resetToken`, `verifyToken` or their expiries.
+- **Security (high):** changing a user's role, deactivating or deleting them in the admin routes now ends
+  their sessions (`revokeAllSessions`), and `/auth/refresh` refuses inactive accounts (403).
+- **Hardening (framework):** `requireAuth` only accepts HS256 tokens (the algorithm EFC signs with);
+  errors that carry a 5xx `statusCode` no longer echo their message to clients (4xx still do); a
+  `jwtSecret` under 32 bytes logs a warning in production.
+- **New:** [`SECURITY.md`](SECURITY.md) (report vulnerabilities privately) and
+  [Versioning & support](docs/versioning.md) — what a patch, minor and major may contain, LTS from 1.0,
+  supported Node versions (22 and 24). Docs site: *Which model API?*, *Relations*, *Versioning & support*.
+
+**Updating an existing app** (generated before 0.9.6) — do this now: re-add untouched routes with
+`efc add auth user-profile account-security forgot-password email-verification admin-users --overwrite`
+(only the items you have; reapply your edits to any file you changed; custom entities: `efc add auth:<name>
+--overwrite`), or by hand: return 400 unless `typeof value === 'string'` for every `req.body` / `req.query`
+value used in a lookup; strip `refreshToken`, `resetToken`, `verifyToken` (and their expiries) from user
+objects you return; call `revokeAllSessions(id)` when an admin changes a user's role or deactivates/deletes
+them; reject `isActive === false` in `/auth/refresh`.
+
+## 0.9.5 — 2026-10-28
+
+**Database connections: errors that say what to fix, and a warning before the pool runs the server out.**
+
+- **Fix:** connection failures name the fix instead of echoing the driver. A PostgreSQL
+  `DATABASE_URL` with no password used to fail with `SASL: SCRAM-SERVER-FIRST-MESSAGE: client password
+  must be a string`; now: `[EFC] PostgreSQL asked for a password and DATABASE_URL has none (user …).
+  Put it in the URL: postgres://user:<password>@host/db`. Also covered: wrong password, missing database
+  (`createdb …`), missing role, servers that need `?sslmode=require`, refused/unknown host, timeouts —
+  and for MongoDB a rejected login or an unreachable server (Atlas Network Access). pg-boss start-up
+  errors go through the same messages. The password is never printed; the driver's error is the
+  `cause`.
+- **New:** every cluster worker opens its own pool, so at boot one process per machine logs the total
+  (`workers × (databasePool.max + pg-boss)`) and, on PostgreSQL, warns when it exceeds the server's
+  `max_connections` minus the superuser reserve — before "too many clients" shows up under load.
+- **Changed:** `create-efc-app` reminds PostgreSQL users that EFC creates tables, not the database
+  or its login (`createdb <name>` locally; the dashboard's connection string for Neon, Supabase, RDS).
+
+## 0.9.4 — 2026-10-28
+
+**Auth strategy: chosen on init, and Bearer apps actually get a token.**
+
+- **Fix:** with the Bearer strategy, the generated login, `/auth/refresh`, custom-entity login
+  (`efc add auth:<name>`) and Google/Apple sign-in only ever set a cookie, and `requireAuth` only reads
+  the `Authorization` header — so a Bearer app could not log anyone in. `issueToken` now returns the
+  token under `'bearer'` (and sets no cookie); the generated routes send `token` (and `refreshToken`)
+  in the body. Google/Apple sign-in redirects to `OAUTH_SUCCESS_REDIRECT#code=<code>` — a one-time
+  code (60 s, single use) the app posts to the new `/auth/oauth/exchange` for the token, so the JWT never
+  appears in a URL. The app starts sign-in with a PKCE `code_challenge` and must send the matching
+  `code_verifier`, so another app catching the `myapp://` redirect can't redeem the code. Under `'http-only'` nothing changes: cookie set, `issueToken` resolves `undefined`,
+  no token in the body.
+- **Changed:** `create-efc-app` asks **Authentication:** up front — `http-only cookie` (browsers:
+  websites and SPAs, recommended), `Bearer token` (mobile/desktop apps, API clients) or `None`. Before,
+  the question only appeared when an auth feature happened to be ticked, so it was easy to skip.
+- **Changed:** `efc add auth` asks the strategy too and writes it to `authStrategy` in `efc.config`
+  (before, it always kept `'http-only'`). Without a terminal or with `--no-prompt`, `efc.config` is
+  left as it is.
+- **New:** `authStrategy: 'bearer'`. `'localStorage'` is the old name and keeps working — it never
+  decided where the client stores the token, and a token in browser `localStorage` is readable by any
+  script on the page. Any other value still acts as Bearer, as before, but now logs a warning at
+  startup (a typo of `'http-only'` used to fail silently); it becomes an error in 1.0.
+- **Upgrading a Bearer app:** use the return value — `const token = await issueToken(res, payload);
+  res.json({ ...(token ? { token } : {}) })` — or re-add the routes with `efc add auth --overwrite`.
+  New apps depend on `express-file-cluster@^0.9.4`.
+
 ## 0.9.3 — 2026-10-28
 
 - **Fix:** `efc start prod` now loads `.env` from the working directory when one exists. Variables

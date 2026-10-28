@@ -37,9 +37,18 @@ async function sign(payload: Record<string, unknown>): Promise<string> {
     .sign(new TextEncoder().encode(secret));
 }
 
-export async function issueToken(res: Response, payload: Record<string, unknown>): Promise<void> {
-  const { cookieDomain } = getConfig();
+/**
+ * Signs a JWT for `payload` and hands it to the client the configured way: `'http-only'`
+ * sets the `efc_token` cookie and resolves `undefined`; `'bearer'` resolves the token for
+ * the response body (no cookie). `res.json({ ...(token ? { token } : {}) })` works for both.
+ */
+export async function issueToken(
+  res: Response,
+  payload: Record<string, unknown>,
+): Promise<string | undefined> {
+  const { cookieDomain, strategy } = getConfig();
   const token = await sign(payload);
+  if (strategy !== 'http-only') return token;
 
   res.cookie('efc_token', token, {
     httpOnly: true,
@@ -47,6 +56,7 @@ export async function issueToken(res: Response, payload: Record<string, unknown>
     sameSite: 'strict',
     ...(cookieDomain !== undefined && { domain: cookieDomain }),
   });
+  return undefined;
 }
 
 export function revokeToken(res: Response): void {
@@ -66,7 +76,10 @@ function tokenFrom(req: Request): string | undefined {
 }
 
 async function verify(token: string): Promise<JWTPayload> {
-  const { payload } = await jwtVerify(token, new TextEncoder().encode(getConfig().secret));
+  // Only the algorithm EFC signs with — never whatever the token's header claims.
+  const { payload } = await jwtVerify(token, new TextEncoder().encode(getConfig().secret), {
+    algorithms: ['HS256'],
+  });
   return payload;
 }
 

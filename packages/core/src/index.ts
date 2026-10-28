@@ -39,7 +39,7 @@ import { isHttpError } from './errors.js';
 import { connectMongo } from './db/mongo.js';
 import { setDbClient } from './db/index.js';
 import { setDbEngine, setAutoSync } from './db/engine.js';
-import { connectPostgres } from './db/postgres.js';
+import { checkConnectionBudget, connectPostgres } from './db/postgres.js';
 import { runWithContext } from './context.js';
 import { configureLogger, getLogger, requestLogger } from './logger.js';
 import { configureQueryLog } from './db/query-log.js';
@@ -103,6 +103,27 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   const clusterEnabled = config.cluster ?? process.env['NODE_ENV'] === 'production';
 
   configureLogger(config.logging);
+  // Any value but 'http-only' acts as bearer, as it always has — an app may rely on that, so
+  // 0.9.x only warns (a typo of 'http-only' silently means no cookie). 1.0 makes it an error.
+  if (
+    !['http-only', 'bearer', 'localStorage'].includes(authStrategy) &&
+    (!clusterEnabled || cluster.isPrimary) // once, not once per worker
+  ) {
+    getLogger().warn(
+      `[EFC] Unknown authStrategy "${String(authStrategy)}" — treated as 'bearer'. Use 'http-only' or 'bearer'; this will be an error in 1.0.`,
+    );
+  }
+  // HS256 with a short secret can be brute-forced offline from any token a user holds.
+  if (
+    jwtSecret &&
+    Buffer.byteLength(jwtSecret) < 32 &&
+    process.env['NODE_ENV'] === 'production' &&
+    (!clusterEnabled || cluster.isPrimary)
+  ) {
+    getLogger().warn(
+      `[EFC] jwtSecret is ${Buffer.byteLength(jwtSecret)} bytes — use at least 32 random bytes in production (openssl rand -hex 64).`,
+    );
+  }
   configureQueryLog(config.logging);
 
   if (clusterEnabled && cluster.isPrimary) {
@@ -165,12 +186,31 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   // Pre-Flight step 1: Connect database. The engine decides what defineModel compiles to.
   if (database) setDbEngine(database);
   setAutoSync(config.autoSync ?? true);
+  // Pools are per worker; one process per machine reports the machine's total.
+  const poolWorkers = clusterEnabled ? (workers ?? os.cpus().length) : 1;
+  const reportsPools = !clusterEnabled || cluster.worker?.id === 1;
   if (database === 'mongodb' && databaseUrl) {
     const conn = await connectMongo(databaseUrl, config.databasePool);
     setDbClient(conn as unknown as Record<string, unknown>);
+    if (reportsPools) {
+      const max = config.databasePool?.max ?? 100; // mongoose's maxPoolSize default
+      getLogger().info(
+        `MongoDB connections: up to ${poolWorkers * max} from this machine (${poolWorkers} worker(s) × maxPoolSize ${max})`,
+      );
+    }
   } else if (database === 'postgresql' && databaseUrl) {
     const pool = await connectPostgres(databaseUrl, config.databasePool);
     setDbClient(pool as unknown as Record<string, unknown>);
+    if (reportsPools) {
+      const max = config.databasePool?.max ?? 10; // node-postgres' default
+      // pg-boss on the same database opens its own pool (node-postgres default 10).
+      const boss =
+        config.tasks && config.tasks.backend === 'pg-boss' && !config.tasks.connectionString
+          ? 10
+          : 0;
+      const breakdown = `${poolWorkers} worker(s) × (pool ${max}${boss ? ` + pg-boss ${boss}` : ''})`;
+      await checkConnectionBudget(poolWorkers * (max + boss), breakdown);
+    }
   }
 
   // Pre-Flight step 1b: Cache (also the session-revocation store requireAuth consults)
@@ -246,8 +286,10 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
         // isHttpError() covers the common case, but errors can also arrive as plain
         // objects with a numeric statusCode (e.g. thrown across a module boundary, or
         // duck-typed by user code) — fall back to that shape before giving up to 500.
+        // Only 4xx: a library's 5xx message can describe internals (hosts, SQL, paths).
+        const status = (err as { statusCode?: unknown } | null)?.statusCode;
         const duckTyped =
-          err instanceof Error && typeof (err as { statusCode?: unknown }).statusCode === 'number'
+          err instanceof Error && typeof status === 'number' && status >= 400 && status < 500
             ? (err as Error & { statusCode: number })
             : null;
 

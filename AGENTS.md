@@ -49,6 +49,7 @@ boot order, common mistakes, what's not implemented). It applies to every agent,
 - `ignite()` does not load `efc.config.ts`, and `apiDir` / `tasksDir` are not options — `src/api`
   and `src/tasks` are found by convention.
 - Don't document, scaffold or suggest features listed as not implemented in `CLAUDE.md`.
+- Generated routes must check that request values are strings (`typeof x !== 'string'` → 400) before they reach a filter, and strip `password`, `refreshToken`, `resetToken`, `verifyToken` (+ expiries) from records they return (e2e `validates request value types…` guards it)
 - When the docs and the code disagree, the code in `packages/core/src` wins — then fix the docs.
 
 ## 3. The docs ship with the packages

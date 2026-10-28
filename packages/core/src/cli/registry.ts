@@ -43,6 +43,8 @@ export interface ItemPrompt {
   patternMessage?: string;
   stripSpaces?: boolean;
   note?: string;
+  /** Write the answer to this efc.config key instead of .env (e.g. `authStrategy`). */
+  config?: string;
 }
 
 export interface RegistryIndexItem {
@@ -231,7 +233,7 @@ export interface AddPlan {
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
   env: RegistryEnvVar[];
-  /** Questions for the env vars being added (deduplicated by name + condition). */
+  /** Questions for the env vars and config keys being added (deduplicated by name + condition). */
   prompts: ItemPrompt[];
   docs: { item: string; text: string }[];
   problems: string[];
@@ -338,6 +340,7 @@ export function planAdd(
   }
 
   // Ask only about env vars that are being added; choices (lower-case) come along with them.
+  // Config questions (`config`) belong to the item itself, so they're asked whenever it's added.
   const adding = new Set(plan.env.map((v) => v.key));
   for (const name of items) {
     const prompts = registry.meta(name).prompts ?? [];
@@ -352,7 +355,7 @@ export function planAdd(
       const dup = plan.prompts.some(
         (q) => q.name === p.name && JSON.stringify(q.when) === JSON.stringify(p.when),
       );
-      if (!dup && sets(p)) plan.prompts.push(p);
+      if (!dup && (p.config !== undefined || sets(p))) plan.prompts.push(p);
     }
   }
   return plan;
@@ -435,6 +438,45 @@ export function envFromAnswers(
   return env;
 }
 
+/** efc.config values from the answers to `config` prompts. */
+export function configFromAnswers(
+  prompts: ItemPrompt[],
+  answers: PromptAnswers,
+): Record<string, string> {
+  const config: Record<string, string> = {};
+  for (const p of prompts) {
+    if (p.config !== undefined && p.name in answers && promptApplies(p, answers)) {
+      config[p.config] = answers[p.name]!;
+    }
+  }
+  return config;
+}
+
+/**
+ * Sets string values in efc.config.(ts|js) by rewriting their `key: '…'` line. Returns the
+ * edits it couldn't make (no config file, or the key isn't a plain string literal there).
+ */
+export function setConfigValues(cwd: string, values: Record<string, string>): string[] {
+  const entries = Object.entries(values);
+  if (entries.length === 0) return [];
+  const file = ['efc.config.ts', 'efc.config.js', 'efc.config.mjs']
+    .map((f) => path.join(cwd, f))
+    .find((f) => fs.existsSync(f));
+  if (!file) return entries.map(([k, v]) => `efc.config: set \`${k}: '${v}'\``);
+  let text = fs.readFileSync(file, 'utf8');
+  const manual: string[] = [];
+  for (const [key, value] of entries) {
+    // Only a single plain `key: '…'` line is rewritten. Zero (computed, or removed) or several
+    // (a nested object with the same key) → reported for a human instead of guessed.
+    const re = new RegExp(`^(\\s*)${key}:\\s*(['"])[^'"\\n]*\\2`, 'gm');
+    const found = text.match(re)?.length ?? 0;
+    if (found === 1) text = text.replace(re, `$1${key}: '${value}'`);
+    else manual.push(`${path.basename(file)}: set \`${key}: '${value}'\``);
+  }
+  fs.writeFileSync(file, text);
+  return manual;
+}
+
 function envLine(key: string, value: string): string {
   if (!/[\s#"'`]/.test(value)) return `${key}=${value}`;
   return value.includes("'") ? `${key}="${value.replace(/"/g, '\\"')}"` : `${key}='${value}'`;
@@ -443,12 +485,14 @@ function envLine(key: string, value: string): string {
 /**
  * Carry out a plan: write files, merge package.json and .env, update efc.json. `env` holds
  * the answers to the plan's prompts (`envFromAnswers`); other new vars get their defaults.
+ * `config` (`configFromAnswers`) is written to efc.config; unanswered keys are left alone.
  */
 export function applyAdd(
   cwd: string,
   plan: AddPlan,
   registry: Registry,
   env: Record<string, string> = {},
+  config: Record<string, string> = {},
 ): AddResult {
   const result: AddResult = {
     written: [],
@@ -517,6 +561,8 @@ export function applyAdd(
         .map((v) => `${v.key}=${v.example}`),
     );
   }
+
+  result.manual.push(...setConfigValues(cwd, config));
 
   if (cfg.modelApi === 'defineTable' && cfg.database === 'postgresql' && newModels.length) {
     result.manual.push(...registerModels(cwd, cfg.language, newModels));
@@ -768,7 +814,8 @@ import { ${pascal} } from '../../../model/${pascal}.js';
 
 export const POST = async ${typedArgs} => {
   const { name, email, password } = req.body;
-  if (!name || !email || !password) {
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || !name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
   }
   const existing = await ${db.findOne(pascal, '{ email }')};
@@ -791,15 +838,19 @@ import { ${pascal} } from '../../../model/${pascal}.js';
 
 export const POST = async ${typedArgs} => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
 
   const record = await ${db.findOne(pascal, '{ email }')};
   if (!record) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await verifyPassword(password, record.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!record.isActive) return res.status(403).json({ error: 'Account suspended' });
-  await issueToken(res, { id: record.id, role: record.role, email: record.email });
-  res.json({ message: 'Logged in as ${slug}' });
+  const token = await issueToken(res, { id: record.id, role: record.role, email: record.email });
+  // bearer: the client stores the token itself; http-only: it's a cookie.
+  res.json({ message: 'Logged in as ${slug}', ...(token ? { token } : {}) });
 };
 `;
 }
