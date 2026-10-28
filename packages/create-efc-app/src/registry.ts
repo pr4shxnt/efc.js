@@ -14,7 +14,7 @@ export interface Variant {
   key: string;
   language: ScaffoldOptions['language'];
   database: ScaffoldOptions['database'];
-  modelApi: 'defineModel' | 'defineTable';
+  modelApi: 'defineModel' | 'defineTable' | 'defineCollection';
 }
 
 export const VARIANTS: Variant[] = (['typescript', 'javascript'] as const).flatMap((language) => {
@@ -25,6 +25,12 @@ export const VARIANTS: Variant[] = (['typescript', 'javascript'] as const).flatM
       language,
       database: 'mongodb' as const,
       modelApi: 'defineModel' as const,
+    },
+    {
+      key: `${lang}-mongo-collection`,
+      language,
+      database: 'mongodb' as const,
+      modelApi: 'defineCollection' as const,
     },
     {
       key: `${lang}-pg-model`,
@@ -46,7 +52,9 @@ export function variantKey(v: Pick<Variant, 'language' | 'database' | 'modelApi'
     (x) =>
       x.language === v.language &&
       x.database === v.database &&
-      (x.database === 'mongodb' || x.modelApi === v.modelApi),
+      (x.database === 'mongodb'
+        ? (x.modelApi === 'defineCollection') === (v.modelApi === 'defineCollection')
+        : x.modelApi === v.modelApi),
   );
   if (!found) throw new Error(`No registry variant for ${JSON.stringify(v)}`);
   return found.key;
@@ -520,7 +528,7 @@ export function registryOptions(
     projectName: 'efc-app',
     language: v.language,
     database: v.database,
-    ...(v.database === 'postgresql' && { modelApi: v.modelApi }),
+    modelApi: v.modelApi,
     authStrategy: 'http-only',
     cluster: true,
     tasks: true,
@@ -764,7 +772,12 @@ export async function writeManifest(
     registry: (pkg.dependencies['express-file-cluster'] ?? '').replace(/^[^\d]*/, ''),
     language: opts.language,
     database: opts.database,
-    modelApi: opts.database === 'postgresql' ? (opts.modelApi ?? 'defineTable') : 'defineModel',
+    modelApi:
+      opts.database === 'postgresql'
+        ? (opts.modelApi ?? 'defineTable')
+        : opts.modelApi === 'defineModel'
+          ? 'defineModel'
+          : 'defineCollection',
     tasks: opts.tasks ? (opts.taskBackend ?? 'bullmq') : null,
     items: [...withDependencies(items)].sort(),
     files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))),

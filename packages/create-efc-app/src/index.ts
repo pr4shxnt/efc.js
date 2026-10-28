@@ -53,22 +53,33 @@ async function main(): Promise<void> {
   });
   if (p.isCancel(database)) cancel();
 
-  let modelApi: ScaffoldOptions['modelApi'];
-  if (database === 'postgresql') {
-    const api = await p.select({
-      message: 'Models:',
-      options: [
-        {
-          value: 'defineTable',
-          label: 'defineTable',
-          hint: 'PostgreSQL-native — foreign keys, relations, include, Prisma-style queries',
-        },
-        { value: 'defineModel', label: 'defineModel', hint: 'portable — the same API on MongoDB' },
-      ],
-    });
-    if (p.isCancel(api)) cancel();
-    modelApi = api as ScaffoldOptions['modelApi'];
-  }
+  const api = await p.select({
+    message: 'Models:',
+    options:
+      database === 'postgresql'
+        ? [
+            {
+              value: 'defineTable',
+              label: 'defineTable',
+              hint: 'PostgreSQL-native — foreign keys, relations, include, Prisma-style queries',
+            },
+            { value: 'defineModel', label: 'defineModel', hint: 'portable — the same API on MongoDB' },
+          ]
+        : [
+            {
+              value: 'defineCollection',
+              label: 'defineCollection',
+              hint: 'MongoDB-native — mongoose-style queries, typed pipelines, BSON types',
+            },
+            {
+              value: 'defineModel',
+              label: 'defineModel',
+              hint: 'portable — the same API on PostgreSQL',
+            },
+          ],
+  });
+  if (p.isCancel(api)) cancel();
+  const modelApi = api as ScaffoldOptions['modelApi'];
 
   // pg-boss keeps jobs in the app's own PostgreSQL; BullMQ needs Redis.
   const taskBackend = await p.select({

@@ -15,7 +15,7 @@ steps = [
     ('Project name', name + ENTER),
     ('Language', (DOWN if lang == 'js' else '') + ENTER),
     ('Database', (DOWN if db == 'postgresql' else '') + ENTER),
-    *([('Models:', ENTER)] if db == 'postgresql' else []),  # default: defineTable
+    ('Models:', ENTER),  # default: defineTable (PostgreSQL) / defineCollection (MongoDB)
     ('Task queue backend', (DOWN if db == 'postgresql' and backend == 'bullmq' else '') + ENTER),
     ('Multi-core clustering', ENTER),
     ('Authentication:', ENTER),  # default: http-only cookie

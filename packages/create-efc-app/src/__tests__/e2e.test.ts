@@ -71,7 +71,8 @@ async function createApp(
   const variant = {
     language: stack.language,
     database: stack.database,
-    modelApi: 'defineTable' as const,
+    // What the scaffolder picks by default: defineCollection on MongoDB, defineTable on PostgreSQL.
+    modelApi: stack.database === 'mongodb' ? ('defineCollection' as const) : ('defineTable' as const),
   };
   const extra = { taskBackend: stack.taskBackend };
   await scaffold(registryOptions(variant, items, { ...extra, projectName: appDir }));
@@ -159,6 +160,9 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
     }
     await fs.writeFile(envPath, env);
 
+    expect(await fs.readFile(path.join(appDir, 'src', 'model', `User.${ts ? 'ts' : 'js'}`), 'utf8')).toContain(
+      stack.database === 'mongodb' ? "defineCollection('User'" : "defineTable('User'",
+    );
     run('npm', ['install', '--no-audit', '--no-fund'], appDir);
   }, 300_000);
 

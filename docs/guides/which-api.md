@@ -13,7 +13,7 @@ EFC has three ways to define a model. They share one foundation: the schema form
 
 ## Pick one
 
-- **Building on PostgreSQL:** use `defineTable`. You get foreign keys, joins and SQL types. `create-efc-app` generates `defineTable` models for PostgreSQL apps.
+- **Building on PostgreSQL:** use `defineTable`. You get foreign keys, joins and SQL types. `create-efc-app` generates `defineTable` models for PostgreSQL apps (and `defineCollection` for MongoDB apps).
 - **Building on MongoDB:** use `defineCollection`. You get the full query language, geo and text search, BSON types, `bulkWrite` and change streams. It is mongoose underneath (`raw()` hands you the mongoose model).
 - **The app may switch engines, or ships to both:** use `defineModel` and stay inside the shared filter and update subset (`$eq $ne $gt $gte $lt $lte $in $nin $exists $regex $and $or`; `$set $unset $inc $push $pull`).
 - **Coming from Prisma:** use `defineTable`. `efc import-prisma` writes the models for you. See [Coming from Prisma](./coming-from-prisma.md).
