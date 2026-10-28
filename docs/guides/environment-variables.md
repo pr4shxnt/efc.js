@@ -103,4 +103,4 @@ SMTP_FROM=you@example.com
 
 In development (`efc start dev`), the CLI loads `.env` into `process.env` before your app runs, so `efc.config.ts`'s `process.env.X` reads see it. It re-reads `.env` fresh on every `tsx watch` restart — editing `.env` and saving a source file is enough to pick up the change, no need to stop and restart `efc start dev` itself. Variables already present in `process.env` (e.g. real OS-exported vars, CI-injected secrets) take precedence over `.env`.
 
-In production (`efc start prod`), `.env` is **not** loaded. Platforms (Docker, Kubernetes, Railway, Heroku) inject secrets directly into `process.env`, and `efc.config.ts`'s `process.env.X` reads pick those up the same way. This is intentional — avoid reading secret files from disk in production.
+In production (`efc start prod`), `.env` is loaded if one exists in the working directory — handy on a plain VPS. Platforms (Docker, Kubernetes, Railway, Heroku) that inject secrets directly into `process.env` always win: the file only fills in variables that aren't already set.

@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import pc from 'picocolors';
+import { readEnvFile } from '../env.js';
 
 export function startCommand(): Command {
   const cmd = new Command('start');
@@ -153,11 +154,11 @@ function startProd(): void {
 
   console.log(pc.cyan('[EFC] Starting production server…'));
 
-  // Production env comes exclusively from process.env — no .env file loading.
-  // Platforms (Docker, Kubernetes, Railway, Heroku, etc.) inject vars directly.
+  // Platforms (Docker, Kubernetes, Railway, Heroku, etc.) inject vars directly; a .env
+  // file, if present, only fills in what they didn't set.
   const child = spawn('node', [distEntry], {
     stdio: 'inherit',
-    env: { ...process.env, NODE_ENV: 'production' },
+    env: { ...readEnvFile(cwd), ...process.env, NODE_ENV: 'production' },
   });
   forwardSignals(child);
 }
