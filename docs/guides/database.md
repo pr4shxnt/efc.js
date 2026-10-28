@@ -125,6 +125,8 @@ if (typeof refreshToken !== 'string') return res.status(400).json({ error: 'Inva
 const user = await User.findOne({ refreshToken });
 ```
 
+Without the check, `{"refreshToken": {"$ne": null}}` (or `{"not": ""}` on `defineTable`) matches any account that has a token — the account takeover fixed in the generated routes in 0.9.6 ([GHSA-85c7-prvr-q2rp](https://github.com/pr4shxnt/efc.js/security/advisories/GHSA-85c7-prvr-q2rp)).
+
 — or validate the body with `export const schema` ([validation](./validation.md)), which replaces it with the parsed, typed output.
 
 ## Writing

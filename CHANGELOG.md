@@ -8,15 +8,25 @@ mirrors this file — see `AGENTS.md` §5.
 
 **Security release — update your generated auth routes.** Found by an internal review of the framework and
 the code `create-efc-app` / `efc add` generate. Upgrading the package does not change files already in your
-app; see *Updating an existing app* below. Full details will follow in a GitHub security advisory.
+app; see *Updating an existing app* below. Advisory: GHSA-85c7-prvr-q2rp.
 
-- **Security (critical):** generated auth routes (login, register, refresh, forgot/reset password, email
-  verification, admin user creation, custom-entity `auth:<name>` routes) now validate the type of every
-  request value they look up by, and answer 400 otherwise.
-- **Security (high):** user objects returned by the profile, admin user and register routes no longer
-  include `refreshToken`, `resetToken`, `verifyToken` or their expiries.
-- **Security (high):** changing a user's role, deactivating or deleting them in the admin routes now ends
-  their sessions (`revokeAllSessions`), and `/auth/refresh` refuses inactive accounts (403).
+- **Security (critical) — account takeover.** Generated routes passed request values straight into
+  filters, and EFC filters accept operator objects. `POST /auth/refresh` with
+  `{"refreshToken": {"$ne": null}}` (MongoDB / `defineModel`) or `{"refreshToken": {"not": ""}}`
+  (PostgreSQL / `defineTable`) issued a session for another account — any user who had logged in within
+  30 days — with no credentials. `POST /auth/reset-password` with an operator as `token` reset the
+  password of an account with a pending reset; `GET /auth/verify-email?token[$ne]=x` verified an arbitrary
+  pending account. Every generated auth route (login, register, refresh, forgot/reset password, email
+  verification, admin user creation, custom-entity `auth:<name>` routes) now answers 400 unless the values
+  it looks up by are strings. An e2e test runs these requests against all three stacks.
+- **Security (high) — token fields in responses.** `GET /user/profile`, the admin user routes and
+  register returned the record minus `password` only. With `authStrategy: 'http-only'`, a script on the page
+  (XSS) could read the 30-day refresh token the cookie is meant to protect. `refreshToken`, `resetToken`,
+  `verifyToken` and their expiries are stripped now.
+- **Security (high) — suspended users kept access.** The role lives in the JWT and `/auth/refresh` didn't
+  check `isActive`, so a suspended or demoted user kept their access and could mint new tokens for 30 days.
+  Changing a user's role, deactivating or deleting them in the admin routes now ends their sessions
+  (`revokeAllSessions`), and `/auth/refresh` refuses inactive accounts (403).
 - **Hardening (framework):** `requireAuth` only accepts HS256 tokens (the algorithm EFC signs with);
   errors that carry a 5xx `statusCode` no longer echo their message to clients (4xx still do); a
   `jwtSecret` under 32 bytes logs a warning in production.
@@ -24,7 +34,8 @@ app; see *Updating an existing app* below. Full details will follow in a GitHub 
   [Versioning & support](docs/versioning.md) — what a patch, minor and major may contain, LTS from 1.0,
   supported Node versions (22 and 24). Docs site: *Which model API?*, *Relations*, *Versioning & support*.
 
-**Updating an existing app** (generated before 0.9.6) — do this now: re-add untouched routes with
+**Updating an existing app** (generated before 0.9.6) — do this now, and consider rotating `JWT_SECRET`
+(ends every session) and clearing stored `refreshToken` values if the app was exposed: re-add untouched routes with
 `efc add auth user-profile account-security forgot-password email-verification admin-users --overwrite`
 (only the items you have; reapply your edits to any file you changed; custom entities: `efc add auth:<name>
 --overwrite`), or by hand: return 400 unless `typeof value === 'string'` for every `req.body` / `req.query`
