@@ -153,12 +153,7 @@ function refFor(field: string, ctx: Ctx): { ref?: string } {
   return model ? { ref: model } : {};
 }
 
-function schemaOf(
-  fields: Map<string, Shape>,
-  total: number,
-  prefix: string,
-  ctx: Ctx,
-): AnyRecord {
+function schemaOf(fields: Map<string, Shape>, total: number, prefix: string, ctx: Ctx): AnyRecord {
   const out: AnyRecord = {};
   for (const [k, shape] of fields) {
     const def = fieldDef(k, shape, total, prefix ? `${prefix}.${k}` : k, ctx);
@@ -202,7 +197,9 @@ export async function pullMongo(
 
     const idShape = shapes.get('_id');
     if (idShape && [...idShape.kinds.keys()].some((k) => k !== 'objectId')) {
-      ctx.notes.push('_id is not an ObjectId here; defineCollection creates ObjectId ids for new documents');
+      ctx.notes.push(
+        '_id is not an ObjectId here; defineCollection creates ObjectId ids for new documents',
+      );
     }
     shapes.delete('_id');
     shapes.delete('__v');
@@ -225,7 +222,8 @@ export async function pullMongo(
     // Refs the field names didn't reveal: the collection that holds every sampled id.
     for (const [field, def] of fields) {
       const d = def as AnyRecord;
-      const holdsIds = d['type'] === 'objectId' || (d['type'] === 'array' && d['of'] === 'objectId');
+      const holdsIds =
+        d['type'] === 'objectId' || (d['type'] === 'array' && d['of'] === 'objectId');
       if (!holdsIds || d['ref'] !== undefined) continue;
       const ids = new Map<string, unknown>();
       for (const doc of docs) {
@@ -264,7 +262,11 @@ export async function pullMongo(
         ix['expireAfterSeconds'] === undefined &&
         !keys[0]!.includes('.');
       const field = simple ? fields.find(([f]) => f === keys[0]) : undefined;
-      if (field && !Array.isArray(field[1]) && typeof (field[1] as AnyRecord)['type'] === 'string') {
+      if (
+        field &&
+        !Array.isArray(field[1]) &&
+        typeof (field[1] as AnyRecord)['type'] === 'string'
+      ) {
         const def = field[1] as AnyRecord;
         const dir = spec[keys[0]!];
         if (ix['unique']) def['unique'] = true;

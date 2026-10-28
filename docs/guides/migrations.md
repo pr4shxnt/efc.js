@@ -11,7 +11,7 @@
 | `efc db seed [name]` | Runs every seed in `src/seeds/`, or just one |
 | `efc db sync [--dry-run] [--exit-code]` | Brings the database in line with the models (or reports what would change) |
 | `efc db pull` | Writes `defineTable` models for an existing PostgreSQL database, `defineCollection` models for a MongoDB one |
-| `efc db studio [-p 4983]` | Opens a read-only database browser on `127.0.0.1` |
+| `efc db studio [-p 4983] [--write]` | Opens a database browser on `127.0.0.1` — read-only unless `--write` |
 
 All of them read `DATABASE_URL` from the environment or `.env` (override with `--database-url`); the engine follows the URL scheme.
 
@@ -232,3 +232,7 @@ CMD ["sh", "-c", "npx efc db migrate --dist && npx efc start prod"]
 ## Studio
 
 `efc db studio` serves a read-only browser at `http://127.0.0.1:4983`: every table/collection with its row count, paginated rows, and expandable JSON cells. It binds to localhost only and rejects anything but `GET`.
+
+`efc db studio --write` adds **Insert**, **edit** (✎) and **Delete**. Writes go through your models in `src/model`, so validation, defaults, casting and timestamps apply exactly as in your app; a validation error is shown next to the editor. Tables or collections that no model stores in stay read-only. Ids, `createdAt`/`updatedAt` and `__v` are never written from the editor.
+
+Only the studio page can write: every write must carry a random token embedded in that page, come from the studio's own origin, and be JSON — so another site open in your browser can't reach it. Writes change real data; point `DATABASE_URL` at a development database.

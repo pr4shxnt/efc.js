@@ -12,7 +12,7 @@ efc db pull [--out src/model] [--sample 1000]  # write models for the database: 
 efc db rollback [--steps 2]    # revert the last batch(es)
 efc db status                  # applied vs pending
 efc db seed [name]             # run all seeds, or one
-efc db studio [--port 4983]    # read-only browser on 127.0.0.1 (rows + table structure)
+efc db studio [--port 4983] [--write]  # browser on 127.0.0.1 (rows + structure); --write edits through src/model
 ```
 
 ## Common options

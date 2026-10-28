@@ -40,6 +40,8 @@ interface RunnerOptions {
   steps?: number;
   seed?: string;
   port?: number;
+  /** `efc db studio --write`. */
+  write?: boolean;
 }
 
 // Every model lives in src/model(s)/ by convention; importing the files registers them.
@@ -349,10 +351,19 @@ async function main(): Promise<void> {
         break;
       }
       case 'studio': {
-        const { url: studioUrl } = await startStudio(engine, client, opts.port ?? 4983);
+        // --write edits through the app's models, so load them (like sync does).
+        const models = opts.write ? await importModels(opts.root) : [];
+        const { url: studioUrl } = await startStudio(engine, client, opts.port ?? 4983, {
+          write: !!opts.write,
+          models,
+        });
         console.log(
-          `\n  ${pc.bold('EFC Studio')} ${pc.dim(`(${engine}, read-only)`)}  ${pc.cyan(studioUrl)}\n`,
+          `\n  ${pc.bold('EFC Studio')} ${pc.dim(`(${engine}, ${opts.write ? `write — ${models.length} model(s)` : 'read-only'})`)}  ${pc.cyan(studioUrl)}\n`,
         );
+        if (opts.write)
+          console.log(
+            pc.yellow('  Writes change real data. Point DATABASE_URL at a development database.\n'),
+          );
         await new Promise<void>((resolve) => {
           process.once('SIGINT', resolve);
           process.once('SIGTERM', resolve);

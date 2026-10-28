@@ -825,7 +825,7 @@ export default defineTask(async (payload) => {
     <tr><td><code>efc db rollback [--steps 2]</code></td><td>Revert the last batch(es).</td></tr>
     <tr><td><code>efc db status</code></td><td>Applied vs pending migrations.</td></tr>
     <tr><td><code>efc db seed [name]</code></td><td>Run all seeds, or one.</td></tr>
-    <tr><td><code>efc db studio</code></td><td>Read-only database browser on 127.0.0.1.</td></tr>
+    <tr><td><code>efc db studio [--write]</code></td><td>Database browser on 127.0.0.1 — read-only, or with <code>--write</code> insert/edit/delete through your models (validated).</td></tr>
   </tbody>
 </table>
 

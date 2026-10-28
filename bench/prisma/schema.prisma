@@ -1,0 +1,31 @@
+// The same two tables every PostgreSQL contender gets: users and their posts.
+generator client {
+  provider     = "prisma-client"
+  output       = "./generated"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  posts     Post[]
+
+  @@map("prisma_users")
+}
+
+model Post {
+  id       String @id @default(uuid()) @db.Uuid
+  title    String
+  views    Int    @default(0)
+  authorId String @db.Uuid
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([authorId])
+  @@map("prisma_posts")
+}

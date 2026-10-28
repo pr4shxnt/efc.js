@@ -16,9 +16,7 @@ type Nested<V> = V extends readonly unknown[] | Date | Uint8Array | bigint
     ? V
     : never;
 /** A field, or one level into an embedded object: `'name'`, `'address.city'`. */
-type Path<T> =
-  | Keys<T>
-  | { [K in Keys<T>]: `${K}.${Keys<Nested<NonNullable<T[K]>>>}` }[Keys<T>];
+type Path<T> = Keys<T> | { [K in Keys<T>]: `${K}.${Keys<Nested<NonNullable<T[K]>>>}` }[Keys<T>];
 
 /** `'$field'` / `'$embedded.field'` — a reference to the current record's values. */
 export type FieldRef<T> = `$${Path<T>}`;
@@ -77,12 +75,16 @@ export type GroupResult<T, G> = Simplify<
 >;
 
 /** Fields whose values are arrays. */
-type ArrayKeys<T> = { [K in Keys<T>]: NonNullable<T[K]> extends readonly unknown[] ? K : never }[Keys<T>];
+type ArrayKeys<T> = {
+  [K in Keys<T>]: NonNullable<T[K]> extends readonly unknown[] ? K : never;
+}[Keys<T>];
 
 /** `T` with ref field `K` replaced by the `M` record(s) it points to. */
 export type LookedUp<T, K extends keyof T, M> = Simplify<
   Omit<T, K> & {
-    [P in K]-?: NonNullable<T[K]> extends readonly unknown[] ? InferRecord<M>[] : InferRecord<M> | null;
+    [P in K]-?: NonNullable<T[K]> extends readonly unknown[]
+      ? InferRecord<M>[]
+      : InferRecord<M> | null;
   }
 >;
 
@@ -150,7 +152,9 @@ export class Pipeline<T> implements PromiseLike<T[]> {
     >
   > {
     return this.next(
-      options?.preserveNullAndEmptyArrays ? { $unwind: { path, preserveNullAndEmptyArrays: true } } : { $unwind: path },
+      options?.preserveNullAndEmptyArrays
+        ? { $unwind: { path, preserveNullAndEmptyArrays: true } }
+        : { $unwind: path },
     );
   }
 
@@ -167,7 +171,9 @@ export class Pipeline<T> implements PromiseLike<T[]> {
   }
 
   /** `$addFields` / `$set` — say what the new fields are: `addFields<{ total: number }>({ … })`. */
-  addFields<A extends AnyRecord>(spec: Record<keyof A, unknown>): Pipeline<Simplify<Omit<T, keyof A> & A>> {
+  addFields<A extends AnyRecord>(
+    spec: Record<keyof A, unknown>,
+  ): Pipeline<Simplify<Omit<T, keyof A> & A>> {
     return this.next({ $addFields: spec });
   }
 
@@ -197,11 +203,22 @@ export class Pipeline<T> implements PromiseLike<T[]> {
       const isArray = `__efc_isarr_${field.replace(/\./g, '_')}`;
       return this.next(async () => [
         { $set: { [isArray]: { $isArray: `$${field}` } } },
-        { $lookup: { from: await collectionOf(target), localField: field, foreignField: '_id', as: field } },
+        {
+          $lookup: {
+            from: await collectionOf(target),
+            localField: field,
+            foreignField: '_id',
+            as: field,
+          },
+        },
         {
           $set: {
             [field]: {
-              $cond: [`$${isArray}`, `$${field}`, { $ifNull: [{ $arrayElemAt: [`$${field}`, 0] }, null] }],
+              $cond: [
+                `$${isArray}`,
+                `$${field}`,
+                { $ifNull: [{ $arrayElemAt: [`$${field}`, 0] }, null] },
+              ],
             },
           },
         },

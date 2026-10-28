@@ -76,6 +76,17 @@ export interface RegisteredModel {
   pgTarget?(): { table: string; idKind: 'uuid' | 'serial' | 'bigserial' };
   /** defineTable only: its runtime, for `include` from other tables. */
   tableRuntime?(): unknown;
+  /** `efc db studio --write`: where it stores, and writes through the model (validated). */
+  studio?: StudioWriter;
+}
+
+export interface StudioWriter {
+  /** The table (PostgreSQL) or collection (MongoDB) its records live in. */
+  storage(): Promise<string>;
+  create(data: Record<string, unknown>): Promise<unknown>;
+  /** `id` as it appears in the URL; the model converts it. */
+  update(id: string, data: Record<string, unknown>): Promise<unknown>;
+  delete(id: string): Promise<unknown>;
 }
 
 // Every defined model by name, so `populate` can resolve a `ref` on either engine

@@ -507,6 +507,13 @@ function createCollection(name: string, schema: CollectionSchema, options: Colle
     pgTarget: () => {
       throw new Error(`[EFC] ${name} is a MongoDB collection (defineCollection)`);
     },
+    studio: {
+      storage: async () => (await model()).collection.collectionName,
+      create: (data) => model$.create(data as never),
+      update: (id, data) =>
+        model$.findByIdAndUpdate(id, data as never, { returnDocument: 'after' }),
+      delete: (id) => model$.findByIdAndDelete(id),
+    },
   });
   return model$;
 }

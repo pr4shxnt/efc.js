@@ -1,0 +1,24 @@
+{
+  "name": "efc-bench",
+  "private": true,
+  "type": "module",
+  "description": "Data-layer benchmarks: EFC (defineTable / defineCollection) vs Prisma, Drizzle and mongoose. Not part of the npm workspaces — its own lockfile, nothing here ships.",
+  "scripts": {
+    "setup": "prisma generate",
+    "bench": "tsx run.ts",
+    "bench:pg": "tsx run.ts --engine pg",
+    "bench:mongo": "tsx run.ts --engine mongo"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "drizzle-orm": "0.45.4",
+    "express-file-cluster": "file:../packages/core",
+    "mongoose": "9.11.4",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "prisma": "7.10.1",
+    "tsx": "^4.23.15"
+  }
+}

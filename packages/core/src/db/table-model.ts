@@ -2058,6 +2058,22 @@ export function createTable(name: string, schema: TableSchema, options: TableOpt
     findByIds: (ids) => model.findMany({ where: { id: { in: ids } } }),
     pgTarget: () => ({ table: rt().tbl.table, idKind: rt().tbl.idKind }),
     tableRuntime: () => rt(),
+    studio: (() => {
+      // URL ids are strings; serial ids are integers, bigserial ids bigints.
+      const idOf = (id: string): unknown =>
+        rt().tbl.idKind === 'serial'
+          ? Number(id)
+          : rt().tbl.idKind === 'bigserial'
+            ? BigInt(id)
+            : id;
+      return {
+        storage: async () => rt().tbl.table,
+        create: (data: AnyRecord) => model.create({ data } as never),
+        update: (id: string, data: AnyRecord) =>
+          model.update({ where: { id: idOf(id) }, data } as never),
+        delete: (id: string) => model.delete({ where: { id: idOf(id) } } as never),
+      };
+    })(),
   });
   return model;
 }

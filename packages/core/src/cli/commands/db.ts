@@ -151,9 +151,14 @@ export function dbCommand(): Command {
     run('seed', { ...opts, ...(name !== undefined && { seed: name }) }),
   );
 
-  common(cmd.command('studio').description('Open a local, read-only database browser'))
+  common(
+    cmd
+      .command('studio')
+      .description('Open a local database browser (read-only; --write edits through your models)'),
+  )
     .option('-p, --port <port>', 'port to listen on (127.0.0.1 only)', '4983')
-    .action((opts: { port: string; databaseUrl?: string; dist?: boolean }) =>
+    .option('--write', 'allow inserting, editing and deleting rows (through src/model, validated)')
+    .action((opts: { port: string; databaseUrl?: string; dist?: boolean; write?: boolean }) =>
       run('studio', { ...opts, port: Number(opts.port) }),
     );
 
