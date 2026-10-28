@@ -257,7 +257,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
 
 async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<void> {
   const deps: Record<string, string> = {
-    'express-file-cluster': '^0.9.1',
+    'express-file-cluster': '^0.9.2',
   };
   if (opts.database === 'mongodb') deps['mongoose'] = '^9.7.2';
   if (opts.database === 'postgresql') {
@@ -266,11 +266,8 @@ async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<vo
   }
   if (opts.tasks && opts.taskBackend === 'bullmq') deps['bullmq'] = '^5.0.0';
   if (opts.tasks && opts.taskBackend === 'pg-boss') deps['pg-boss'] = '^12.0.0';
-  if (opts.mailer) deps['nodemailer'] = '^6.9.0';
+  if (opts.mailer) deps['nodemailer'] = '^10.2.1';
   if (usesOAuth(opts)) deps['jose'] = '^6.2.3';
-  // Registry mode: the base has no auth, so no password hashing either.
-  const auth = !opts.registry || opts.userPortal || opts.adminPortal;
-  if (auth) deps['bcrypt'] = '^5.1.0';
 
   const devDeps: Record<string, string> = {
     vitest: '^5.0.3',
@@ -282,8 +279,7 @@ async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<vo
     devDeps['@types/node'] = '^22.0.0';
     devDeps['@types/express'] = '^4.17.21';
     devDeps['tsx'] = '^4.0.0';
-    if (opts.mailer) devDeps['@types/nodemailer'] = '^6.4.0';
-    if (auth) devDeps['@types/bcrypt'] = '^5.0.0';
+    if (opts.mailer) devDeps['@types/nodemailer'] = '^8.0.2';
     if (opts.database === 'postgresql') devDeps['@types/pg'] = '^8.11.0';
   }
 
@@ -303,6 +299,8 @@ async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<vo
     },
     dependencies: deps,
     devDependencies: devDeps,
+    // tsup 8 still asks for esbuild 0.27, which has an open advisory; 0.28 builds the same.
+    ...(opts.language === 'typescript' ? { overrides: { esbuild: '^0.28.1' } } : {}),
   };
 
   await fs.writeJson(path.join(dest, 'package.json'), pkg, { spaces: 2 });
@@ -715,14 +713,14 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   const hasModels = hasUser || hasAdmin;
 
   const loginDbImports = hasModels
-    ? `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\n${hasUser ? `import { User } from '../../model/User.js';\n` : ''}${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`
+    ? `import crypto from 'node:crypto';\n${hasUser ? `import { User } from '../../model/User.js';\n` : ''}${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`
     : '';
 
   const loginBody =
     hasAdmin && hasUser
       ? `  const admin = await ${db.findOne('Admin', `{ email }`)};
   if (admin) {
-    const match = await bcrypt.compare(password, admin.password);
+    const match = await verifyPassword(password, admin.password);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
     if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
     await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
@@ -732,7 +730,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
 
   const user = await ${db.findOne('User', `{ email }`)};
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-  const match = await bcrypt.compare(password, user.password);
+  const match = await verifyPassword(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
   await issueToken(res, { id: user.id, role: user.role, email: user.email });
@@ -741,7 +739,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
       : hasAdmin
         ? `  const admin = await ${db.findOne('Admin', `{ email }`)};
   if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
-  const match = await bcrypt.compare(password, admin.password);
+  const match = await verifyPassword(password, admin.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
   await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
@@ -749,7 +747,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   res.json({ message: 'Logged in as admin' });`
         : `  const user = await ${db.findOne('User', `{ email }`)};
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-  const match = await bcrypt.compare(password, user.password);
+  const match = await verifyPassword(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
   await issueToken(res, { id: user.id, role: user.role, email: user.email });
@@ -758,7 +756,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
 
   const loginContent = hasModels
     ? ts
-      ? `import { issueToken } from 'express-file-cluster/auth';
+      ? `import { issueToken, verifyPassword } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${loginDbImports}${loginMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
@@ -788,7 +786,7 @@ export const POST = async (req: Request, res: Response) => {
 ${loginBody}
 };
 `
-      : `import { issueToken } from 'express-file-cluster/auth';
+      : `import { issueToken, verifyPassword } from 'express-file-cluster/auth';
 ${loginDbImports}${loginMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 async function issueRefreshToken(res, model, id) {
@@ -862,7 +860,7 @@ ${logoutMeta}export const POST = async (req, res) => {
       : `export const meta = {\n  POST: {\n    description: 'Register a new user account.',\n    request: { body: { name: 'Jane Doe', email: 'jane@example.com', password: 'secret' } },\n    response: { status: 201, body: { message: 'Account created successfully' } },\n  },\n};\n\n`
     : '';
 
-  const registerDbImports = `import bcrypt from 'bcrypt';\nimport crypto from 'node:crypto';\n${sendsMail(opts) ? "import { enqueue } from 'express-file-cluster/tasks';\n" : ''}import { User } from '../../model/User.js';\n`;
+  const registerDbImports = `import { hashPassword } from 'express-file-cluster/auth';\nimport crypto from 'node:crypto';\n${sendsMail(opts) ? "import { enqueue } from 'express-file-cluster/tasks';\n" : ''}import { User } from '../../model/User.js';\n`;
 
   const sendVerifyEmail = sendsMail(opts)
     ? `
@@ -886,7 +884,7 @@ ${registerDbImports}${registerMeta}export const POST = async (req: Request, res:
   }
   const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
-  const hashed = await bcrypt.hash(password, 10);
+  const hashed = await hashPassword(password);
   const verifyToken = crypto.randomBytes(32).toString('hex');
   const user = await ${db.create('User', `{ name, email, password: hashed, verifyToken }`)};
 ${sendVerifyEmail}
@@ -901,7 +899,7 @@ ${sendVerifyEmail}
   }
   const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
-  const hashed = await bcrypt.hash(password, 10);
+  const hashed = await hashPassword(password);
   const verifyToken = crypto.randomBytes(32).toString('hex');
   const user = await ${db.create('User', `{ name, email, password: hashed, verifyToken }`)};
 ${sendVerifyEmail}
@@ -1016,12 +1014,10 @@ ${roleGuard}  // TODO: aggregate stats from DB
       : `export const meta = {\n  GET: {\n    description: 'List all users, paginated (admin only).',\n    request: { query: { page: '1', limit: '20' } },\n    response: { status: 200, body: { users: [], total: 0, page: 1, limit: 20 } },\n  },\n  POST: {\n    description: 'Create a new user account (admin only).',\n    request: { body: { name: 'Jane Doe', email: 'jane@example.com', password: 'secret', role: 'user' } },\n    response: { status: 201, body: { message: 'User created', user: { id: 'new-id', name: 'Jane Doe', email: 'jane@example.com', role: 'user' } } },\n  },\n};\n\n`
     : '';
 
-  const adminUsersDbImport = ts
-    ? `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`
-    : `import bcrypt from 'bcrypt';\nimport { User } from '../../../model/User.js';\n`;
+  const adminUsersDbImport = `import { User } from '../../../model/User.js';\n`;
 
   const usersListContent = ts
-    ? `import { requireAuth } from 'express-file-cluster/auth';
+    ? `import { hashPassword, requireAuth } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${adminUsersDbImport}${usersListMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
@@ -1037,13 +1033,13 @@ ${roleGuard}  const { name, email, password, role } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email and password are required' });
   const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
-  const hashed = await bcrypt.hash(password, 10);
+  const hashed = await hashPassword(password);
   const user = await ${db.create('User', `{ name, email, password: hashed, role: role ?? 'user' }`)};
   const { password: _, ...safe } = user;
   res.status(201).json({ message: 'User created', user: safe });
 };
 `
-    : `import { requireAuth } from 'express-file-cluster/auth';
+    : `import { hashPassword, requireAuth } from 'express-file-cluster/auth';
 ${adminUsersDbImport}${usersListMeta}${middlewares}
 export const GET = async (req, res) => {
 ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
@@ -1058,7 +1054,7 @@ ${roleGuard}  const { name, email, password, role } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email and password are required' });
   const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
-  const hashed = await bcrypt.hash(password, 10);
+  const hashed = await hashPassword(password);
   const user = await ${db.create('User', `{ name, email, password: hashed, role: role ?? 'user' }`)};
   const { password: _, ...safe } = user;
   res.status(201).json({ message: 'User created', user: safe });
@@ -1733,8 +1729,7 @@ ${sendResetEmail}  }
       : `  await ${db.update('User', `user.id`, `{ password: hashed, resetToken: '' }`)};`;
     const rpContent = ts
       ? `import type { Request, Response } from 'express';
-import bcrypt from 'bcrypt';
-import { revokeAllSessions } from 'express-file-cluster/auth';
+import { hashPassword, revokeAllSessions } from 'express-file-cluster/auth';
 ${rpModelImports}${rpMeta}export const POST = async (req: Request, res: Response) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
@@ -1745,7 +1740,7 @@ ${rpLookup}
     return res.status(400).json({ error: 'Invalid or expired reset token' });
   }
 
-  const hashed = await bcrypt.hash(password, 10);
+  const hashed = await hashPassword(password);
 ${rpPersist}
   // Tokens issued with the old password stop working everywhere.
   await revokeAllSessions(account.id);
@@ -1753,8 +1748,7 @@ ${rpPersist}
   res.json({ message: 'Password reset successfully' });
 };
 `
-      : `import bcrypt from 'bcrypt';
-import { revokeAllSessions } from 'express-file-cluster/auth';
+      : `import { hashPassword, revokeAllSessions } from 'express-file-cluster/auth';
 ${rpModelImports}${rpMeta}export const POST = async (req, res) => {
   const { token, password } = req.body;
   if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
@@ -1765,7 +1759,7 @@ ${rpLookup}
     return res.status(400).json({ error: 'Invalid or expired reset token' });
   }
 
-  const hashed = await bcrypt.hash(password, 10);
+  const hashed = await hashPassword(password);
 ${rpPersist}
   // Tokens issued with the old password stop working everywhere.
   await revokeAllSessions(account.id);
@@ -4034,9 +4028,8 @@ async function writeOAuth(dest: string, opts: ScaffoldOptions): Promise<void> {
   const userField = usesTables(opts) && generatedModels(opts).has('User') ? 'user' : 'userId';
 
   const lib = `import crypto from 'node:crypto';
-import bcrypt from 'bcrypt';
 import { HttpError } from 'express-file-cluster';
-import { issueToken } from 'express-file-cluster/auth';
+import { hashPassword, issueToken } from 'express-file-cluster/auth';
 ${T("import type { Request, Response } from 'express';\n")}import { User } from '../model/User.js';
 import { OAuthAccount } from '../model/OAuthAccount.js';
 
@@ -4130,7 +4123,7 @@ export async function signInWithOAuth(res${T(': Response')}, profile${T(': OAuth
         `{
         name: profile.name || email.split('@')[0],
         email,
-        password: await bcrypt.hash(randomToken(), 10),
+        password: await hashPassword(randomToken()),
         isVerified: true,
       }`,
       )});

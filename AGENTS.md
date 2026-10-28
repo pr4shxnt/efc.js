@@ -74,7 +74,28 @@ Every user-visible change updates, together: `docs/` (guide + API reference), th
 `Skills/efc/*.md` card, `CLAUDE.md` if a ground rule moved, `todo.md`, and tests. The bundled docs
 and the MCP server are built from these files, so stale docs ship to every user and agent.
 
-## 5. Working in this repo
+## 5. Every version bump updates the site and the changelog
+
+Whenever a `version` in any `package.json` changes (`packages/core`, `packages/create-efc-app`,
+`packages/mcp` — they move together), the same PR also:
+
+1. **Adds a changelog entry** at the top of `CHANGELOG.md`: version, date, and what changed for users
+   (new APIs, behaviour changes, fixes, security/dependency fixes, upgrade steps for breaking changes).
+2. **Updates the public site** in `client/` to match:
+   - `client/index.html` — the release pill at the top (`release-tag`), the `#changelog` section (new
+     `<li>` first, same wording as `CHANGELOG.md`, condensed), `softwareVersion` in the JSON-LD, and the
+     footer version;
+   - any `client/` page or snippet (`docs.html`, `workspace.js`, `llms.txt`) that shows code or versions
+     the release changed;
+   - `client/sitemap.xml` `lastmod` for the pages touched.
+3. **Bumps the version everywhere it's written**: the three `package.json` files, the
+   `express-file-cluster` range `create-efc-app` writes into new apps (`scaffold.ts`), the status lines in
+   `CLAUDE.md`, `docs/index.md` and `Skills/efc/SKILL.md`.
+
+Check before opening the PR: `grep -rn "<old version>" client docs Skills CLAUDE.md packages/*/src`
+returns nothing that should have moved.
+
+## 6. Working in this repo
 
 ```
 packages/core/           express-file-cluster (framework source in src/)

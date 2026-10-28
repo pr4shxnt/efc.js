@@ -763,7 +763,7 @@ function entityRegisterContent(pascal: string, camel: string, cfg: EfcJson): str
   const db = entityOrm(cfg);
   const typedArgs = ts ? '(req: Request, res: Response)' : '(req, res)';
   const typeImport = ts ? "import type { Request, Response } from 'express';\n" : '';
-  return `${typeImport}import bcrypt from 'bcrypt';
+  return `${typeImport}import { hashPassword } from 'express-file-cluster/auth';
 import { ${pascal} } from '../../../model/${pascal}.js';
 
 export const POST = async ${typedArgs} => {
@@ -773,7 +773,7 @@ export const POST = async ${typedArgs} => {
   }
   const existing = await ${db.findOne(pascal, '{ email }')};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
-  const hashed = await bcrypt.hash(password, 10);
+  const hashed = await hashPassword(password);
   const record = await ${db.create(pascal, '{ name, email, password: hashed }')};
   const { password: _, ...safe } = record;
   res.status(201).json({ message: '${pascal} account created', ${camel}: safe });
@@ -786,8 +786,7 @@ function entityLoginContent(pascal: string, slug: string, cfg: EfcJson): string 
   const db = entityOrm(cfg);
   const typedArgs = ts ? '(req: Request, res: Response)' : '(req, res)';
   const typeImport = ts ? "import type { Request, Response } from 'express';\n" : '';
-  return `${typeImport}import bcrypt from 'bcrypt';
-import { issueToken } from 'express-file-cluster/auth';
+  return `${typeImport}import { issueToken, verifyPassword } from 'express-file-cluster/auth';
 import { ${pascal} } from '../../../model/${pascal}.js';
 
 export const POST = async ${typedArgs} => {
@@ -796,7 +795,7 @@ export const POST = async ${typedArgs} => {
 
   const record = await ${db.findOne(pascal, '{ email }')};
   if (!record) return res.status(401).json({ error: 'Invalid credentials' });
-  const match = await bcrypt.compare(password, record.password);
+  const match = await verifyPassword(password, record.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!record.isActive) return res.status(403).json({ error: 'Account suspended' });
   await issueToken(res, { id: record.id, role: record.role, email: record.email });
@@ -847,7 +846,6 @@ export interface EntityAuthResult {
   written: string[];
   manual: string[];
   conflicts: string[];
-  installNeeded?: boolean;
 }
 
 /**
@@ -907,41 +905,6 @@ export function generateEntityAuth(
   // Register the model in src/model/index (defineTable apps)
   if (entityUsesTables(cfg) && !options?.dryRun) {
     result.manual.push(...registerModels(cwd, cfg.language, [pascal]));
-  }
-
-  // Ensure bcrypt and @types/bcrypt are in package.json
-  const pkgFile = path.join(cwd, 'package.json');
-  if (fs.existsSync(pkgFile)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8')) as Record<string, unknown>;
-      let pkgChanged = false;
-      const deps = ((pkg['dependencies'] ?? {}) as Record<string, string>);
-      const devDeps = ((pkg['devDependencies'] ?? {}) as Record<string, string>);
-
-      if (!deps['bcrypt']) {
-        deps['bcrypt'] = '^5.1.0';
-        pkg['dependencies'] = Object.fromEntries(
-          Object.entries(deps).sort(([a], [b]) => a.localeCompare(b)),
-        );
-        pkgChanged = true;
-      }
-      if (cfg.language === 'typescript' && !devDeps['@types/bcrypt']) {
-        devDeps['@types/bcrypt'] = '^5.0.0';
-        pkg['devDependencies'] = Object.fromEntries(
-          Object.entries(devDeps).sort(([a], [b]) => a.localeCompare(b)),
-        );
-        pkgChanged = true;
-      }
-
-      if (pkgChanged) {
-        result.installNeeded = true;
-        if (!options?.dryRun) {
-          fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
-        }
-      }
-    } catch {
-      // ignore parse errors
-    }
   }
 
   // Ensure JWT_SECRET in .env

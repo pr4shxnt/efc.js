@@ -32,12 +32,13 @@ ignite({ authStrategy: 'localStorage' });
 ```ts
 // src/api/auth/login.ts
 import type { Request, Response } from 'express';
-import { issueToken } from 'express-file-cluster/auth';
+import { HttpError } from 'express-file-cluster';
+import { issueToken, verifyPassword } from 'express-file-cluster/auth';
 import { User } from '../../model/User.js';
 
 export const POST = async (req: Request, res: Response) => {
   const user = await User.findOne({ email: req.body.email });
-  if (!user || !verifyPassword(req.body.password, user.passwordHash)) {
+  if (!user || !(await verifyPassword(req.body.password, user.passwordHash))) {
     throw new HttpError(401, 'Invalid credentials');
   }
 
@@ -45,6 +46,8 @@ export const POST = async (req: Request, res: Response) => {
   res.json({ message: 'Logged in' });
 };
 ```
+
+`user.passwordHash` holds a string from `hashPassword()` — see [Passwords](#passwords).
 
 `issueToken` sets a cookie named `efc_token`:
 
@@ -94,12 +97,13 @@ export const GET = async (req, res) => {
 ```ts
 // src/api/auth/login.ts
 import type { Request, Response } from 'express';
-import { signToken } from 'express-file-cluster/auth';
+import { HttpError } from 'express-file-cluster';
+import { signToken, verifyPassword } from 'express-file-cluster/auth';
 import { User } from '../../model/User.js';
 
 export const POST = async (req: Request, res: Response) => {
   const user = await User.findOne({ email: req.body.email });
-  if (!user || !verifyPassword(req.body.password, user.passwordHash)) {
+  if (!user || !(await verifyPassword(req.body.password, user.passwordHash))) {
     throw new HttpError(401, 'Invalid credentials');
   }
 
@@ -246,3 +250,25 @@ The files belong to you — they're copied into your `src/` just like `efc add a
 
 `ignite()` doesn't read any of these from `process.env` itself — see the full [Environment Variables reference](./environment-variables.md) for how the scaffolded `efc.config.ts` wires them.
 
+---
+
+## Passwords
+
+`express-file-cluster/auth` hashes passwords with scrypt from `node:crypto` — no `bcrypt`, no native
+build step, nothing extra to install.
+
+```ts
+import { hashPassword, verifyPassword, passwordNeedsRehash } from 'express-file-cluster/auth';
+
+const passwordHash = await hashPassword(req.body.password);          // on register / reset
+const ok = await verifyPassword(req.body.password, user.passwordHash); // on login
+if (ok && passwordNeedsRehash(user.passwordHash)) {
+  await User.update(user.id, { passwordHash: await hashPassword(req.body.password) });
+}
+```
+
+Hashes look like `scrypt$32768$8$1$<salt>$<key>`; the cost parameters are stored in each hash, so a
+future default doesn't lock anyone out. Apps scaffolded before 0.9.2 stored **bcrypt** hashes, which
+`verifyPassword` deliberately rejects (EFC carries no bcrypt code or dependency): those users reset
+their password once — the reset route stores a scrypt hash. See the
+[auth API reference](../api-reference/auth.md#hashpassword--verifypassword--passwordneedsrehash).

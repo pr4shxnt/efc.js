@@ -263,6 +263,14 @@ function configureAuth(config: { secret: string; strategy: AuthStrategy; expires
 // Returns undefined outside a request, or on a route that never ran requireAuth.
 // Also what powers the '$currentUser'/'$currentUser.<key>' defineModel default codes.
 function getCurrentUser(): Record<string, unknown> | undefined
+
+// Password hashing — node:crypto scrypt (source: auth/password.ts), no bcrypt dependency.
+// Format scrypt$N$r$p$salt$key (defaults N=2^15 r=8 p=1). verifyPassword is constant-time,
+// false on malformed hashes. NO bcrypt support at all: $2a/$2b/$2y$ hashes → false + a
+// logged warning (user resets password). Scaffolded routes use these.
+async function hashPassword(password: string): Promise<string>
+async function verifyPassword(password: string, hash: string): Promise<boolean>
+function passwordNeedsRehash(hash: string): boolean
 ```
 
 Cookie name: `efc_token`. Algorithm: HS256. Library: `jose`.
