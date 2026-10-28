@@ -814,7 +814,8 @@ import { ${pascal} } from '../../../model/${pascal}.js';
 
 export const POST = async ${typedArgs} => {
   const { name, email, password } = req.body;
-  if (!name || !email || !password) {
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || !name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
   }
   const existing = await ${db.findOne(pascal, '{ email }')};
@@ -837,7 +838,10 @@ import { ${pascal} } from '../../../model/${pascal}.js';
 
 export const POST = async ${typedArgs} => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
 
   const record = await ${db.findOne(pascal, '{ email }')};
   if (!record) return res.status(401).json({ error: 'Invalid credentials' });

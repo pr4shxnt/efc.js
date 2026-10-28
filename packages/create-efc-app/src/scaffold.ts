@@ -257,7 +257,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
 
 async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<void> {
   const deps: Record<string, string> = {
-    'express-file-cluster': '^0.9.5',
+    'express-file-cluster': '^0.9.6',
   };
   if (opts.database === 'mongodb') deps['mongoose'] = '^9.7.2';
   if (opts.database === 'postgresql') {
@@ -785,7 +785,10 @@ async function issueRefreshToken(
 
 export const POST = async (req: Request, res: Response) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
 
 ${loginBody}
 };
@@ -807,7 +810,10 @@ async function issueRefreshToken(res, model, id) {
 
 export const POST = async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
 
 ${loginBody}
 };
@@ -884,7 +890,8 @@ ${logoutMeta}export const POST = async (req, res) => {
     ? `import type { Request, Response } from 'express';
 ${registerDbImports}${registerMeta}export const POST = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
-  if (!name || !email || !password) {
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || !name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
   }
   const existing = await ${db.findOne('User', `{ email }`)};
@@ -893,13 +900,14 @@ ${registerDbImports}${registerMeta}export const POST = async (req: Request, res:
   const verifyToken = crypto.randomBytes(32).toString('hex');
   const user = await ${db.create('User', `{ name, email, password: hashed, verifyToken }`)};
 ${sendVerifyEmail}
-  const { password: _, verifyToken: __, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
   res.status(201).json({ message: 'Account created successfully', user: safe });
 };
 `
     : `${registerDbImports}${registerMeta}export const POST = async (req, res) => {
   const { name, email, password } = req.body;
-  if (!name || !email || !password) {
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || !name || !email || !password) {
     return res.status(400).json({ error: 'name, email and password are required' });
   }
   const existing = await ${db.findOne('User', `{ email }`)};
@@ -908,7 +916,7 @@ ${sendVerifyEmail}
   const verifyToken = crypto.randomBytes(32).toString('hex');
   const user = await ${db.create('User', `{ name, email, password: hashed, verifyToken }`)};
 ${sendVerifyEmail}
-  const { password: _, verifyToken: __, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
   res.status(201).json({ message: 'Account created successfully', user: safe });
 };
 `;
@@ -1029,18 +1037,21 @@ export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Number(req.query.limit) || 20);
   const [all, total] = await Promise.all([${db.find('User', `{}`)}, ${db.count('User', `{}`)}]);
-  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, ...u }) => u);
+  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...u }) => u);
   res.json({ users, total, page, limit });
 };
 
 export const POST = async (req: Request, res: Response) => {
 ${roleGuard}  const { name, email, password, role } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ error: 'name, email and password are required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || !name || !email || !password) {
+    return res.status(400).json({ error: 'name, email and password are required' });
+  }
   const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
   const hashed = await hashPassword(password);
   const user = await ${db.create('User', `{ name, email, password: hashed, role: role ?? 'user' }`)};
-  const { password: _, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
   res.status(201).json({ message: 'User created', user: safe });
 };
 `
@@ -1050,18 +1061,21 @@ export const GET = async (req, res) => {
 ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Number(req.query.limit) || 20);
   const [all, total] = await Promise.all([${db.find('User', `{}`)}, ${db.count('User', `{}`)}]);
-  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, ...u }) => u);
+  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...u }) => u);
   res.json({ users, total, page, limit });
 };
 
 export const POST = async (req, res) => {
 ${roleGuard}  const { name, email, password, role } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ error: 'name, email and password are required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || !name || !email || !password) {
+    return res.status(400).json({ error: 'name, email and password are required' });
+  }
   const existing = await ${db.findOne('User', `{ email }`)};
   if (existing) return res.status(409).json({ error: 'Email already in use' });
   const hashed = await hashPassword(password);
   const user = await ${db.create('User', `{ name, email, password: hashed, role: role ?? 'user' }`)};
-  const { password: _, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
   res.status(201).json({ message: 'User created', user: safe });
 };
 `;
@@ -1080,14 +1094,14 @@ ${roleGuard}  const { name, email, password, role } = req.body;
   const adminUserByIdDbImport = `import { User } from '../../../model/User.js';\n`;
 
   const userByIdContent = ts
-    ? `import { requireAuth } from 'express-file-cluster/auth';
+    ? `import { requireAuth, revokeAllSessions } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 ${adminUserByIdDbImport}${userByIdMeta}${middlewares}
 export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { password: _, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
   res.json({ user: safe });
 };
 
@@ -1096,7 +1110,10 @@ ${roleGuard}  const { id } = req.params;
   const { name, email, role, isActive } = req.body;
   const updated = await ${db.update('User', `id`, `{ name, email, role, isActive }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
-  const { password: _, ...safe } = updated;
+  // The role lives in the user's JWTs: end them, or a demoted/suspended user keeps access
+  // until they expire. (/auth/refresh also refuses inactive accounts.)
+  if (role !== undefined || isActive === false) await revokeAllSessions(id);
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = updated;
   res.json({ message: 'User updated', user: safe });
 };
 
@@ -1105,16 +1122,17 @@ ${roleGuard}  const { id } = req.params;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
   await ${db.delete('User', `id`)};
+  await revokeAllSessions(id);
   res.json({ message: \`User \${id} deleted\` });
 };
 `
-    : `import { requireAuth } from 'express-file-cluster/auth';
+    : `import { requireAuth, revokeAllSessions } from 'express-file-cluster/auth';
 ${adminUserByIdDbImport}${userByIdMeta}${middlewares}
 export const GET = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { password: _, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
   res.json({ user: safe });
 };
 
@@ -1123,7 +1141,10 @@ ${roleGuard}  const { id } = req.params;
   const { name, email, role, isActive } = req.body;
   const updated = await ${db.update('User', `id`, `{ name, email, role, isActive }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
-  const { password: _, ...safe } = updated;
+  // The role lives in the user's JWTs: end them, or a demoted/suspended user keeps access
+  // until they expire. (/auth/refresh also refuses inactive accounts.)
+  if (role !== undefined || isActive === false) await revokeAllSessions(id);
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = updated;
   res.json({ message: 'User updated', user: safe });
 };
 
@@ -1132,6 +1153,7 @@ ${roleGuard}  const { id } = req.params;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
   await ${db.delete('User', `id`)};
+  await revokeAllSessions(id);
   res.json({ message: \`User \${id} deleted\` });
 };
 `;
@@ -1166,7 +1188,7 @@ export const GET = async (req: Request, res: Response) => {
   const { id } = (req as any).user;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { password: _, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
   res.json({ user: safe });
 };
 
@@ -1175,7 +1197,7 @@ export const PUT = async (req: Request, res: Response) => {
   const { name, email } = req.body;
   const updated = await ${db.update('User', `id`, `{ name, email }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
-  const { password: _, ...safe } = updated;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = updated;
   res.json({ message: 'Profile updated', user: safe });
 };
 `
@@ -1185,7 +1207,7 @@ export const GET = async (req, res) => {
   const { id } = req.user;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { password: _, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
   res.json({ user: safe });
 };
 
@@ -1194,7 +1216,7 @@ export const PUT = async (req, res) => {
   const { name, email } = req.body;
   const updated = await ${db.update('User', `id`, `{ name, email }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
-  const { password: _, ...safe } = updated;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = updated;
   res.json({ message: 'Profile updated', user: safe });
 };
 `;
@@ -1525,12 +1547,15 @@ ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 
 export const POST = async (req: Request, res: Response) => {
   const token = req.cookies?.['efc_refresh_token'] || req.body?.refreshToken;
   if (!token) return res.status(401).json({ error: 'Refresh token required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof token !== 'string') return res.status(400).json({ error: 'Invalid refresh token' });
 
 ${refreshLookup}
 
   if (!account || !account.refreshTokenExpiry || new Date(account.refreshTokenExpiry) < new Date()) {
     return res.status(401).json({ error: 'Invalid or expired refresh token' });
   }
+  if (account.isActive === false) return res.status(403).json({ error: 'Account suspended' });
 
   const newRefreshToken = crypto.randomBytes(40).toString('hex');
   const refreshTokenExpiry = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
@@ -1558,12 +1583,15 @@ ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 
 export const POST = async (req, res) => {
   const token = req.cookies?.efc_refresh_token || req.body?.refreshToken;
   if (!token) return res.status(401).json({ error: 'Refresh token required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof token !== 'string') return res.status(400).json({ error: 'Invalid refresh token' });
 
 ${refreshLookup}
 
   if (!account || !account.refreshTokenExpiry || new Date(account.refreshTokenExpiry) < new Date()) {
     return res.status(401).json({ error: 'Invalid or expired refresh token' });
   }
+  if (account.isActive === false) return res.status(403).json({ error: 'Account suspended' });
 
   const newRefreshToken = crypto.randomBytes(40).toString('hex');
   const refreshTokenExpiry = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
@@ -1618,7 +1646,8 @@ ${veMeta}export const GET = async (req: Request, res: Response) => {
 
 export const POST = async (req: Request, res: Response) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'email is required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof email !== 'string' || !email) return res.status(400).json({ error: 'email is required' });
 
   const user = await ${db.findOne('User', `{ email }`)};
   if (user && !user.isVerified) {
@@ -1644,7 +1673,8 @@ ${veMeta}export const GET = async (req, res) => {
 
 export const POST = async (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'email is required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof email !== 'string' || !email) return res.status(400).json({ error: 'email is required' });
 
   const user = await ${db.findOne('User', `{ email }`)};
   if (user && !user.isVerified) {
@@ -1684,7 +1714,8 @@ ${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 6
 
 export const POST = async (req: Request, res: Response) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'email is required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof email !== 'string' || !email) return res.status(400).json({ error: 'email is required' });
 
 ${fpLookup}
 
@@ -1704,7 +1735,8 @@ ${mailerTaskImport}${fpModelImports}${fpMeta}const RESET_TOKEN_TTL_MS = 1000 * 6
 
 export const POST = async (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'email is required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof email !== 'string' || !email) return res.status(400).json({ error: 'email is required' });
 
 ${fpLookup}
 
@@ -1745,7 +1777,10 @@ ${sendResetEmail}  }
 import { hashPassword, revokeAllSessions } from 'express-file-cluster/auth';
 ${rpModelImports}${rpMeta}export const POST = async (req: Request, res: Response) => {
   const { token, password } = req.body;
-  if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof token !== 'string' || typeof password !== 'string' || !token || !password) {
+    return res.status(400).json({ error: 'token and password are required' });
+  }
 
 ${rpLookup}
 
@@ -1764,7 +1799,10 @@ ${rpPersist}
       : `import { hashPassword, revokeAllSessions } from 'express-file-cluster/auth';
 ${rpModelImports}${rpMeta}export const POST = async (req, res) => {
   const { token, password } = req.body;
-  if (!token || !password) return res.status(400).json({ error: 'token and password are required' });
+  // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
+  if (typeof token !== 'string' || typeof password !== 'string' || !token || !password) {
+    return res.status(400).json({ error: 'token and password are required' });
+  }
 
 ${rpLookup}
 
@@ -3083,7 +3121,7 @@ ${suspendMeta}${mwAdmin4}
 export const POST = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
   const { reason } = req.body;
-  // TODO: set user.isActive = false, log audit event
+  // TODO: set user.isActive = false (then revokeAllSessions(id) so open sessions end), log audit event
   res.json({ message: \`User \${id} suspended\`, reason });
 };
 `
@@ -3091,7 +3129,7 @@ ${roleGuard}  const { id } = req.params;
 export const POST = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
   const { reason } = req.body;
-  // TODO: set user.isActive = false, log audit event
+  // TODO: set user.isActive = false (then revokeAllSessions(id) so open sessions end), log audit event
   res.json({ message: \`User \${id} suspended\`, reason });
 };
 `;

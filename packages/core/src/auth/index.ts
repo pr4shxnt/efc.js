@@ -76,7 +76,10 @@ function tokenFrom(req: Request): string | undefined {
 }
 
 async function verify(token: string): Promise<JWTPayload> {
-  const { payload } = await jwtVerify(token, new TextEncoder().encode(getConfig().secret));
+  // Only the algorithm EFC signs with — never whatever the token's header claims.
+  const { payload } = await jwtVerify(token, new TextEncoder().encode(getConfig().secret), {
+    algorithms: ['HS256'],
+  });
   return payload;
 }
 
