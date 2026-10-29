@@ -4,6 +4,17 @@ All three packages (`express-file-cluster`, `create-efc-app`, `express-file-clus
 together under one version. Newest first. The public site's changelog (`client/index.html#changelog`)
 mirrors this file — see `AGENTS.md` §5.
 
+## 0.10.1 — 2026-10-29
+
+- **Fix — `efc db pull` no longer writes a second model for a table you already have.** Table names
+  drop word breaks (`AuditLog` → `auditlogs`), so a pull named that table's model `Auditlog` and wrote
+  `Auditlog.ts` next to your `AuditLog.ts` — on macOS and Windows, where file names ignore case,
+  `--force` overwrote `AuditLog.ts` with the pulled schema. Pull now loads the models already in the
+  output directory and matches by table / collection: their names are kept (refs from pulled models
+  name them too), a model defined in another file is never written again, and a file whose name
+  differs from an existing one only in case is never written. Same for `efc import-prisma`'s file
+  check. Both engines.
+
 ## 0.10.0 — 2026-10-29
 
 **The data layer's remaining Phase 3 work (M5–M7), rate limiting, and working thread tasks.**
