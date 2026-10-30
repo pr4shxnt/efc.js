@@ -98,3 +98,7 @@ The server is live at `http://localhost:3000`. The scaffolder creates a `src/api
 - [Migrations & Seeds](../guides/migrations.md) — evolving the schema.
 - [Validation](../guides/validation.md) — `export const schema` with zod & co.
 - [CLI Reference](../cli/index.md) — all `efc` commands.
+
+### Choosing two-factor authentication
+
+Select **Account security** in the init feature picker, then choose **Authenticator app (TOTP)**, **Email OTP**, or **Both — users choose**. Email/both automatically adds the SMTP email client and asks for mail settings. Each user or admin can enroll one allowed method. The generated `TWO_FACTOR_METHOD` setting controls the choices and `TWO_FACTOR_KEY` protects stored secrets; keep the key stable across deployments. See [enrollment, login and disable](../guides/authentication.md#two-factor-authentication-totp-or-email-otp).

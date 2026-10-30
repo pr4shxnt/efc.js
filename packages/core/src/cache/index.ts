@@ -1,4 +1,5 @@
 import cluster from 'node:cluster';
+import { processState } from '../process-state.js';
 import type { Redis as RedisClient, RedisOptions } from 'ioredis';
 import type { CacheConfig } from '../types.js';
 import { getLogger } from '../logger.js';
@@ -161,44 +162,50 @@ async function redisBackend(url: string, timeout: number): Promise<Backend> {
   };
 }
 
-let backend: Backend | null = null;
-let prefix = 'efc:';
-let revocationFailure: 'reject' | 'allow' = 'reject';
+const state = processState('cache', () => ({
+  backend: null as Backend | null,
+  prefix: 'efc:',
+  revocationFailure: 'reject' as 'reject' | 'allow',
+  pending: new Map<string, Promise<unknown>>(),
+}));
 
 /** How requireAuth should treat a failed revocation check — see CacheConfig. */
 export function revocationFailureMode(): 'reject' | 'allow' {
-  return revocationFailure;
+  return state.revocationFailure;
 }
-const pending = new Map<string, Promise<unknown>>();
 
 export async function configureCache(config: CacheConfig): Promise<void> {
   await closeCache();
-  prefix = config.prefix ?? 'efc:';
-  revocationFailure = config.onRevocationCheckError ?? 'reject';
+  state.prefix = config.prefix ?? 'efc:';
+  state.revocationFailure = config.onRevocationCheckError ?? 'reject';
   if (config.backend === 'redis') {
-    backend = await redisBackend(config.url ?? 'redis://localhost:6379', config.timeout ?? 1000);
+    state.backend = await redisBackend(
+      config.url ?? 'redis://localhost:6379',
+      config.timeout ?? 1000,
+    );
   } else if (cluster.isWorker) {
     // Cluster workers share the primary's store over IPC (see cache/ipc.ts).
-    backend = (await connectPrimaryCache()) ?? memoryBackend(config.maxEntries ?? 10_000);
+    state.backend = (await connectPrimaryCache()) ?? memoryBackend(config.maxEntries ?? 10_000);
   } else {
-    backend = memoryBackend(config.maxEntries ?? 10_000);
+    state.backend = memoryBackend(config.maxEntries ?? 10_000);
   }
 }
 
 export function isCacheConfigured(): boolean {
-  return backend !== null;
+  return state.backend !== null;
 }
 
 export async function closeCache(): Promise<void> {
-  const b = backend;
-  backend = null;
-  pending.clear();
+  const b = state.backend;
+  state.backend = null;
+  state.pending.clear();
   await b?.close();
 }
 
 function requireBackend(): Backend {
-  if (!backend) throw new Error('[EFC] Cache not configured — pass cache: { backend } to ignite()');
-  return backend;
+  if (!state.backend)
+    throw new Error('[EFC] Cache not configured — pass cache: { backend } to ignite()');
+  return state.backend;
 }
 
 // Backend errors (Redis down/slow) degrade to "no cache" rather than failing the caller.
@@ -242,23 +249,27 @@ export interface Cache {
 
 export const cache: Cache = {
   async get<T>(key: string) {
-    const raw = await safely('get', (b) => b.get(prefix + key), null);
+    const raw = await safely('get', (b) => b.get(state.prefix + key), null);
     return raw === null ? undefined : (JSON.parse(raw) as T);
   },
   async set(key, value, options) {
     if (value === undefined) return;
-    await safely('set', (b) => b.set(prefix + key, JSON.stringify(value), options?.ttl), undefined);
+    await safely(
+      'set',
+      (b) => b.set(state.prefix + key, JSON.stringify(value), options?.ttl),
+      undefined,
+    );
   },
   async has(key) {
-    return (await safely('get', (b) => b.get(prefix + key), null)) !== null;
+    return (await safely('get', (b) => b.get(state.prefix + key), null)) !== null;
   },
   async del(...keys) {
-    return safely('del', (b) => b.del(keys.map((k) => prefix + k)), 0);
+    return safely('del', (b) => b.del(keys.map((k) => state.prefix + k)), 0);
   },
   async wrap<T>(key: string, options: CacheSetOptions | number, fn: () => Promise<T>) {
     const hit = await cache.get<T>(key);
     if (hit !== undefined) return hit;
-    const inflight = pending.get(key) as Promise<T> | undefined;
+    const inflight = state.pending.get(key) as Promise<T> | undefined;
     if (inflight) return inflight;
     const run = (async () => {
       try {
@@ -266,17 +277,17 @@ export const cache: Cache = {
         await cache.set(key, value, typeof options === 'number' ? { ttl: options } : options);
         return value;
       } finally {
-        pending.delete(key);
+        state.pending.delete(key);
       }
     })();
-    pending.set(key, run);
+    state.pending.set(key, run);
     return run;
   },
   async clear(keyPrefix = '') {
-    return safely('clear', (b) => b.clear(prefix + keyPrefix), 0);
+    return safely('clear', (b) => b.clear(state.prefix + keyPrefix), 0);
   },
   async incr(key, options) {
-    const r = await safely('incr', (b) => b.incr(prefix + key, options?.ttl), undefined);
+    const r = await safely('incr', (b) => b.incr(state.prefix + key, options?.ttl), undefined);
     return r?.value;
   },
 };
@@ -286,14 +297,14 @@ export async function rawIncr(
   key: string,
   ttlSeconds: number,
 ): Promise<{ value: number; ttlMs: number | null }> {
-  return requireBackend().incr(prefix + key, ttlSeconds);
+  return requireBackend().incr(state.prefix + key, ttlSeconds);
 }
 
 /** For auth's revocation checks, which must distinguish "absent" from "backend down". */
 export async function rawGet(key: string): Promise<string | null> {
-  return requireBackend().get(prefix + key);
+  return requireBackend().get(state.prefix + key);
 }
 
 export async function rawSet(key: string, value: string, ttlSeconds: number): Promise<void> {
-  await requireBackend().set(prefix + key, value, ttlSeconds);
+  await requireBackend().set(state.prefix + key, value, ttlSeconds);
 }

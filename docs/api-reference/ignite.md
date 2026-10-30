@@ -31,7 +31,7 @@ interface EFCConfig {
   // Database
   database?: 'mongodb' | 'postgresql';
   databaseUrl?: string;
-  databasePool?: { max?: number; idleTimeoutMs?: number; connectionTimeoutMs?: number };
+  databasePool?: { max?: number; idleTimeoutMs?: number; connectionTimeoutMs?: number; preparedStatements?: boolean | { max?: number } };
 
   // Auth
   authStrategy?: 'http-only' | 'bearer';   // 'localStorage' = old name for 'bearer'
@@ -171,6 +171,7 @@ databasePool: { max: 5, idleTimeoutMs: 30_000, connectionTimeoutMs: 5_000 },
 | Option | PostgreSQL (`pg` Pool) | MongoDB (mongoose) |
 |---|---|---|
 | `max` | `max` — default 10 | `maxPoolSize` — default 100 |
+| `preparedStatements` | `true` (default): up to 100 named statements per connection; `{ max: n }` changes the lifetime budget, `false` / `{ max: 0 }` disables | ignored |
 | `idleTimeoutMs` | `idleTimeoutMillis` — default 10000 | `maxIdleTimeMS` — default: never |
 | `connectionTimeoutMs` | `connectionTimeoutMillis` — default: no limit | `serverSelectionTimeoutMS` (default 30000) and `waitQueueTimeoutMS` (default: no limit) |
 
@@ -362,3 +363,5 @@ ignite({ port: 3000 })
 | `timeoutMs` | `number` | `10_000` | Force-exit after this many milliseconds if `server.close()` hasn't finished |
 
 On a worker, the signal closes the HTTP server (in-flight requests finish), drains running task jobs, then exits. On the cluster primary it relays `SIGTERM` to every worker — so `docker stop` / Kubernetes, which signal only PID 1, still shut down gracefully — and force-exits after `timeoutMs + 2s` if a worker hangs. Repeated signals are ignored rather than killing a worker mid-drain.
+
+`logging.queries.metrics: true | { maxEntries?: number }` enables bounded per-process query counters and latency summaries (default off; enabled default limit 1000). Read/reset through `getQueryMetrics` / `resetQueryMetrics` from the main package; see [query metrics](../guides/logging.md#query-metrics).

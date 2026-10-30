@@ -17,13 +17,15 @@ The user and admin portals are a set of **registry items**: ready-made models an
 
 ---
 
+The route inventory includes extension points as well as implemented handlers. In `account-security`, password changes, refresh rotation and 2FA (TOTP/email OTP) work. Init asks which methods the app allows; users enroll one of them. Device-session list/revoke still return **501 Not Implemented** until you connect a device-session store. See [the 2FA flow](./authentication.md#two-factor-authentication-totp-or-email-otp). Other portal templates can also contain TODOs and need application logic before use.
+
 ## User portal
 
 | Item | Routes below |
 |---|---|
 | `user-profile` | Profile: `/user/profile` |
 | `forgot-password` | Auth: forgot / reset password |
-| `account-security` | Auth: refresh, change password, 2FA, sessions (+ `Session`) |
+| `account-security` | Auth: refresh, change password, TOTP/email OTP; 501 device-session extension points (+ `Session` model) |
 | `email-verification` | Auth: verify email |
 | `account-settings` | Profile: avatar, settings, account, dashboard, activity |
 | `notifications` | Notifications (+ `Notification`) |

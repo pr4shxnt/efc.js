@@ -165,7 +165,11 @@ function schemaOf(fields: Map<string, Shape>, total: number, prefix: string, ctx
 export async function pullMongo(
   conn: MongooseNS.Connection,
   pluralize: (name: string) => string,
-  opts: { sample?: number } = {},
+  opts: {
+    sample?: number;
+    /** Collection → model name to keep (existing models), instead of deriving it. */
+    names?: Map<string, string>;
+  } = {},
 ): Promise<{ models: ModelSource[]; skipped: string[] }> {
   const sampleSize = opts.sample ?? 1000;
   const db = conn.db!;
@@ -174,7 +178,9 @@ export async function pullMongo(
     .filter((n) => !n.startsWith('system.') && !INTERNAL.has(n))
     .sort();
 
-  const nameOf = new Map(collections.map((c) => [c, pascal(singular(c)) || 'Model']));
+  const nameOf = new Map(
+    collections.map((c) => [c, opts.names?.get(c) ?? (pascal(singular(c)) || 'Model')]),
+  );
   const ctxModels = new Map([...nameOf.values()].map((m) => [m.toLowerCase(), m]));
   const models: ModelSource[] = [];
   const skipped: string[] = [];
@@ -292,7 +298,14 @@ export async function pullMongo(
         ? `Pulled from ${docs.length} sampled document(s) of "${collection}": a field is required only when every sample had a value.`
         : `"${collection}" is empty — no fields could be inferred.`,
     );
-    models.push({ name, fields, options, notes: ctx.notes, api: 'defineCollection' });
+    models.push({
+      name,
+      fields,
+      options,
+      notes: ctx.notes,
+      api: 'defineCollection',
+      table: collection,
+    });
   }
   return { models, skipped };
 }

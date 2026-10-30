@@ -117,7 +117,9 @@ efc db pull --out pulled      # somewhere else, to compare
 - **Indexes:** unique, plain, compound and text indexes.
 - **Relations:** foreign keys become `ref`s with `onDelete`. A column like `authorId` becomes an `author` field that keeps the `authorId` column. EFC join tables become many-to-many arrays, and every target model gets back-`relations`.
 
-A schema EFC created pulls back to models that sync finds nothing to change in. For a schema EFC didn't create, anything that has no EFC equivalent is noted at the top of the file: expression or partial indexes, other CHECKs, composite keys, and other defaults. Existing files are kept unless you pass `--force`.
+A schema EFC created pulls back to models that sync finds nothing to change in. For a schema EFC didn't create, anything that has no EFC equivalent is noted at the top of the file: expression or partial indexes, other CHECKs, composite keys, and other defaults.
+
+Models already in the output directory keep their names: a table one of them maps (`AuditLog` → `auditlogs`) is pulled under that name, so refs to it name it too, and it's never written to a second file. Existing files are kept unless you pass `--force`, which refreshes a model in its own `<Model>.ts` but never overwrites a model defined in another file, or a file whose name differs only in case (the same file on macOS and Windows).
 
 ## Pulling an existing database (MongoDB)
 
@@ -132,7 +134,7 @@ MongoDB has no schema to read, so `pull` samples each collection (`$sample`) and
 - **Required:** only when every sampled document had a non-null value. A field with mixed types (or only nulls) becomes `{ type: 'object' }` (any value) with a note.
 - **Refs:** an `objectId` field gets `ref` when its name matches another collection (`owner`, `ownerId` → `Owner`) or when every sampled id exists in exactly one other collection; otherwise a note asks you to add it.
 - **Indexes:** single-field unique, plain, `text`, `2dsphere` and `hashed` indexes go on the field; compound, partial and TTL indexes into `indexes`.
-- **Names and timestamps:** a model per collection (`audit_log` → `AuditLog`, with `collection: 'audit_log'` when mongoose wouldn't pick that name); `createdAt`/`updatedAt` dates map to the default `timestamps`, otherwise `timestamps: false`.
+- **Names and timestamps:** a model per collection (`audit_log` → `AuditLog`, with `collection: 'audit_log'` when mongoose wouldn't pick that name); `createdAt`/`updatedAt` dates map to the default `timestamps`, otherwise `timestamps: false`. Existing models in the output directory keep their names here too, as for PostgreSQL.
 
 `_id` and `__v` are left to defineCollection. Read the generated files before using them: a sample shows what the data *has*, not what it must have.
 

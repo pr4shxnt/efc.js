@@ -1014,6 +1014,7 @@ export type Place = InferRecord&lt;typeof Place&gt;   // no interface to keep in
 </table>
 <p><strong>LTS from 1.0:</strong> the current major gets everything; the previous major gets security and critical fixes for 12 months after the next one ships. Before 1.0, only the latest 0.x release gets fixes.</p>
 <p><strong>Node.js:</strong> active and maintenance LTS lines — tested on Node 22 and 24.</p>
+<p><strong>0.10.2 auth fixes:</strong> update owned login, refresh, logout, reset-password, change-password and two-factor helper files. Reset links are consumed atomically and invalidate refresh credentials. Custom-entity logout propagates revocation failures. ESM/CommonJS middleware shares auth, request context and cache state.</p>
 <p><strong>Generated code is yours:</strong> upgrading the package doesn't change files <code>create-efc-app</code> or <code>efc add</code> wrote. When a release fixes generated code, the changelog names the files — re-add them with <code>efc add &lt;item&gt; --overwrite</code> or apply the change by hand.</p>
 <aside class="note">Found a vulnerability? Report it privately through the repository's <strong>Security → Report a vulnerability</strong>, not a public issue.</aside>
 </article>

@@ -4,6 +4,50 @@ All three packages (`express-file-cluster`, `create-efc-app`, `express-file-clus
 together under one version. Newest first. The public site's changelog (`client/index.html#changelog`)
 mirrors this file — see `AGENTS.md` §5.
 
+## 0.10.2 — 2026-10-30
+
+- **Auth fixes:** authenticated User/Admin logout invalidates stored refresh credentials, including
+  bearer callers. Login checks the verified password snapshot before persisting refresh credentials;
+  authentication-time revocation prevents in-flight old-password logins from reviving sessions.
+- **Recovery and mixed-module fixes:** reset links are consumed atomically with a fresh DB expiry
+  check; reset clears refresh credentials and pending challenges while preserving active 2FA.
+  Password changes invalidate reset links. Custom-entity logout propagates revocation failures.
+  ESM/CJS auth, context and cache state are shared for mixed-module middleware.
+- **Route testing:** `express-file-cluster/testing` adds `createTestApp()` using production HTTP
+  middleware, routing and error handling without booting services. CommonJS callers delegate to
+  the ESM implementation for dynamically imported ESM routes.
+- **Database tooling:** bounded opt-in query metrics (`getQueryMetrics` / `resetQueryMetrics`),
+  bounded PostgreSQL prepared statements with opt-out and schema-sync invalidation, and a strict
+  nightly 10% benchmark regression gate with validated sample allocation and baseline coverage.
+- **Upgrade generated apps:** update owned login, refresh, logout, reset-password, change-password and two-factor helper files as
+  well as the framework. PostgreSQL preparation defaults to 100 names per connection; disable it
+  for incompatible poolers. See the auth, testing, database and logging guides.
+
+## 0.10.1 — 2026-10-30
+
+- **Fix — middleware and catch-all routing:** `compose()` forwards callback errors and Express
+  route/router skips without executing later handlers; catch-all parameters decode once and preserve
+  encoded slashes and literal percent signs.
+- **Generated account security:** password changes verify the current password, persist a new hash,
+  clear refresh credentials and revoke existing sessions. Init offers TOTP, email OTP, or both;
+  each user/admin enrolls one allowed method. Email choices add SMTP setup. Enrollment, login and
+  disable enforce credentials, expiry, rate limits and atomic replay protection. TOTP secrets are
+  encrypted with independent `TWO_FACTOR_KEY`; secret/challenge fields are stripped from responses.
+  Device-session list/revoke templates explicitly return 501 until implemented.
+- **Upgrade generated apps:** review and update auth/account-security templates and model fields,
+  configure `TWO_FACTOR_KEY` and SMTP for email OTP, and migrate when auto-sync is disabled. OAuth
+  accounts with 2FA enabled use password + code; recovery codes are not implemented. See
+  `docs/guides/authentication.md` for the complete flow and upgrade steps.
+
+- **Fix — `efc db pull` no longer writes a second model for a table you already have.** Table names
+  drop word breaks (`AuditLog` → `auditlogs`), so a pull named that table's model `Auditlog` and wrote
+  `Auditlog.ts` next to your `AuditLog.ts` — on macOS and Windows, where file names ignore case,
+  `--force` overwrote `AuditLog.ts` with the pulled schema. Pull now loads the models already in the
+  output directory and matches by table / collection: their names are kept (refs from pulled models
+  name them too), a model defined in another file is never written again, and a file whose name
+  differs from an existing one only in case is never written. Same for `efc import-prisma`'s file
+  check. Both engines.
+
 ## 0.10.0 — 2026-10-29
 
 **The data layer's remaining Phase 3 work (M5–M7), rate limiting, and working thread tasks.**

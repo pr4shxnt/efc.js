@@ -2,3 +2,4 @@ node_modules/
 prisma/generated/
 results/*.json
 !results/baseline.json
+!results/m6-validation.json

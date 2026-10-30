@@ -235,6 +235,49 @@ export const Post = defineTable('Post', {
     expect(efc('db', 'status').out).toMatch(/✓ \d+_init batch 1/);
   });
 
+  it('pull keeps the names of existing models and never writes a second file for a table', async () => {
+    model(
+      'AuditLog.js',
+      `import { defineTable } from 'express-file-cluster';
+export const AuditLog = defineTable('AuditLog', {
+  action: { type: 'string', required: true },
+  post: { type: 'uuid', ref: 'Post' },
+});`,
+    );
+    expect(efc('db', 'generate', 'init').code).toBe(0);
+    expect(efc('db', 'migrate').code).toBe(0);
+    expect((await sql(`SELECT to_regclass('auditlogs') AS t`))[0].t).toBe('auditlogs');
+    const before = fs.readFileSync(path.join(root, 'src', 'model', 'AuditLog.js'), 'utf8');
+
+    for (const args of [[], ['--force']]) {
+      const pulled = efc('db', 'pull', ...args);
+      expect(pulled.code).toBe(0);
+      const files = fs.readdirSync(path.join(root, 'src', 'model'));
+      expect(files.filter((f) => f.toLowerCase() === 'auditlog.js')).toEqual(['AuditLog.js']);
+    }
+    // --force refreshed AuditLog.js under its own name; refs still name it AuditLog.
+    const after = fs.readFileSync(path.join(root, 'src', 'model', 'AuditLog.js'), 'utf8');
+    expect(after).not.toBe(before);
+    expect(after).toContain("export const AuditLog = defineTable(\n  'AuditLog'");
+    expect(after).not.toContain("collection: 'auditlogs'");
+    expect(fs.readFileSync(path.join(root, 'src', 'model', 'index.js'), 'utf8')).toContain(
+      "export { AuditLog } from './AuditLog.js';",
+    );
+    expect(efc('db', 'sync', '--dry-run', '--exit-code').code).toBe(0);
+
+    // A model defined in a file named differently is kept and the table not written again.
+    fs.renameSync(
+      path.join(root, 'src', 'model', 'AuditLog.js'),
+      path.join(root, 'src', 'model', 'audit.js'),
+    );
+    const again = efc('db', 'pull', '--force');
+    expect(again.out).toMatch(/auditlogs is already AuditLog in audit\.js/);
+    expect(fs.existsSync(path.join(root, 'src', 'model', 'AuditLog.js'))).toBe(false);
+    expect(fs.readFileSync(path.join(root, 'src', 'model', 'index.js'), 'utf8')).toContain(
+      "export { AuditLog } from './audit.js';",
+    );
+  });
+
   it('import-prisma → generate → migrate → pull round-trips with no diff', async () => {
     fs.rmSync(path.join(root, 'src', 'model'), { recursive: true });
     fs.mkdirSync(path.join(root, 'prisma'));

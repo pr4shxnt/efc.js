@@ -18,7 +18,7 @@ Deprecations are announced at least one minor release before removal, with a sta
 - **Major** (1.x → 2.0): breaking changes only, each with upgrade steps.
 - **Minor** (1.1 → 1.2): new features, backwards compatible.
 - **Patch** (1.1.0 → 1.1.1): fixes and security fixes only.
-- The three import paths (`express-file-cluster`, `/auth`, `/tasks`) and everything they export are the public API. Anything else — internal modules, generated file layouts, log message wording — can change in a minor.
+- The four import paths (`express-file-cluster`, `/auth`, `/tasks`, `/testing`) and everything they export are the public API. Anything else — internal modules, generated file layouts, log message wording — can change in a minor.
 
 ## Long-term support (from 1.0)
 

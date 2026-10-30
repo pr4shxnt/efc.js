@@ -21,7 +21,7 @@ import { pullPostgres } from '../db/pull.js';
 import { pullMongo } from '../db/pull-mongo.js';
 import { loadMongoose } from '../db/mongo-model.js';
 import type * as MongooseNS from 'mongoose';
-import { writeModels } from '../db/codegen.js';
+import { writeModels, type ExistingModel } from '../db/codegen.js';
 
 interface RunnerOptions {
   root: string;
@@ -60,6 +60,33 @@ async function importModels(root: string) {
   walk(path.join(root, 'models'));
   for (const f of files.sort()) await import(pathToFileURL(f).href);
   return registeredModels();
+}
+
+// `efc db pull`: the models already in the output directory, by the table / collection
+// they map — so a pull keeps their names and never writes a second model for one table.
+async function existingModels(dir: string): Promise<Map<string, ExistingModel>> {
+  const out = new Map<string, ExistingModel>();
+  if (!fs.existsSync(dir)) return out;
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => /\.(ts|js|mts|mjs)$/.test(f) && !f.endsWith('.d.ts'))
+    .sort((a, b) => Number(/^index\./.test(a)) - Number(/^index\./.test(b)) || a.localeCompare(b));
+  const fileOf = new Map<string, string>();
+  for (const f of files) {
+    const file = path.join(dir, f);
+    try {
+      await import(pathToFileURL(file).href);
+    } catch (err) {
+      console.log(pc.yellow(`  ! ${f} didn't load (${(err as Error).message.split('\n')[0]})`));
+      continue;
+    }
+    for (const m of registeredModels()) if (!fileOf.has(m.name)) fileOf.set(m.name, file);
+  }
+  for (const m of registeredModels()) {
+    const storage = await m.studio?.storage().catch(() => undefined);
+    if (storage && !out.has(storage)) out.set(storage, { name: m.name, file: fileOf.get(m.name)! });
+  }
+  return out;
 }
 
 /** The same server, a throwaway PostgreSQL schema (via search_path) or MongoDB database. */
@@ -277,13 +304,20 @@ async function main(): Promise<void> {
         break;
       }
       case 'pull': {
+        setAutoSync(false); // loading the existing models must not touch the database
+        const dir = path.resolve(process.cwd(), opts.out ?? path.join('src', 'model'));
+        const existing = await existingModels(dir);
+        const names = new Map([...existing].map(([table, m]) => [table, m.name]));
         const { models, skipped: notPulled } =
           engine === 'postgresql'
-            ? await pullPostgres(client as Pool)
+            ? await pullPostgres(client as Pool, names)
             : await pullMongo(
                 client as MongooseNS.Connection,
                 (await loadMongoose()).pluralize()!,
-                opts.sample !== undefined ? { sample: opts.sample } : {},
+                {
+                  ...(opts.sample !== undefined && { sample: opts.sample }),
+                  names,
+                },
               );
         if (models.length === 0) {
           console.log(
@@ -296,17 +330,17 @@ async function main(): Promise<void> {
           break;
         }
         const typescript = fs.existsSync(path.join(process.cwd(), 'tsconfig.json'));
-        const dir = path.resolve(process.cwd(), opts.out ?? path.join('src', 'model'));
         const { written, skipped } = writeModels(dir, models, {
           typescript,
+          existing,
           ...(opts.force && { force: true }),
         });
         console.log(pc.bold(`\n  Pulled ${models.length} model(s)\n`));
         for (const f of written)
           console.log(`  ${pc.green('+')} ${path.relative(process.cwd(), f)}`);
-        for (const f of skipped)
+        for (const { file, reason } of skipped)
           console.log(
-            `  ${pc.yellow('•')} ${path.relative(process.cwd(), f)} ${pc.dim('exists — kept (--force overwrites)')}`,
+            `  ${pc.yellow('•')} ${path.relative(process.cwd(), file)} ${pc.dim(reason)}`,
           );
         if (notPulled.length)
           console.log(

@@ -21,10 +21,84 @@ export interface QueryEvent {
   error?: string;
 }
 
+/** Aggregated per-process model operation statistics; never contains SQL/parameter values. */
+export interface QueryMetric {
+  model: string;
+  op: string;
+  calls: number;
+  errors: number;
+  statements: number;
+  totalMs: number;
+  minMs: number;
+  maxMs: number;
+  meanMs: number;
+  slow: number;
+}
+export interface QueryMetricsSnapshot {
+  enabled: boolean;
+  since: number;
+  dropped: number;
+  entries: ReadonlyArray<QueryMetric>;
+}
+const metrics = new Map<string, QueryMetric>();
+let metricsSince = Date.now();
+let metricsDropped = 0;
+
+/** Returns detached, deterministically ordered counters; no logs or SQL are exposed. */
+export function getQueryMetrics(): QueryMetricsSnapshot {
+  return {
+    enabled: !!config?.metricsLimit,
+    since: metricsSince,
+    dropped: metricsDropped,
+    entries: [...metrics.values()]
+      .map((entry) => ({ ...entry }))
+      .sort((a, b) => a.model.localeCompare(b.model) || a.op.localeCompare(b.op)),
+  };
+}
+/** Clears this process's counters/window; does not disable collection. */
+export function resetQueryMetrics(): void {
+  metrics.clear();
+  metricsDropped = 0;
+  metricsSince = Date.now();
+}
+function collectMetric(event: QueryEvent): void {
+  if (!config?.metricsLimit) return;
+  const key = event.model + '\0' + event.op;
+  let metric = metrics.get(key);
+  if (!metric) {
+    if (metrics.size >= config.metricsLimit) {
+      metricsDropped++;
+      return;
+    }
+    metric = {
+      model: event.model,
+      op: event.op,
+      calls: 0,
+      errors: 0,
+      statements: 0,
+      totalMs: 0,
+      minMs: event.durationMs,
+      maxMs: event.durationMs,
+      meanMs: 0,
+      slow: 0,
+    };
+    metrics.set(key, metric);
+  }
+  metric.calls++;
+  if (event.error !== undefined) metric.errors++;
+  metric.statements += event.statements;
+  metric.totalMs += event.durationMs;
+  metric.minMs = Math.min(metric.minMs, event.durationMs);
+  metric.maxMs = Math.max(metric.maxMs, event.durationMs);
+  metric.meanMs = metric.totalMs / metric.calls;
+  if (event.durationMs >= config.slowMs) metric.slow++;
+}
+
 interface Resolved {
   all: boolean;
   slowMs: number;
   nPlusOne: number | false;
+  metricsLimit: number;
 }
 
 const DEFAULTS = { slowMs: 500, nPlusOne: 10 } as const;
@@ -39,12 +113,23 @@ export function configureQueryLog(logging: LoggingConfig | false | undefined): v
   config = !q
     ? undefined
     : q === true
-      ? { all: true, ...DEFAULTS }
+      ? { all: true, ...DEFAULTS, metricsLimit: 0 }
       : {
           all: q.all ?? false,
           slowMs: q.slowMs ?? DEFAULTS.slowMs,
           nPlusOne: q.nPlusOne ?? DEFAULTS.nPlusOne,
+          metricsLimit: !q.metrics
+            ? 0
+            : typeof q.metrics === 'object'
+              ? (q.metrics.maxEntries ?? 1000)
+              : 1000,
         };
+  if (config && (!Number.isSafeInteger(config.metricsLimit) || config.metricsLimit < 0)) {
+    config = undefined;
+    resetQueryMetrics();
+    throw new Error('[EFC] logging.queries.metrics.maxEntries must be a nonnegative safe integer');
+  }
+  resetQueryMetrics();
   if (config) for (const hook of enableHooks) hook();
 }
 
@@ -96,6 +181,7 @@ function callSite(callee: (...args: never[]) => unknown): string | undefined {
 function emit(event: QueryEvent, site: string | undefined, top: boolean): void {
   for (const listener of listeners) listener(event);
   if (!config) return;
+  collectMetric(event);
   const log = getLogger();
   const msg = `${event.model}.${event.op} ${event.durationMs}ms`;
   // The request's logger already carries reqId.

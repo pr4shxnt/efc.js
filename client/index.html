@@ -53,7 +53,7 @@
           "applicationCategory": "DeveloperApplication",
           "applicationSubCategory": "Web framework",
           "operatingSystem": "Node.js 18+",
-          "softwareVersion": "0.10.0",
+          "softwareVersion": "0.10.2",
           "license": "https://opensource.org/licenses/MIT",
           "isAccessibleForFree": true,
           "offers": {
@@ -141,8 +141,7 @@
         <div class="hero-glow"></div>
       </div>
       <div class="container hero-inner">
-        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.10.0</span>Typed pipelines,
-          rate limiting, studio writes</a>
+        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.10.2</span>Auth fixes, route testing and database observability</a>
         <h1 class="hero-title">Express, but your folder <br />is your <span class="serif">router.</span></h1>
         <p class="hero-sub fade-up" style="--d: .2s">Drop a file in <code>src/api/</code> and it's a route. Clustering,
           background jobs and a typed data layer are already set up.</p>
@@ -464,6 +463,24 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
           <h2 class="h2">Recent releases.</h2>
         </header>
         <ol class="releases">
+          <li><span class="v">0.10.2</span><time datetime="2026-10-30">Oct 30</time>
+            <p>Logout invalidates stored refresh credentials; password snapshots and authentication-time
+              revocation prevent stale logins from reviving sessions. Reset links are consumed once and invalidate
+              refresh credentials; custom logout propagates failures, and mixed ESM/CJS middleware shares state.
+              Adds <code>createTestApp()</code>,
+              bounded query metrics and PostgreSQL prepared statements, plus a strict nightly 10% benchmark gate.</p>
+            <p>Update owned login, refresh, logout, reset-password, change-password and two-factor helper files alongside the framework.
+              Disable PostgreSQL preparation for incompatible poolers.</p>
+          </li>
+          <li><span class="v">0.10.1</span><time datetime="2026-10-30">Oct 30</time>
+            <p>Middleware errors stop the chain; catch-all parameters decode once. Generated password changes
+              revoke sessions, and init offers TOTP, email OTP, or both with enrollment, login and replay protection.
+              Update existing auth templates, model fields and <code>TWO_FACTOR_KEY</code>; configure SMTP for email OTP.
+              Device-session templates return 501; recovery codes are not implemented.</p>
+            <p><code>efc db pull</code> keeps the names of models you already have and never writes a second file
+              for their table — <code>--force</code> could overwrite <code>AuditLog.ts</code> with a pulled
+              <code>Auditlog</code> on macOS and Windows.</p>
+          </li>
           <li><span class="v">0.10.0</span><time datetime="2026-10-29">Oct 29</time>
             <p>Typed MongoDB pipelines and <code>lookup()</code>, <code>efc db pull</code> for MongoDB,
               <code>rateLimit</code> across workers, <code>efc db studio --write</code>, benchmarks vs Prisma /
@@ -591,7 +608,7 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
       </div>
       <div class="footer-bottom">
         <span>© 2026 EFC Contributors</span>
-        <span>v0.10.0 · Beta</span>
+        <span>v0.10.2 · Beta</span>
       </div>
     </div>
   </footer>

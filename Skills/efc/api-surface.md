@@ -6,12 +6,13 @@ Source of truth: `packages/core/src/`. Do not invent exports, types, or sub-path
 
 ## Sub-path exports
 
-Three import paths. No others exist.
+Four import paths. No others exist.
 
 ```ts
 import { ... } from 'express-file-cluster'          // main
 import { ... } from 'express-file-cluster/auth'      // auth module
 import { ... } from 'express-file-cluster/tasks'     // tasks module
+import { createTestApp } from 'express-file-cluster/testing' // test helper
 ```
 
 ---
@@ -25,7 +26,7 @@ Source: `packages/core/src/index.ts`
 ```ts
 async function ignite(config: EFCConfig): Promise<http.Server | undefined> // undefined on the cluster primary
 function gracefulShutdown(server: http.Server | undefined, timeoutMs?: number): void
-function compose(...handlers: RequestHandler[]): RequestHandler
+function compose(...handlers: RequestHandler[]): RequestHandler // next(err) stops + forwards; next('route'|'router') passes to Express
 
 // Models — one API on MongoDB (mongoose) and PostgreSQL (Drizzle); engine picked at first use
 // Types are INFERRED from the schema literal — no interface needed:
@@ -69,6 +70,11 @@ function setDbClient(client: Record<string, unknown>): void
 function getDbClient(): Record<string, unknown>
 
 // Logging (pino)
+function getQueryMetrics(): QueryMetricsSnapshot // per-process bounded aggregates, opt-in logging.queries.metrics
+function resetQueryMetrics(): void // clears window without disabling collection
+// QueryMetricsSnapshot: { enabled; since (epoch ms); dropped; entries: ReadonlyArray<QueryMetric> }
+// QueryMetric: { model; op; calls; errors; statements; totalMs; minMs; maxMs; meanMs; slow }
+// QueryMetric and QueryMetricsSnapshot are exported types. No SQL/params/error strings in snapshots.
 const logger: Logger           // proxy for getLogger()
 function getLogger(): Logger   // request-scoped child (carries reqId) inside a request, root otherwise
 
@@ -104,7 +110,7 @@ interface EFCConfig {
   dashboard?: boolean;              // dev-only route docs at '/'
   database?: 'mongodb' | 'postgresql'; // default: inferred from databaseUrl scheme
   databaseUrl?: string;
-  databasePool?: { max?: number; idleTimeoutMs?: number; connectionTimeoutMs?: number }; // per worker
+  databasePool?: { max?: number; idleTimeoutMs?: number; connectionTimeoutMs?: number; preparedStatements?: boolean | { max?: number } }; // per worker
   authStrategy?: 'http-only' | 'bearer'; // default 'http-only'; 'localStorage' = old name for 'bearer'; anything else = bearer + warning (error in 1.0)
   jwtSecret?: string;
   jwtExpiresIn?: string;            // default '7d'
@@ -141,7 +147,7 @@ interface LoggingConfig {
   level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent'; // default 'info'
   pretty?: boolean;   // default: non-production TTY
   requests?: boolean; // default true
-  queries?: boolean | { all?: boolean; slowMs?: number; nPlusOne?: number | false }; // default off; slowMs 500, nPlusOne 10
+  queries?: boolean | { all?: boolean; slowMs?: number; nPlusOne?: number | false; metrics?: boolean | { maxEntries?: number } }; // default off; slowMs 500, nPlusOne 10
 }
 ```
 
@@ -330,3 +336,13 @@ function listTasks(): ReadonlyArray<{ name: string; options: TaskOptions }>
 | `tasks.connectionString` (pg-boss) | — | `databaseUrl` |
 
 `NODE_ENV` is the sole exception — a Node/Express-wide runtime-mode signal, not an app secret — and is still read directly via `process.env['NODE_ENV']` in three places: `ignite()`'s cluster-in-production default, the dev-only dashboard toggle, and the `http-only` auth strategy's cookie `Secure` flag.
+
+Generated app 2FA (not core exports): TOTP/email OTP enrollment, password+code login, disable. Init asks allowed methods (`TWO_FACTOR_METHOD`); each account chooses one. See `auth-internals.md` for endpoints, encrypted secrets, replay protection and OAuth limitations.
+
+## `express-file-cluster/testing` (Phase 3)
+
+`async createTestApp(options: TestAppOptions): Promise<express.Express>`. Required `apiDir: string` (existing directory); optional `basePath` (default `/v1/api`), `globalMiddlewares`, `auth: { secret, strategy?, expiresIn?, cookieDomain? }` (defaults http-only/1h), `requestTimeout`, `trustProxy`, `onError`. Exports `TestAppOptions`. Real scanner/router/validation + shared production HTTP stack; no listen/cluster/services/tasks/signals/cwd mutation, CORS/logging/dashboard disabled. Auth/logging and module/model/cache/task state remain process-wide. `apiDir` is NOT an ignite option. See `api-reference/testing.md` and `guides/testing.md`.
+
+Auth payloads may include `efc_auth_at` (epoch milliseconds from before credentials are read): revocation checks it conservatively against the account cutoff, capped at the server's issue time. Generated login/refresh routes set it. `/testing` supports CommonJS callers through an async bridge to its ESM implementation.
+
+ESM/CJS auth configuration, request context and cache state are shared within the process, including mixed-module middleware in `/testing`. Generated reset-password uses atomic unexpired-token consumption and clears refresh credentials; custom auth logout propagates revocation failure.

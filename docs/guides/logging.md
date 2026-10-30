@@ -106,3 +106,20 @@ Unhandled errors are logged at `error` with the request ID and full stack (`err`
 ## Shipping logs
 
 JSON lines on stdout is what log collectors (Datadog, Loki, CloudWatch, Vector) expect — no transport configuration needed. For custom pino transports, set `pretty: false` and pipe stdout.
+
+## Query metrics
+
+Opt in with `logging: { queries: { metrics: true } }`, or `{ metrics: { maxEntries: 500 } }`. The default limit when enabled is 1000 distinct model/operation pairs per worker process; zero disables metrics. Logging and slow/N+1 options remain independent.
+
+```ts
+import { getQueryMetrics, resetQueryMetrics } from 'express-file-cluster';
+
+const snapshot = getQueryMetrics();
+// { enabled, since, dropped, entries: [{ model, op, calls, errors, statements,
+//   totalMs, minMs, maxMs, meanMs, slow }] }
+resetQueryMetrics(); // optional: start a fresh window without disabling collection
+```
+
+Snapshots are detached from internal state and contain no SQL, parameter values, error details or request IDs. Each entry aggregates completed calls, failures, inclusive statement counts and durations in milliseconds. Nested model calls retain their own entries; their statements also count toward the outer operation, so summing entries is not a global database statement total. `slow` counts calls at or above `slowMs`.
+
+When the entry limit is reached, existing pairs keep updating; observations for new pairs increment `dropped`. Reset/reconfiguration clears entries, dropped counts and the `since` timestamp. Metrics are off by default. These are per-process counters, not a cluster-wide service or an OpenTelemetry exporter; collect from each worker/instance separately and secure any diagnostic endpoint you add.

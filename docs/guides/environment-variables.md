@@ -104,3 +104,9 @@ SMTP_FROM=you@example.com
 In development (`efc start dev`), the CLI loads `.env` into `process.env` before your app runs, so `efc.config.ts`'s `process.env.X` reads see it. It re-reads `.env` fresh on every `tsx watch` restart — editing `.env` and saving a source file is enough to pick up the change, no need to stop and restart `efc start dev` itself. Variables already present in `process.env` (e.g. real OS-exported vars, CI-injected secrets) take precedence over `.env`.
 
 In production (`efc start prod`), `.env` is loaded if one exists in the working directory — handy on a plain VPS. Platforms (Docker, Kubernetes, Railway, Heroku) that inject secrets directly into `process.env` always win: the file only fills in variables that aren't already set.
+
+## Generated two-factor authentication
+
+- `TWO_FACTOR_METHOD`: `totp` (default), `email`, or `both`. Init asks when Account security is selected; with both, each account chooses one method at enrollment. Disabling a method does not silently disable enrolled accounts.
+- `TWO_FACTOR_KEY`: independent 32-byte encryption/HMAC key as 64 hex characters (`openssl rand -hex 32`). Init generates it for auth. Keep it stable and shared across instances; changing it requires migrating encrypted secrets or re-enrolling accounts. `ignite()` does not read it; generated `src/lib/two-factor` does.
+- Email OTP needs the email-client's `SMTP_*` settings and a running task backend. Init automatically adds the email client for email/both; with `efc add account-security`, add `efc add email-client` too. Codes expire after five minutes.

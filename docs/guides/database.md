@@ -232,3 +232,18 @@ export default defineTask({ schedule: '0 * * * *' }, async () => {
   await Session.deleteMany({ expiresAt: { $lt: new Date() } });
 });
 ```
+
+## PostgreSQL prepared statements
+
+EFC's PostgreSQL model queries use named prepared statements by default, through node-postgres. SQL shapes are reused across parameter values on each connection, including inside `transaction()`. Drizzle's encoders, row mode and result parsers are preserved; query logging still counts one execution as one statement. Native `db.query()` is unchanged.
+
+```ts
+ignite({
+  databaseUrl: process.env.DATABASE_URL,
+  databasePool: { max: 5, preparedStatements: { max: 100 } },
+});
+```
+
+The default budget is 100 automatically named statements per physical connection. Existing shapes are reused; when the budget is full, new shapes run unnamed. There is no concurrent eviction/DEALLOCATE. Server statements remain bounded until the connection closes. EFC invalidates reusable shapes after its schema sync/drop changes a table, keeping the same lifetime budget. It does not automatically invalidate after DDL issued outside EFC: reconnect after external schema changes. Named statements explicitly supplied by an application are preserved and are outside this automatic budget. DDL, transaction control and multi-statement SQL are not automatically prepared.
+
+Set `databasePool.preparedStatements: false` for transaction poolers that do not support named protocol statements. For PgBouncer, check its [prepared-statement configuration](https://www.pgbouncer.org/config.html#max_prepared_statements); do not assume every deployment supports it. MongoDB ignores this option. This feature avoids repeated parse work for reused SQL; it does not promise faster performance for every query.

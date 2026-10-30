@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import ts from 'typescript';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'fs-extra';
@@ -242,4 +243,48 @@ describe('custom auth entities', () => {
       expect(me).toContain("export const middlewares = [requireAuth('delivery-partner')];");
     });
   });
+});
+
+it('custom-entity logout propagates revocation write failures', async () => {
+  const dir = tmp('efc-entity-revocation-');
+  try {
+    generateEntityAuth(dir, 'merchant', {
+      registry: '0.10.2',
+      language: 'typescript',
+      database: 'postgresql',
+      modelApi: 'defineTable',
+      tasks: 'pg-boss',
+      items: ['auth'],
+      files: {},
+    });
+    const source = fs.readFileSync(path.join(dir, 'src/api/auth/merchant/logout.ts'), 'utf8');
+    const js = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS },
+    }).outputText;
+    const exports: { POST?: (req: object, res: object) => Promise<unknown> } = {};
+    new Function('require', 'exports', js)(
+      () => ({
+        requireAuth: () => {},
+        revokeSession: async () => {
+          throw new Error('Redis write rejected');
+        },
+      }),
+      exports,
+    );
+    let success = false;
+    await expect(
+      exports.POST!(
+        {},
+        {
+          clearCookie() {},
+          json() {
+            success = true;
+          },
+        },
+      ),
+    ).rejects.toThrow('Redis write rejected');
+    expect(success).toBe(false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -13,6 +13,8 @@ export interface ModelSource {
   notes: string[];
   /** Default `defineTable`. */
   api?: 'defineTable' | 'defineCollection';
+  /** The table / collection it was pulled from. */
+  table?: string;
 }
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -66,13 +68,20 @@ ${fields}
  * The barrel that registers every model and, in TypeScript, declares `Tables` for
  * `include` (defineTable only — `tables: false` for collections).
  */
-export function modelIndex(names: string[], typescript: boolean, tables = true): string {
+export function modelIndex(
+  names: string[],
+  typescript: boolean,
+  tables = true,
+  /** Model → its module when that isn't `./<Model>.js`. */
+  modules: Record<string, string> = {},
+): string {
   const sorted = [...names].sort();
-  const exports = sorted.map((n) => `export { ${n} } from './${n}.js';`).join('\n');
+  const from = (n: string) => modules[n] ?? `./${n}.js`;
+  const exports = sorted.map((n) => `export { ${n} } from '${from(n)}';`).join('\n');
   if (!typescript || !tables) return `${exports}\n`;
   return `${exports}
 
-${sorted.map((n) => `import type { ${n} } from './${n}.js';`).join('\n')}
+${sorted.map((n) => `import type { ${n} } from '${from(n)}';`).join('\n')}
 
 // Types \`include\` results: relations name models by string, this maps the names to models.
 declare module 'express-file-cluster' {
@@ -83,31 +92,73 @@ ${sorted.map((n) => `    ${n}: typeof ${n};`).join('\n')}
 `;
 }
 
-/** Writes the models (and index) into `dir`; existing files are kept unless `force`. */
+/** A model already in the output directory: its name and the file that defines it. */
+export interface ExistingModel {
+  name: string;
+  file: string;
+}
+
+/**
+ * Writes the models (and index) into `dir`; existing files are kept unless `force`.
+ * A model whose table an `existing` model already maps is never written to another file,
+ * and a file name that differs from an existing one only in case is never written — on
+ * macOS and Windows that would be the same file.
+ */
 export function writeModels(
   dir: string,
   models: ModelSource[],
-  opts: { typescript: boolean; force?: boolean },
-): { written: string[]; skipped: string[] } {
+  opts: {
+    typescript: boolean;
+    force?: boolean;
+    /** Table / collection → the model in `dir` that already maps it. */
+    existing?: Map<string, ExistingModel>;
+  },
+): { written: string[]; skipped: { file: string; reason: string }[] } {
   const ext = opts.typescript ? 'ts' : 'js';
   fs.mkdirSync(dir, { recursive: true });
   const written: string[] = [];
-  const skipped: string[] = [];
-  const put = (file: string, content: string) => {
+  const skipped: { file: string; reason: string }[] = [];
+  const entries = fs.readdirSync(dir);
+  const put = (file: string, content: string): boolean => {
     const p = path.join(dir, file);
-    if (fs.existsSync(p) && !opts.force) skipped.push(p);
-    else {
-      fs.writeFileSync(p, content);
-      written.push(p);
+    const caseTwin = entries.find((e) => e !== file && e.toLowerCase() === file.toLowerCase());
+    if (caseTwin) {
+      skipped.push({ file: p, reason: `differs only in case from ${caseTwin} — kept` });
+      return false;
     }
+    if (fs.existsSync(p) && !opts.force) {
+      skipped.push({ file: p, reason: 'exists — kept (--force overwrites)' });
+      return true;
+    }
+    fs.writeFileSync(p, content);
+    written.push(p);
+    return true;
   };
-  for (const m of models) put(`${m.name}.${ext}`, modelFile(m));
+  const indexed: string[] = [];
+  const modules: Record<string, string> = {};
+  for (const m of models) {
+    const file = `${m.name}.${ext}`;
+    const owner = m.table !== undefined ? opts.existing?.get(m.table) : undefined;
+    if (owner && path.resolve(owner.file) !== path.resolve(dir, file)) {
+      skipped.push({
+        file: path.join(dir, file),
+        reason: `${m.table} is already ${owner.name} in ${path.basename(owner.file)} — kept`,
+      });
+      if (path.dirname(path.resolve(owner.file)) === path.resolve(dir)) {
+        indexed.push(owner.name);
+        modules[owner.name] = `./${path.basename(owner.file).replace(/\.[mc]?[jt]s$/, '.js')}`;
+      }
+      continue;
+    }
+    if (put(file, modelFile(m))) indexed.push(m.name);
+  }
   put(
     `index.${ext}`,
     modelIndex(
-      models.map((m) => m.name),
+      [...new Set(indexed)],
       opts.typescript,
       models.some((m) => (m.api ?? 'defineTable') === 'defineTable'),
+      modules,
     ),
   );
   return { written, skipped };

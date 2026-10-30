@@ -74,6 +74,8 @@ export interface LoggingConfig {
 }
 
 export interface QueryLogConfig {
+  /** Opt-in per-process query counters/latencies; default off, at most 1000 model/op entries. */
+  metrics?: boolean | { maxEntries?: number };
   /** Log every operation (info), not just slow ones. Default: false (true with `queries: true`). */
   all?: boolean;
   /** Operations taking at least this long are logged as warnings. Default: 500. */
@@ -95,6 +97,8 @@ export interface CorsConfig {
 
 /** Connection pool settings, per worker process (`databasePool` in `ignite()`). */
 export interface DatabasePoolConfig {
+  /** PostgreSQL model statements: default true (100 names per connection); false or { max: 0 } for incompatible poolers. */
+  preparedStatements?: boolean | { max?: number };
   /** Most open connections. Default: 10 (pg) / 100 (MongoDB). */
   max?: number;
   /** Close a connection idle this long, in ms. Default: 10000 (pg) / never (MongoDB). */
@@ -409,10 +413,7 @@ export interface CollectionFieldDefinition extends Omit<
 }
 
 export type CollectionSchemaField =
-  | CollectionFieldDefinition
-  | CollectionSchema
-  | [CollectionSchema]
-  | readonly [CollectionSchema];
+  CollectionFieldDefinition | CollectionSchema | [CollectionSchema] | readonly [CollectionSchema];
 export interface CollectionSchema {
   [field: string]: CollectionSchemaField;
 }
@@ -421,10 +422,7 @@ export interface CollectionSchema {
 export type ReferentialAction = 'restrict' | 'cascade' | 'setNull';
 
 export type TableSchemaField =
-  | TableFieldDefinition
-  | TableSchema
-  | [TableSchema]
-  | readonly [TableSchema];
+  TableFieldDefinition | TableSchema | [TableSchema] | readonly [TableSchema];
 export interface TableSchema {
   [field: string]: TableSchemaField;
 }
@@ -669,9 +667,7 @@ type InferField<F, I extends boolean> = F extends readonly [infer S]
 /** Fields always present on a stored record: required, defaulted or sequence-assigned. */
 type PresentKeys<S> = {
   [K in keyof S]: S[K] extends
-    | { required: true }
-    | { default: unknown }
-    | { sequence: true | string }
+    { required: true } | { default: unknown } | { sequence: true | string }
     ? K
     : never;
 }[keyof S];

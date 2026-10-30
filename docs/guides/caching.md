@@ -153,3 +153,5 @@ cache: { backend: 'redis', url: process.env.REDIS_URL, onRevocationCheckError: '
 Either way the failure is logged (at most every 30 seconds), and calling `revokeSession` / `revokeAllSessions` during an outage **throws**, so a failed logout is never reported as a success. Plain `cache.get/set` calls are unaffected — they degrade to misses.
 
 `revokeToken(res)` still exists and only clears the cookie — prefer `revokeSession` when a cache is configured.
+
+ESM and CommonJS imports share the configured backend, key prefix, pending cache fills and revocation failure policy within one process. A backend configured by one build is used by the other; closing it closes the shared backend. Use one application/cache configuration per process.

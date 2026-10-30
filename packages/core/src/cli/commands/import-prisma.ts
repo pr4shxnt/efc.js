@@ -26,10 +26,8 @@ export function importPrismaCommand(): Command {
       });
       console.log(pc.bold(`\n  Imported ${models.length} model(s) from ${schema}\n`));
       for (const f of written) console.log(`  ${pc.green('+')} ${path.relative(process.cwd(), f)}`);
-      for (const f of skipped)
-        console.log(
-          `  ${pc.yellow('•')} ${path.relative(process.cwd(), f)} ${pc.dim('exists — kept (--force overwrites)')}`,
-        );
+      for (const { file, reason } of skipped)
+        console.log(`  ${pc.yellow('•')} ${path.relative(process.cwd(), file)} ${pc.dim(reason)}`);
       for (const w of warnings) console.log(pc.yellow(`  ! ${w}`));
       const notes = models.reduce((n, m) => n + m.notes.length, 0);
       if (notes)
