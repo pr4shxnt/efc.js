@@ -16,7 +16,7 @@ configureAuth({
 })
 ```
 
-`_config` is a module-level singleton. All auth functions throw `'[EFC] Auth not configured — pass jwtSecret to ignite()'` if called before `configureAuth`.
+Auth configuration is a process-wide singleton shared by the ESM and CommonJS builds. All auth functions throw `'[EFC] Auth not configured — pass jwtSecret to ignite()'` if called before `configureAuth`.
 
 ---
 
@@ -53,6 +53,14 @@ res.clearCookie('efc_token')
 That's the entire implementation. Clears the cookie. The JWT itself is not invalidated — use `revokeSession` for that.
 
 ---
+
+## Generated account-security routes
+
+`change-password` checks nonempty string inputs and the authenticated account's current password, hashes and persists the replacement, clears its stored refresh token and expiry, then calls `revokeAllSessions`. Both User and Admin accounts are supported. Success signs out existing access and refresh tokens, including the current access token; revocation errors propagate rather than reporting success. This is generated app code, not a new core auth API.
+
+Generated 2FA is app code (`src/lib/two-factor` + routes), not a new core API. Init / `efc add account-security` asks `TWO_FACTOR_METHOD=totp|email|both`; init adds email-client/SMTP prompts for email/both. Users and admins enroll one allowed method. `POST /auth/2fa/setup` with `{ password, method }` starts enrollment (TOTP returns a Base32 secret + otpauthUrl, email returns 202 and queues a code); `{ password, method, code }` confirms. GET returns status/allowed methods only. Confirmation clears refresh credentials and calls `revokeAllSessions`. TOTP: RFC 6238 SHA-1, six digits, 30s ±1, atomic last-step comparison. Email: random six digits, 5m expiry, HMAC digest bound to purpose/account/address, atomic consume. Active/pending TOTP secrets use AES-256-GCM with account identity as AAD and independent 64-hex `TWO_FACTOR_KEY`. Strip active/pending secret, email hash/expiry/purpose and last-step fields from records.
+
+Login and `/auth/2fa/verify` share the full password+factor flow and one account rate-limit bucket (10/15m, cache errors reject). No tokens until the factor succeeds; email without code sends only after password verification. Disable needs authentication + password + a fresh code (email without code requests a disable code), erases secrets, and revokes access/refresh tokens. Refresh rotation compare-and-sets old token + enabled state. OAuth rejects 2FA-enabled accounts (use password+code); password reset preserves 2FA. No recovery codes. Device-session list/revoke remain authenticated **501** extension points.
 
 ## Session revocation (`revokeSession`, `revokeAllSessions`) — needs `cache`
 
@@ -139,3 +147,8 @@ Format accepted by `jose`: `'15m'`, `'1h'`, `'7d'`, `'30d'`, integer seconds, et
 - No revocation without a `cache` configured (then `revokeToken` just clears the cookie and a copied token stays valid until it expires). With a cache: `revokeSession` / `revokeAllSessions`.
 - No CSRF token — relies on `SameSite: Strict` for http-only strategy.
 - No multi-strategy per-route override — `authStrategy` is global, set once in `ignite()`.
+
+
+Generated User/Admin logout requires authentication, compare-and-sets the account's stored refresh token to empty (including bearer logout with no refresh cookie/body), then revokes the current access token and clears cookies. Login persists refresh credentials only while the password hash still matches its verified snapshot. Generated login/refresh tokens carry `efc_auth_at`, captured before credential reads; revocation rejects a token whose authentication started at or before the cutoff, even if it was signed afterwards. Custom token issuers may include this numeric epoch-millisecond claim for the same protection; it can only restrict access, never override a later server-issued time. Existing generated apps must update their owned auth routes as well as the framework to receive these fixes.
+
+Password reset atomically consumes the matching, still-unexpired reset token while replacing the password and clearing stored refresh credentials and pending 2FA challenges. Concurrent use has one winner; expiry is rechecked in the database after hashing. Active 2FA enrollment remains enabled. Password changes also invalidate outstanding reset links. Custom auth-entity logout propagates revocation-store failures instead of returning a false success. Existing apps must update their owned reset-password, change-password, two-factor helper and custom logout files.

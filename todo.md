@@ -8,8 +8,8 @@
 
 - [x] Define core API (`ignite()` options, route + task conventions)
 - [x] Write `plan.md`
-- [ ] Decide package name & npm scope
-- [ ] Set up contribution guidelines & repo standards
+- [x] Decide package name & npm scope — unscoped `express-file-cluster`, `create-efc-app`, and `express-file-cluster-mcp`.
+- [x] Set up contribution guidelines & repo standards — `docs/contributing/index.md`, ESLint/Prettier, AGENTS.md and CI.
 - [x] Choose test runner (Vitest) + CI setup
 
 ---
@@ -22,7 +22,7 @@
 - [x] TypeScript build (`tsup`) + dual CJS/ESM output
 - [x] ESLint + Prettier config
 - [x] GitHub Actions: lint + typecheck + build + test on every PR (`.github/workflows/ci.yml`)
-- [ ] `packages/adapters` package scaffold — moved to Phase 2 (only needed once a second adapter exists)
+- [x] Adapter packaging decision — MongoDB and PostgreSQL adapters ship inside `packages/core/src/db`; the originally planned separate `packages/adapters` package is superseded.
 
 ### 1.2 File-Based Router
 
@@ -209,9 +209,25 @@ Goal: define a model and use it — no table chores, on either engine.
 ### Not done — deliberately out of scope (and the late addition)
 
 - [x] **Redis adapter (cache + session store)** — from plan.md's Phase 2 table, added 2026-10-10: `ignite({ cache })` with Redis or memory backends, `cache` API (`get/set/has/del/wrap/clear`), `cacheResponse()` middleware, and JWT session revocation (`revokeSession`, `revokeAllSessions`) enforced by `requireAuth`. Redis outages degrade to misses for cache calls; revocation checks reject with 503 by default (`onRevocationCheckError: 'allow'` to pass), revoke calls fail loudly. The memory backend lives in the cluster primary and workers share it over IPC. Scaffolded apps configure a cache (Redis if `REDIS_URL`, else memory), log out with `revokeSession` and revoke all sessions on password reset (`integration/cache.test.ts`, `integration/cluster.test.ts`, e2e logout replay on both stacks).
-- No schema-diff migration generator (`efc db generate`) — migrations are hand-written around `sync()`.
+- Schema-diff migration generation was outside Phase 2 and has since shipped in Phase 3 (`efc db generate`); hand-written migrations remain supported.
 
 ---
+
+## Phase 1/2 audit follow-up — 2026-10-30
+
+- [x] `compose` forwards callback errors and Express route/router skip signals without executing later composed handlers; HTTP regression coverage.
+- [x] Catch-all paths split raw captures before URI-decoding once, preserving encoded slashes and literal percent signs; both required and optional catch-alls tested under a base path.
+- [x] Generated password changes verify User/Admin credentials, persist a new hash, clear refresh credentials and revoke access tokens; generated-handler coverage across all model/language variants.
+- [x] Unimplemented 2FA and device-session handlers return authenticated 501 responses rather than fake success or device lists; docs and registry label these extension points. Device-session implementation remains outside the delivered framework scope; 2FA is implemented by the follow-up below.
+- [x] Reconcile superseded adapter-package planning and the stale migration-generator exclusion.
+
+## Two-factor authentication follow-up — 2026-10-30
+
+- [x] Init and account-security registry prompt: TOTP, email OTP, or both; users/admins enroll one allowed method. Init adds SMTP mailer setup for email choices.
+- [x] Password-confirmed enrollment and disable; full password+factor login shared by login/verify, token issuance gated, atomic replay prevention, expiry and purpose binding, rate limits and cache failure rejection.
+- [x] Independently encrypted TOTP secrets, keyed email digests, no secrets in record responses; enrollment/disable revoke access and refresh tokens. Refresh rotation rejects replay and OAuth cannot bypass 2FA.
+- [x] RFC vectors, ciphertext tampering, User/Admin flows across all model/language variants, concurrent code consumption and email expiry/delivery failures covered by regression tests.
+- [ ] Recovery codes / automated lost-device recovery (not implemented).
 
 ## Phase 3 — Stable v1.0 (Q1 2027)
 
@@ -219,7 +235,8 @@ Goal: define a model and use it — no table chores, on either engine.
 - [ ] WebSocket support (`export const WS = ...`)
 - [ ] OpenAPI auto-generation from route exports
 - [ ] OpenTelemetry distributed tracing
-- [ ] `efc/testing` (`createTestApp()` for integration tests)
+- [x] CommonJS package loading — tsup shims translate `import.meta.url` used by shared task/CLI modules; regression checks exercise both built testing exports.
+- [x] `express-file-cluster/testing` — `createTestApp()` mounts real route trees with shared production HTTP middleware/error handling, explicit fixture directory, optional auth, no listener/services/cwd mutation. Guide, API reference, package export and regression tests.
 - [ ] `efc studio` — live route map + worker/queue dashboard
 - [ ] Third-party security audit
 - [ ] Benchmarks vs bare Express / Fastify
@@ -266,11 +283,39 @@ Found by actually running each exit criterion end to end, not by reading code:
 0. **Data layer that competes with Prisma** — [`prisma-parity-plan.md`](./prisma-parity-plan.md): one shared foundation (inferred types, validation, auto-sync) under three APIs — portable `defineModel` (today's), PostgreSQL-native `defineTable` (Prisma-style queries, real relations/joins, SQL types) and MongoDB-native `defineCollection` (typed pipelines, `$lookup`, geo/text, bulkWrite, change streams); no cross-engine emulation. Milestones M1–M7.
    - [x] **M1** — inferred types (`InferRecord` / `InferCreate`, scaffolds without interfaces), engine-guard plumbing for the native APIs, portable `upsert` / `updateOne` / `deleteOne` / `exists` / `distinct`; nested dates revived on PostgreSQL
    - [x] **M2** — `defineTable`: SQL types (integer, bigint, decimal, uuid, json, varchar, native arrays/enums), serial/bigserial ids, snake_case naming; Prisma-style findMany/findUnique/count/aggregate/groupBy, create/createMany/update/updateMany/upsert (ON CONFLICT)/delete, cursor pagination, select/omit/distinct; shared pgTable layer
-   - [ ] M3 relations · [ ] M4 schema lifecycle · [ ] M5 `defineCollection` · [ ] M6 tooling · [ ] M7 docs
+   - [x] M3 relations · [x] M4 schema lifecycle · [x] M5 `defineCollection` · [x] M6 query logging/metrics, editable studio, pool settings, bounded prepared statements and strict 10% benchmarks — complete; `bench/results/m6-validation.md` · [x] M7 docs
 
-1. **`efc/testing` — `createTestApp()`** — the integration tests here hand-roll tmp projects + `ignite()`; ship that as a supported helper
+1. **Completed:** `express-file-cluster/testing` — `createTestApp()` for route integration tests; service boot remains covered by `ignite()` tests.
 2. **OpenAPI generation** — `schema` exports are Standard Schema validators; derive request schemas (+ `meta`) into an OpenAPI document
 3. **OpenTelemetry tracing** — request IDs and the request context are already in place
 4. **Plugin system** (`registerPlugin()`)
 5. **WebSockets** (`export const WS = ...`)
 6. Benchmarks vs bare Express / Fastify, security audit, semver/LTS policy, docs site
+
+## M6 completion — 2026-10-30
+
+- [x] Query logging, slow-query and N+1 detection; bounded opt-in process-local metrics with counters, latency summaries, overflow reporting, detached snapshots and reset.
+- [x] Editable studio and both driver pool settings verified through live integration tests.
+- [x] PostgreSQL named statements: 100-name default per-connection budget, transaction support, unnamed fallback, opt-out, schema-sync invalidation and safe pooled query error release; native db Pool unchanged.
+- [x] Nightly 10% gate, strict coverage/timing validation, exact sample/warmup allocation, harness unit tests in PR CI and nightly workflows.
+- [x] Local release rehearsal: all three scaffold/CLI journeys and packaged MCP startup/resources/tools passed.
+- [x] Lint/typecheck/build; 458 tests passed, 36 skipped, 32 additional scaffold/install e2e tests, five harness tests; all twelve benchmark operations pass against the unchanged baseline. Details: `bench/results/m6-validation.md`.
+
+## Auth and testing regression fixes — 2026-10-30
+
+- [x] Authenticated logout clears stored refresh credentials for User/Admin and cookie/bearer callers.
+- [x] Password snapshot CAS and authentication-time revocation prevent in-flight old-password logins from reviving sessions.
+- [x] CommonJS test-helper bridge shares ESM route auth/context; packaged auth regression coverage.
+- [x] Validation: lint, typecheck and build passed; full live-service suite including scaffold/install e2e: 507 passed, 4 skipped (51 files).
+
+- [x] Patch 0.10.2: synchronize package/scaffold/site versions and changelog; commit tested M6 and initial auth/testing regression fixes.
+
+## Additional auth review — 2026-10-30
+
+- [x] Commit 0.10.2 checkpoint without co-author: `ca6d717`.
+- [x] Atomic reset-token consumption and database expiry checks; revoke refresh credentials and pending challenges on reset, preserve active 2FA; invalidate reset links on password change.
+- [x] Mixed ESM/CJS middleware shares auth, context and revocation/cache state.
+- [x] Custom auth-entity logout propagates revocation failures.
+- [x] Validation: lint/typecheck/build passed; full suite with live MongoDB/PostgreSQL/Redis and scaffold/install e2e: 528 passed, 4 skipped (52 files).
+
+- [x] Release CI: build workspace packages before type checking cross-workspace test imports, including the npm publish workflow.

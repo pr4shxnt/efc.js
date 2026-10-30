@@ -17,7 +17,14 @@ import { ITEMS, registryOptions, writeManifest } from '../registry.js';
 // network plus MongoDB, Redis and PostgreSQL, so it only runs with EFC_E2E=1 (the `e2e`
 // CI job sets it).
 const RUN = process.env['EFC_E2E'] === '1';
+// Set-Cookie attributes/order are not a Cookie request header. Preserve every cookie.
+const cookieHeader = (response: Response): string =>
+  response.headers
+    .getSetCookie()
+    .map((value) => value.split(';')[0]!)
+    .join('; ');
 const MONGO_URL = process.env['EFC_TEST_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/efc_e2e';
+const REDIS_URL = process.env['EFC_TEST_REDIS_URL'] ?? 'redis://127.0.0.1:6379';
 const PG_URL = process.env['EFC_TEST_PG_URL'] ?? 'postgres://postgres@127.0.0.1:5433/efc_e2e';
 
 // Both supported stacks, each scaffolded with the interactive defaults otherwise.
@@ -72,7 +79,8 @@ async function createApp(
     language: stack.language,
     database: stack.database,
     // What the scaffolder picks by default: defineCollection on MongoDB, defineTable on PostgreSQL.
-    modelApi: stack.database === 'mongodb' ? ('defineCollection' as const) : ('defineTable' as const),
+    modelApi:
+      stack.database === 'mongodb' ? ('defineCollection' as const) : ('defineTable' as const),
   };
   const extra = { taskBackend: stack.taskBackend };
   await scaffold(registryOptions(variant, items, { ...extra, projectName: appDir }));
@@ -151,18 +159,17 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       APPLE_KEY_ID: 'FGHIJ67890',
       APPLE_PRIVATE_KEY: p8.replace(/\n/g, '\\n'),
     };
-    let env = (await fs.readFile(envPath, 'utf8')).replace(
-      /^DATABASE_URL=.*$/m,
-      `DATABASE_URL=${stack.url}`,
-    );
+    let env = (await fs.readFile(envPath, 'utf8'))
+      .replace(/^DATABASE_URL=.*$/m, `DATABASE_URL=${stack.url}`)
+      .replace(/^REDIS_URL=.*$/m, `REDIS_URL=${REDIS_URL}`);
     for (const [k, v] of Object.entries(oauth)) {
       env = env.replace(new RegExp(`^${k}=.*$`, 'm'), () => `${k}=${v}`);
     }
     await fs.writeFile(envPath, env);
 
-    expect(await fs.readFile(path.join(appDir, 'src', 'model', `User.${ts ? 'ts' : 'js'}`), 'utf8')).toContain(
-      stack.database === 'mongodb' ? "defineCollection('User'" : "defineTable('User'",
-    );
+    expect(
+      await fs.readFile(path.join(appDir, 'src', 'model', `User.${ts ? 'ts' : 'js'}`), 'utf8'),
+    ).toContain(stack.database === 'mongodb' ? "defineCollection('User'" : "defineTable('User'");
     run('npm', ['install', '--no-audit', '--no-fund'], appDir);
   }, 300_000);
 
@@ -303,7 +310,7 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       body: JSON.stringify({ email, password: 'secret-pass-123' }),
     });
     expect(login.status, await login.clone().text()).toBe(200);
-    const cookie = login.headers.get('set-cookie');
+    const cookie = cookieHeader(login);
     expect(cookie).toBeTruthy();
 
     const me = await fetch(`${base}/auth/me`, { headers: { cookie: cookie! } });
@@ -318,6 +325,9 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       headers: { cookie: cookie! },
     });
     expect(logout.status, await logout.clone().text()).toBe(200);
+    expect(
+      (await fetch(`${base}/auth/refresh`, { method: 'POST', headers: { cookie } })).status,
+    ).toBe(401);
     for (let i = 0; i < 6; i++) {
       const replay = await fetch(`${base}/auth/me`, {
         headers: { cookie: cookie!, connection: 'close' },
@@ -325,6 +335,57 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       expect(replay.status).toBe(401);
     }
   }, 60_000);
+
+  it('consumes a reset link once across workers and rejects pre-reset access/refresh credentials', async () => {
+    const base = serverUrl;
+    const json = { 'content-type': 'application/json' };
+    const email = `reset-${crypto.randomUUID()}@example.com`;
+    const post = (route: string, body: object) =>
+      fetch(base + route, { method: 'POST', headers: json, body: JSON.stringify(body) });
+    expect(
+      (await post('/auth/register', { name: 'Reset', email, password: 'original-password' }))
+        .status,
+    ).toBe(201);
+    const login = await post('/auth/login', { email, password: 'original-password' });
+    expect(login.status).toBe(200);
+    const cookie = cookieHeader(login);
+    expect((await post('/auth/forgot-password', { email })).status).toBe(200);
+    // Test-only DB read: reset tokens are intentionally absent from public API responses.
+    let token: string;
+    if (stack.database === 'mongodb') {
+      const { default: mongoose } = await import('mongoose');
+      const conn = await mongoose.createConnection(stack.url).asPromise();
+      try {
+        token = (await conn.collection('users').findOne({ email }))!.resetToken as string;
+      } finally {
+        await conn.close();
+      }
+    } else {
+      const { default: pg } = await import('pg');
+      const conn = new pg.Client({ connectionString: stack.url });
+      await conn.connect();
+      try {
+        token = (await conn.query('SELECT "resetToken" FROM users WHERE email = $1', [email]))
+          .rows[0].resetToken as string;
+      } finally {
+        await conn.end();
+      }
+    }
+    expect(typeof token).toBe('string');
+    expect(token).not.toBe('');
+    const passwords = ['reset-winner-one', 'reset-winner-two'];
+    const results = await Promise.all(
+      passwords.map((password) => post('/auth/reset-password', { token, password })),
+    );
+    expect(results.map((result) => result.status).sort()).toEqual([200, 400]);
+    expect(
+      (await fetch(base + '/auth/refresh', { method: 'POST', headers: { cookie } })).status,
+    ).toBe(401);
+    expect((await fetch(base + '/auth/me', { headers: { cookie } })).status).toBe(401);
+    expect((await post('/auth/reset-password', { token, password: 'replayed' })).status).toBe(400);
+    const winner = results.findIndex((result) => result.status === 200);
+    expect((await post('/auth/login', { email, password: passwords[winner] })).status).toBe(200);
+  });
 
   // Request values used in lookups must be strings; objects are refused before any query.
   it('validates request value types in the auth routes', async () => {
@@ -345,7 +406,7 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
     });
     // Responses carry no token fields.
     const profile = await fetch(`${base}/user/profile`, {
-      headers: { cookie: (typesLogin.headers.get('set-cookie') ?? '').split(';')[0]! },
+      headers: { cookie: cookieHeader(typesLogin) },
     });
     expect(profile.status, await profile.clone().text()).toBe(200);
     const { user: shown } = (await profile.json()) as { user: Record<string, unknown> };
@@ -409,7 +470,10 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       });
       tries.push(limited.status);
     }
-    expect(tries.slice(0, 10).every((s) => s === 401), JSON.stringify(tries)).toBe(true);
+    expect(
+      tries.slice(0, 10).every((s) => s === 401),
+      JSON.stringify(tries),
+    ).toBe(true);
     expect(tries[10]).toBe(429);
     expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
     const otherAccount = await fetch(`${base}/auth/login`, {
@@ -421,10 +485,9 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
   }, 60_000);
 
   it('signs in with Google and Apple', async () => {
-
     const base = serverUrl;
     const json = { 'content-type': 'application/json' };
-    const cookieOf = (r: Response) => r.headers.get('set-cookie')!.split(';')[0]!;
+    const cookieOf = cookieHeader;
 
     // Google: redirect with PKCE, then the callback trades the code at Google's token
     // endpoint — which rejects our fake code (502) — after checking the state.
@@ -627,7 +690,11 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
         name: 'OAuth Bearer',
       };
       const signIn = (body: object) =>
-        fetch(`${base}/oauth-code-test`, { method: 'POST', headers: json, body: JSON.stringify(body) });
+        fetch(`${base}/oauth-code-test`, {
+          method: 'POST',
+          headers: json,
+          body: JSON.stringify(body),
+        });
       const noChallenge = await signIn(profile);
       expect(noChallenge.status, await noChallenge.clone().text()).toBe(400);
       const signedIn = await signIn({ ...profile, appChallenge });
@@ -653,7 +720,9 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
       expect((await exchange(code, verifier)).status).toBe(400);
 
       // The start routes check the challenge's shape.
-      const badStart = await fetch(`${base}/auth/google?code_challenge=short`, { redirect: 'manual' });
+      const badStart = await fetch(`${base}/auth/google?code_challenge=short`, {
+        redirect: 'manual',
+      });
       expect(badStart.status).toBe(400);
       const goodStart = await fetch(`${base}/auth/google?code_challenge=${appChallenge}`, {
         redirect: 'manual',
@@ -666,6 +735,12 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
         headers: bearer(next.token),
       });
       expect(logout.status, await logout.clone().text()).toBe(200);
+      const refreshAfterLogout = await fetch(`${base}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refreshToken: next.refreshToken }),
+      });
+      expect(refreshAfterLogout.status).toBe(401);
       for (let i = 0; i < 6; i++) {
         expect((await fetch(`${base}/auth/me`, { headers: bearer(next.token) })).status).toBe(401);
       }
@@ -702,10 +777,9 @@ describe.skipIf(!RUN).each([STACKS[1], STACKS[2]])('base app + efc add ($label)'
     const envPath = path.join(appDir, '.env');
     await fs.writeFile(
       envPath,
-      (await fs.readFile(envPath, 'utf8')).replace(
-        /^DATABASE_URL=.*$/m,
-        `DATABASE_URL=${stack.url}`,
-      ),
+      (await fs.readFile(envPath, 'utf8'))
+        .replace(/^DATABASE_URL=.*$/m, `DATABASE_URL=${stack.url}`)
+        .replace(/^REDIS_URL=.*$/m, `REDIS_URL=${REDIS_URL}`),
     );
     run('npm', ['install', '--no-audit', '--no-fund'], appDir);
     efc = path.join(appDir, 'node_modules', '.bin', 'efc');
@@ -805,7 +879,7 @@ describe.skipIf(!RUN).each([STACKS[1], STACKS[2]])('base app + efc add ($label)'
       body: JSON.stringify({ email, password: 'secret-pass-123' }),
     });
     expect(login.status, await login.clone().text()).toBe(200);
-    const cookie = login.headers.get('set-cookie')!;
+    const cookie = cookieHeader(login);
 
     const plans = await fetch(`${base}/user/billing/plans`, { headers: { cookie } });
     expect(plans.status, `${await plans.clone().text()}\n${out}`).toBe(200);

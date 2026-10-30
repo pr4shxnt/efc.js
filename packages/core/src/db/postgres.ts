@@ -2,6 +2,7 @@ import type { Pool } from 'pg';
 import { getLogger } from '../logger.js';
 import { countStatement } from './query-log.js';
 import type { DatabasePoolConfig } from '../types.js';
+import { preparedDriver } from './prepared-statements.js';
 
 // Pre-Flight's PostgreSQL connection: a node-postgres Pool (exposed as `db`) plus a
 // Drizzle instance over it that the model adapter queries through.
@@ -49,6 +50,16 @@ export async function connectPostgres(
       connectionTimeoutMillis: poolConfig.connectionTimeoutMs,
     }),
   });
+  const prepared = poolConfig.preparedStatements;
+  const maxStatements =
+    prepared === false ? 0 : typeof prepared === 'object' ? (prepared.max ?? 100) : 100;
+  let driver: Pool;
+  try {
+    driver = preparedDriver(next, maxStatements);
+  } catch (err) {
+    await next.end();
+    throw err;
+  }
   // Idle-client errors (e.g. the server restarting) are emitted on the pool; unhandled
   // they would crash the process.
   next.on('error', (err) => getLogger().error({ err }, 'PostgreSQL pool error'));
@@ -60,7 +71,7 @@ export async function connectPostgres(
   }
   pool = next;
   // Every model statement goes through Drizzle, in or out of a transaction: count it.
-  orm = drizzle(next, { logger: { logQuery: countStatement } });
+  orm = drizzle(driver, { logger: { logQuery: countStatement } });
   getLogger().info('PostgreSQL connected');
   return next;
 }
@@ -120,10 +131,7 @@ export function explainPostgresError(err: unknown, url: string): Error {
  * Logs that total against the server's limit, warning when this machine alone can exhaust it.
  * Best effort: a failure to read the limit is ignored.
  */
-export async function checkConnectionBudget(
-  perMachine: number,
-  breakdown: string,
-): Promise<void> {
+export async function checkConnectionBudget(perMachine: number, breakdown: string): Promise<void> {
   const log = getLogger();
   try {
     const { rows } = await getPool().query<{ max: number; reserved: number }>(

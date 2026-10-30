@@ -74,7 +74,7 @@ export const POST = compose(
 
 ## How `compose` works
 
-`compose(...handlers)` in `packages/core/src/compose.ts` returns a single `RequestHandler` that chains the provided handlers in sequence. Each handler calls `next()` to advance to the next one. If any handler throws or rejects, the error is forwarded to Express's error chain via `next(err)`.
+`compose(...handlers)` in `packages/core/src/compose.ts` returns a single `RequestHandler` that chains the provided handlers in sequence. Each handler calls `next()` to advance to the next one. Calling `next(err)` stops the composed chain and forwards the error; `next('route')` and `next('router')` retain their Express meanings. If any handler throws or rejects, the error is forwarded to Express's error chain via `next(err)`.
 
 ```ts
 export function compose(...handlers: RequestHandler[]): RequestHandler {
@@ -85,7 +85,7 @@ export function compose(...handlers: RequestHandler[]): RequestHandler {
       if (i >= handlers.length) { next(); return; }
       const handler = handlers[i];
       try {
-        Promise.resolve(handler(req, res, () => dispatch(i + 1))).catch(next);
+        Promise.resolve(handler(req, res, (err) => err ? next(err) : dispatch(i + 1))).catch(next);
       } catch (err) {
         next(err);
       }

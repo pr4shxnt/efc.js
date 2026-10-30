@@ -91,8 +91,8 @@ to it; nothing is emulated across engines.
 | Migrations from model diffs, drift check | Prisma Migrate | hand-written; auto-sync adds/converts | M4 |
 | Introspect an existing DB | `prisma db pull` | — | M4 |
 | Push schema without migrations | `prisma db push` | `autoSync` / `efc db sync` ✅ | — |
-| Studio | Prisma Studio (edit) | read-only rows + structure ✅ | M6 |
-| Query logging / metrics | Prisma `log`, metrics | `logging.queries` (ops, statements, slow, N+1) — metrics not yet | M6 |
+| Studio | Prisma Studio (edit) | opt-in model-backed editing, loopback + origin/token checks ✅ | M6 |
+| Query logging / metrics | Prisma `log`, metrics | `logging.queries` (ops, statements, slow, N+1) + bounded opt-in query metrics ✅ | M6 |
 | Validation | none in Prisma | built in ✅ | — |
 | Interactive transactions | `$transaction(async tx => …)` | `transaction(fn)` ✅ (implicit) | — |
 
@@ -273,14 +273,22 @@ await Place.findOneAndUpdate(filter, update, { upsert: true, returnDocument: 'af
 
 ## M6 — Tooling, observability, performance (both engines)
 
+**Complete — 2026-10-30.** [Validation and measurements](bench/results/m6-validation.md):
+458 tests passed with live services (36 skipped), 32 additional scaffold/install e2e tests,
+five benchmark harness tests, and all
+twelve benchmark operations pass the unchanged baseline at the strict 10% threshold.
+Local release rehearsal passed for all three app stacks and packaged MCP startup.
+
 - **Query logging:** `logging.queries: true | { slowMs }` — model, operation, duration, `reqId`;
   slow-query warnings; N+1 detector naming the call site. **Done (M6a)** — also counts statements
   per operation (`onQuery` in `db/query-log.ts`), which M3's one-statement tests assert on.
+  Opt-in `logging.queries.metrics` adds bounded per-process counters/latency summaries via
+  `getQueryMetrics()` / `resetQueryMetrics()`; SQL/params are excluded.
 - **Studio, editable:** opt-in `efc db studio --write` (localhost-only + CSRF token), writes go
   through the models so validation applies.
-- **Pool settings:** `database: { pool: { max, idleTimeoutMs } }`; prepared statements on PostgreSQL.
+- **Pool settings:** `databasePool: { max, idleTimeoutMs, connectionTimeoutMs, preparedStatements }`. Both drivers accept pool settings; PostgreSQL model queries use bounded per-connection prepared names (default 100), with transaction support, unnamed fallback, opt-out and schema-sync invalidation.
 - **Benchmarks:** `bench/` vs Prisma and Drizzle (PostgreSQL) and mongoose (MongoDB), nightly in CI;
-  > 10% regressions fail.
+  > 10% relative regressions fail, with strict result coverage/validity checks.
 
 ## M7 — Docs & positioning
 

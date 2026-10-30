@@ -29,6 +29,7 @@ import {
   type PlanStep,
 } from './engine.js';
 import { getOrm, getPool } from './postgres.js';
+import { invalidatePreparedStatements } from './prepared-statements.js';
 import { getLogger } from '../logger.js';
 
 type AnyRecord = Record<string, unknown>;
@@ -1205,6 +1206,7 @@ export function pgTable(
         }
       }
       await conn.query(dryRun ? 'ROLLBACK' : 'COMMIT');
+      if (!dryRun && steps.length) invalidatePreparedStatements(getPool());
       if (!dryRun) {
         for (const [i, fk] of toValidate.entries()) {
           try {
@@ -1235,6 +1237,7 @@ export function pgTable(
   async function drop() {
     const { sql } = await compile();
     await client().execute(sql.raw(`DROP TABLE IF EXISTS ${q(table)}`));
+    invalidatePreparedStatements(getPool());
   }
 
   return {

@@ -57,12 +57,16 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Build first: cross-workspace tests import the core package's generated declarations;
+      # integration/cluster.test.ts also forks real workers from dist/.
+      - name: Build
+        run: npm run build --workspaces --if-present
+
       - name: Typecheck
         run: npm run typecheck
 
-      # Before Test: integration/cluster.test.ts forks real workers from dist/.
-      - name: Build
-        run: npm run build --workspaces --if-present
+      - name: Benchmark harness tests
+        run: node --test bench/*.test.mjs
 
       - name: Test
         run: npm test

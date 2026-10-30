@@ -44,8 +44,8 @@ boot order, common mistakes, what's not implemented). It applies to every agent,
 
 ## 2. Rules that are easy to get wrong
 
-- Only three import paths exist: `express-file-cluster`, `express-file-cluster/auth`,
-  `express-file-cluster/tasks`.
+- Four import paths exist: `express-file-cluster`, `express-file-cluster/auth`,
+  `express-file-cluster/tasks`, and `express-file-cluster/testing` (Phase 3 test helper).
 - `ignite()` does not load `efc.config.ts`, and `apiDir` / `tasksDir` are not options — `src/api`
   and `src/tasks` are found by convention.
 - Don't document, scaffold or suggest features listed as not implemented in `CLAUDE.md`.

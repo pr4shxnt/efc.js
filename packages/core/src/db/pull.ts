@@ -71,6 +71,8 @@ function scalarType(type: string): { def: Record<string, unknown>; note?: string
 
 export async function pullPostgres(
   pool: Pool,
+  /** Table → model name to keep (existing models), instead of deriving it from the table. */
+  names: Map<string, string> = new Map(),
 ): Promise<{ models: ModelSource[]; skipped: string[] }> {
   const q = async <R>(sql: string) => (await pool.query(sql)).rows as R[];
   const tables = (
@@ -153,7 +155,7 @@ export async function pullPostgres(
       skipped.push(t);
       continue;
     }
-    models.set(t, { table: t, name: pascal(singular(t)), idKind });
+    models.set(t, { table: t, name: names.get(t) ?? pascal(singular(t)), idKind });
   }
   const modelName = (t: string) => models.get(t)?.name;
 
@@ -356,7 +358,7 @@ export async function pullPostgres(
       }
     }
 
-    out.push({ name, fields, options, notes });
+    out.push({ name, fields, options, notes, table });
   }
 
   for (const model of out) {

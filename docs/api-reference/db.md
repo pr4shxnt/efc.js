@@ -350,3 +350,11 @@ It throws if accessed before Pre-Flight completes (e.g. at module load time) —
 ### `getDbClient()` / `setDbClient()`
 
 Read or replace the client behind `db` — mainly for tests that bypass `ignite()`.
+
+## PostgreSQL statement preparation
+
+`ignite({ databasePool: { preparedStatements: true | false | { max?: number } } })` controls automatic naming of Drizzle model queries, including transaction queries. Default: `true`, with 100 names per physical connection. `max` must be a nonnegative safe integer; zero disables. Reused SQL shapes share names across values; excess new shapes use unnamed execution. The native `db` Pool and explicitly named driver queries retain their behavior. EFC schema sync/drop invalidates reusable shapes without exceeding the connection's lifetime name budget. Reconnect after external DDL; disable for incompatible poolers. See [database guide](../guides/database.md#postgresql-prepared-statements).
+
+## Query metrics
+
+`getQueryMetrics(): QueryMetricsSnapshot` and `resetQueryMetrics(): void` are exported from the main package. Opt in using `logging.queries.metrics: true | { maxEntries?: number }` (default off; enabled default limit 1000; zero disables). A snapshot contains `enabled`, `since` (epoch ms), `dropped` (untracked completed-call observations), and detached `entries: ReadonlyArray<QueryMetric>`. Each metric has `model`, `op`, `calls`, `errors`, `statements`, `totalMs`, `minMs`, `maxMs`, `meanMs`, `slow`. Reset starts a new process-local window and leaves collection enabled. Values/SQL/error strings are never included. Nested calls' statement counts are inclusive. [Details](../guides/logging.md#query-metrics).

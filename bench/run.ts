@@ -5,13 +5,15 @@
 //   npm run bench -- --engine pg          # one engine
 //   npm run bench -- --iterations 5000
 //   npm run bench -- --json results.json  # save the numbers
-//   npm run bench -- --compare results/baseline.json   # exit 1 if EFC fell behind (ratio to the fastest, +25%)
+//   npm run bench -- --compare results/baseline.json   # exit 1 if EFC fell behind (ratio to the fastest, +10%)
 //
 // PostgreSQL: EFC defineTable vs Prisma 7 (pg adapter) vs Drizzle. MongoDB: EFC
 // defineCollection vs mongoose. EFC runs through ignite(), as an app would.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { performance } from 'node:perf_hooks';
+import { compareResults } from './compare.mjs';
+import { roundPlan } from './sampling.mjs';
 
 const args = process.argv.slice(2);
 const arg = (name: string, fallback?: string) => {
@@ -19,20 +21,27 @@ const arg = (name: string, fallback?: string) => {
   return i >= 0 ? args[i + 1] : fallback;
 };
 const ENGINE = arg('engine', 'all')!;
-const N = Number(arg('iterations', '2000'));
-const WARMUP = Number(arg('warmup', '200'));
+const N = Number(arg('iterations', '5000'));
+const WARMUP = Number(arg('warmup', '1000'));
 /** Rounds per operation: contenders alternate within each round; the median round counts. */
-const ROUNDS = Number(arg('rounds', '7'));
+const ROUNDS = Number(arg('rounds', '11'));
 const PG_URL = process.env['BENCH_PG_URL'] ?? 'postgres://postgres@127.0.0.1:5433/efc_bench';
 const MONGO_URL = process.env['BENCH_MONGO_URL'] ?? 'mongodb://127.0.0.1:27017/efc_bench';
 const USERS = 200;
 const POSTS_PER_USER = 10;
+if (!['all', 'pg', 'mongo'].includes(ENGINE)) throw new Error('--engine must be all, pg, or mongo');
+const PLAN = roundPlan(N, WARMUP, ROUNDS);
 
 type Stats = { meanMs: number; p50Ms: number; p99Ms: number; opsPerSec: number };
 type Results = Record<string, Record<string, Record<string, Stats>>>; // engine → op → contender
 
 /** One round: `n` timed calls after `warmup` untimed ones. */
-async function round(fn: (i: number) => Promise<unknown>, n: number, warmup: number, offset: number) {
+async function round(
+  fn: (i: number) => Promise<unknown>,
+  n: number,
+  warmup: number,
+  offset: number,
+) {
   for (let i = 0; i < warmup; i++) await fn(offset + i);
   const times = new Float64Array(n);
   const start = performance.now();
@@ -112,7 +121,12 @@ async function postgres(): Promise<Record<string, Record<string, Stats>>> {
     );
     await admin.query(
       `INSERT INTO ${prefix}_posts (id, title, views, "${authorCol}") SELECT * FROM unnest($1::uuid[], $2::text[], $3::int[], $4::uuid[])`,
-      [posts.map((p) => p.id), posts.map((p) => p.title), posts.map((p) => p.views), posts.map((p) => p.authorId)],
+      [
+        posts.map((p) => p.id),
+        posts.map((p) => p.title),
+        posts.map((p) => p.views),
+        posts.map((p) => p.authorId),
+      ],
     );
   };
 
@@ -157,14 +171,21 @@ async function postgres(): Promise<Record<string, Record<string, Stats>>> {
       ops: {
         findUnique: (i) => User.findUnique({ where: { id: pick(i).id } }),
         findMany: () =>
-          User.findMany({ where: { name: { startsWith: 'user1' } }, orderBy: { email: 'asc' }, take: 20 }),
+          User.findMany({
+            where: { name: { startsWith: 'user1' } },
+            orderBy: { email: 'asc' },
+            take: 20,
+          }),
         include: (i) => User.findUnique({ where: { id: pick(i).id }, include: { posts: true } }),
         create: () => User.create({ data: { email: fresh('efc'), name: 'new' } }),
-        update: (i) => Post.update({ where: { id: pickPost(i).id }, data: { views: { increment: 1 } } }),
+        update: (i) =>
+          Post.update({ where: { id: pickPost(i).id }, data: { views: { increment: 1 } } }),
         count: () => Post.count({ where: { views: { gt: 4 } } }),
       },
       close: async () => {
-        await new Promise((r) => (server as unknown as { close(cb: () => void): void }).close(() => r(null)));
+        await new Promise((r) =>
+          (server as unknown as { close(cb: () => void): void }).close(() => r(null)),
+        );
       },
     });
   }
@@ -181,10 +202,19 @@ async function postgres(): Promise<Record<string, Record<string, Stats>>> {
       ops: {
         findUnique: (i) => prisma.user.findUnique({ where: { id: pick(i).id } }),
         findMany: () =>
-          prisma.user.findMany({ where: { name: { startsWith: 'user1' } }, orderBy: { email: 'asc' }, take: 20 }),
-        include: (i) => prisma.user.findUnique({ where: { id: pick(i).id }, include: { posts: true } }),
-        create: () => prisma.user.create({ data: { id: crypto.randomUUID(), email: fresh('prisma'), name: 'new' } }),
-        update: (i) => prisma.post.update({ where: { id: pickPost(i).id }, data: { views: { increment: 1 } } }),
+          prisma.user.findMany({
+            where: { name: { startsWith: 'user1' } },
+            orderBy: { email: 'asc' },
+            take: 20,
+          }),
+        include: (i) =>
+          prisma.user.findUnique({ where: { id: pick(i).id }, include: { posts: true } }),
+        create: () =>
+          prisma.user.create({
+            data: { id: crypto.randomUUID(), email: fresh('prisma'), name: 'new' },
+          }),
+        update: (i) =>
+          prisma.post.update({ where: { id: pickPost(i).id }, data: { views: { increment: 1 } } }),
         count: () => prisma.post.count({ where: { views: { gt: 4 } } }),
       },
       close: () => prisma.$disconnect(),
@@ -215,16 +245,27 @@ async function postgres(): Promise<Record<string, Record<string, Stats>>> {
       author: one(users_, { fields: [posts_.authorId], references: [users_.id] }),
     }));
     const pool = new pg.Pool({ connectionString: PG_URL });
-    const db = drizzle(pool, { schema: { users: users_, posts: posts_, usersRelations, postsRelations } });
+    const db = drizzle(pool, {
+      schema: { users: users_, posts: posts_, usersRelations, postsRelations },
+    });
     contenders.push({
       name: 'Drizzle',
       ops: {
         findUnique: (i) => db.query.users.findFirst({ where: eq(users_.id, pick(i).id) }),
         findMany: () =>
-          db.select().from(users_).where(like(users_.name, 'user1%')).orderBy(asc(users_.email)).limit(20),
-        include: (i) => db.query.users.findFirst({ where: eq(users_.id, pick(i).id), with: { posts: true } }),
+          db
+            .select()
+            .from(users_)
+            .where(like(users_.name, 'user1%'))
+            .orderBy(asc(users_.email))
+            .limit(20),
+        include: (i) =>
+          db.query.users.findFirst({ where: eq(users_.id, pick(i).id), with: { posts: true } }),
         create: () =>
-          db.insert(users_).values({ id: crypto.randomUUID(), email: fresh('drizzle'), name: 'new' }).returning(),
+          db
+            .insert(users_)
+            .values({ id: crypto.randomUUID(), email: fresh('drizzle'), name: 'new' })
+            .returning(),
         update: (i) =>
           db
             .update(posts_)
@@ -258,7 +299,13 @@ async function mongo(): Promise<Record<string, Record<string, Stats>>> {
   const oid = () => new mongoose.Types.ObjectId();
   const uIds = users.map(() => oid());
   const pIds = posts.map(() => oid());
-  const userDocs = users.map((u, i) => ({ _id: uIds[i], email: u.email, name: u.name, createdAt: new Date(), updatedAt: new Date() }));
+  const userDocs = users.map((u, i) => ({
+    _id: uIds[i],
+    email: u.email,
+    name: u.name,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }));
   const postDocs = posts.map((p, i) => ({
     _id: pIds[i],
     title: p.title,
@@ -275,7 +322,10 @@ async function mongo(): Promise<Record<string, Record<string, Stats>>> {
     const efc = await import('express-file-cluster');
     const User = efc.defineCollection(
       'BenchMUser',
-      { email: { type: 'string', required: true, unique: true }, name: { type: 'string', required: true } },
+      {
+        email: { type: 'string', required: true, unique: true },
+        name: { type: 'string', required: true },
+      },
       { collection: 'efc_users' },
     );
     const Post = efc.defineCollection(
@@ -287,7 +337,12 @@ async function mongo(): Promise<Record<string, Record<string, Stats>>> {
       },
       { collection: 'efc_posts' },
     );
-    const server = await efc.ignite({ databaseUrl: MONGO_URL, cluster: false, port: 0, logging: { level: 'warn' } });
+    const server = await efc.ignite({
+      databaseUrl: MONGO_URL,
+      cluster: false,
+      port: 0,
+      logging: { level: 'warn' },
+    });
     // EFC's own mongoose connection (its mongoose may be a different copy from this file's).
     const conn = efc.db as unknown as import('mongoose').Connection;
     await conn.db!.collection('efc_users').deleteMany({});
@@ -309,7 +364,9 @@ async function mongo(): Promise<Record<string, Record<string, Stats>>> {
       close: async () => {
         await conn.db!.collection('efc_users').drop();
         await conn.db!.collection('efc_posts').drop();
-        await new Promise((r) => (server as unknown as { close(cb: () => void): void }).close(() => r(null)));
+        await new Promise((r) =>
+          (server as unknown as { close(cb: () => void): void }).close(() => r(null)),
+        );
         await conn.close();
       },
     });
@@ -320,7 +377,13 @@ async function mongo(): Promise<Record<string, Record<string, Stats>>> {
     const conn = await mongoose.createConnection(MONGO_URL).asPromise();
     const MUser = conn.model(
       'MUser',
-      new mongoose.Schema({ email: { type: String, required: true, unique: true }, name: { type: String, required: true } }, { timestamps: true }),
+      new mongoose.Schema(
+        {
+          email: { type: String, required: true, unique: true },
+          name: { type: String, required: true },
+        },
+        { timestamps: true },
+      ),
       'mongoose_users',
     );
     const MPost = conn.model(
@@ -329,7 +392,12 @@ async function mongo(): Promise<Record<string, Record<string, Stats>>> {
         {
           title: { type: String, required: true },
           views: { type: Number, required: true, default: 0 },
-          author: { type: mongoose.Schema.Types.ObjectId, ref: 'MUser', required: true, index: true },
+          author: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'MUser',
+            required: true,
+            index: true,
+          },
         },
         { timestamps: true },
       ),
@@ -345,7 +413,11 @@ async function mongo(): Promise<Record<string, Record<string, Stats>>> {
       name: 'mongoose',
       ops: {
         findById: (i) => MUser.findById(pick(i)).lean(),
-        find: () => MUser.find({ name: { $regex: '^user1' } }).sort({ email: 1 }).limit(20).lean(),
+        find: () =>
+          MUser.find({ name: { $regex: '^user1' } })
+            .sort({ email: 1 })
+            .limit(20)
+            .lean(),
         populate: (i) => MPost.findById(pickPost(i)).populate('author').lean(),
         create: () => MUser.create({ email: fresh('mongoose'), name: 'new' }),
         update: (i) => MPost.updateOne({ _id: pickPost(i) }, { $inc: { views: 1 } }),
@@ -369,16 +441,17 @@ async function mongo(): Promise<Record<string, Record<string, Stats>>> {
 
 async function runAll(contenders: Contender[]): Promise<Record<string, Record<string, Stats>>> {
   const out: Record<string, Record<string, Stats>> = {};
-  const perRound = Math.max(1, Math.round(N / ROUNDS));
-  const warmup = Math.max(1, Math.round(WARMUP / ROUNDS));
   for (const op of Object.keys(contenders[0]!.ops)) {
-    const rounds = new Map(contenders.map((c) => [c.name, [] as Awaited<ReturnType<typeof round>>[]]));
+    const rounds = new Map(
+      contenders.map((c) => [c.name, [] as Awaited<ReturnType<typeof round>>[]]),
+    );
     // Contenders alternate within every round (in a rotating order), so machine drift and
     // noise land on all of them alike; the median round is reported.
     for (let r = 0; r < ROUNDS; r++) {
+      const { n, warmup: w, offset } = PLAN[r]!;
       const order = contenders.map((_, k) => contenders[(k + r) % contenders.length]!);
       for (const c of order) {
-        rounds.get(c.name)!.push(await round(c.ops[op]!, perRound, warmup, r * (perRound + warmup)));
+        rounds.get(c.name)!.push(await round(c.ops[op]!, n, w, offset));
       }
       process.stderr.write('.');
     }
@@ -423,34 +496,35 @@ console.log(
 
 const jsonOut = arg('json');
 if (jsonOut)
-  fs.writeFileSync(jsonOut, JSON.stringify({ node: process.version, n: N, rounds: ROUNDS, results }, null, 2));
+  fs.writeFileSync(
+    jsonOut,
+    JSON.stringify(
+      {
+        date: new Date().toISOString(),
+        node: process.version,
+        n: N,
+        warmup: WARMUP,
+        rounds: ROUNDS,
+        results,
+      },
+      null,
+      2,
+    ),
+  );
 
 // Regression gate. Absolute times move with machine load, so it compares EFC's ratio to the
 // fastest contender in the same run against that ratio in the saved run.
 const baselineFile = arg('compare');
 if (baselineFile) {
-  const tolerance = Number(arg('tolerance', '25')) / 100;
+  const tolerance = Number(arg('tolerance', '10'));
   const base = JSON.parse(fs.readFileSync(baselineFile, 'utf8')) as { results: Results };
-  const ratio = (byName: Record<string, Stats> | undefined) => {
-    if (!byName?.['EFC']) return undefined;
-    return byName['EFC'].meanMs / Math.min(...Object.values(byName).map((x) => x.meanMs));
-  };
-  const slower: string[] = [];
-  for (const [engine, ops] of Object.entries(results)) {
-    for (const [op, byName] of Object.entries(ops)) {
-      const before = ratio(base.results[engine]?.[op]);
-      const now = ratio(byName);
-      if (before && now && now > before * (1 + tolerance)) {
-        slower.push(`${engine} ${op}: ${before.toFixed(2)}× → ${now.toFixed(2)}× the fastest`);
-      }
-    }
-  }
+  const slower = compareResults(results, base.results, tolerance);
   if (slower.length) {
     console.error(
-      `EFC fell further behind than in ${baselineFile} (tolerance ${tolerance * 100}%):\n  ${slower.join('\n  ')}`,
+      `EFC fell further behind than in ${baselineFile} (tolerance ${tolerance}%):\n  ${slower.join('\n  ')}`,
     );
     process.exit(1);
   }
-  console.log(`No EFC regression beyond ${tolerance * 100}% against ${baselineFile}.`);
+  console.log(`No EFC regression beyond ${tolerance}% against ${baselineFile}.`);
 }
 process.exit(0);

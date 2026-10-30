@@ -41,7 +41,7 @@ export const POST = compose(
 ## Behaviour
 
 - Handlers are called in the order they are passed.
-- Each handler receives the real `next` function of its predecessor; calling `next()` advances to the next handler in the chain.
+- Calling `next()` (or `next(null)`) advances to the next handler in the chain. Calling `next(err)` stops the chain and forwards the error to Express; `next('route')` and `next('router')` are forwarded to Express as well.
 - If the last handler calls `next()`, control passes to the surrounding Express middleware chain (equivalent to the route calling `next()`).
 - If any handler throws synchronously or returns a rejected promise, the error is forwarded to `next(err)` and bubbles up to the global error handler.
 

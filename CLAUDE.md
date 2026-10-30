@@ -27,7 +27,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - Cache (`cache`, `cacheResponse`) on Redis or memory, also used as the JWT session-revocation store
 - CLI (`efc` binary) incl. migrations (hand-written or generated from model diffs: `efc db generate`), seeds, `efc db pull`, `efc import-prisma`, a studio (read-only; `--write` edits through the models, page-token + origin checked) and a shadcn-style feature registry (`efc add | list | view | diff | init`)
 
-**Status: v0.10.0 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6a query logging; custom auth entities; `efc add` feature registry). Fixes ship as patch releases (0.9.5, 0.9.6, …); features as minor bumps.** See `README.md` and `docs/` for full documentation.
+**Status: v0.10.2 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6 tooling/metrics/prepared statements/benchmarks complete; custom auth entities; `efc add` feature registry). Fixes ship as patch releases (0.9.5, 0.9.6, …); features as minor bumps.** See `README.md` and `docs/` for full documentation.
 
 ---
 
@@ -44,7 +44,7 @@ Skills/efc/              ← dense reference cards (/efc skill)
 
 ---
 
-## Three import paths — nothing else
+## Four import paths — nothing else
 
 ```ts
 import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, defineTable, defineCollection, transaction,
@@ -52,11 +52,14 @@ import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, defineTa
 import { issueToken, revokeToken, revokeSession, revokeAllSessions, signToken, requireAuth,
          getCurrentUser, hashPassword, verifyPassword, passwordNeedsRehash } from 'express-file-cluster/auth'
 import { defineTask, enqueue } from 'express-file-cluster/tasks'
+import { createTestApp } from 'express-file-cluster/testing'
 ```
 
 **No other sub-paths exist.** `/db`, `/router`, `/errors`, `/models`, `/config` are all invalid.
 
 ---
+
+`express-file-cluster/testing` exports `createTestApp({ apiDir, ... })` and `TestAppOptions`: a real Express/router app sharing production HTTP middleware/error handling, without listen/cluster/services/signals or cwd changes. `apiDir` is a helper option only. Auth/logging are process-wide; the helper disables logging and does not reset model/cache/task state.
 
 ## Routing — the exact rules
 
@@ -144,7 +147,8 @@ Do not suggest or generate code for these features.
 - `revokeToken` only clears the cookie — the JWT remains valid until expiry. `revokeSession(req, res?)` / `revokeAllSessions(userId)` actually revoke, but need `cache` configured. If the cache is unreachable, `requireAuth` answers 503 by default (`cache.onRevocationCheckError: 'allow'` passes requests instead); the revoke calls throw
 - The `memory` cache backend lives in the cluster primary and workers use it over IPC (shared per machine, lost on restart, not shared across instances) — use `redis` for multiple instances
 - `rateLimit` counts with `cache.incr` (needs `cache`; atomic: Redis Lua / the primary's memory store), clock-aligned fixed windows, default key `req.ip` — behind a proxy without `trustProxy` every client shares one bucket, so generated login/forgot-password key on the email too. `cache.incr` resolves `undefined` when Redis is down; `rateLimit` then allows (default) or 503s
-- Scaffolded apps set `cache` (Redis if `REDIS_URL`, else memory); their logout uses `revokeSession` and password reset calls `revokeAllSessions`
+- Scaffolded apps set `cache` (Redis if `REDIS_URL`, else memory); their logout uses `revokeSession`. Password reset and change call `revokeAllSessions`; change verifies the old password and clears stored refresh credentials. Generated 2FA is app code with TOTP/email OTP (`TWO_FACTOR_METHOD=totp|email|both`, one method per account); init adds SMTP setup for email choices. Enrollment/disable require the password; login verifies the factor before issuing tokens, atomically consumes codes, and shares rate limits with `/auth/2fa/verify`. Keep independent `TWO_FACTOR_KEY` across instances (AES-256-GCM TOTP secrets, keyed email digests); strip all secret/challenge fields from records. OAuth rejects 2FA-enabled accounts; refresh rotation compare-and-sets the old token + enabled state. No recovery codes. Device-session list/revoke remain authenticated 501 extension points.
+- `compose()` must forward `next(err)` and Express route/router skip signals without running subsequent composed handlers. Catch-all mapping must split raw captures before decoding each segment exactly once.
 - Scaffolded PostgreSQL apps use `defineTable` and MongoDB apps `defineCollection` by default (prompt "Models:"; `ScaffoldOptions.modelApi: 'defineModel'` keeps the portable API; `usesTables` / `usesCollections` in scaffold.ts): feature models reference `User`/`Admin`/`Plan`/… by FK (no back-`relations` — each feature stays self-contained), and `src/model/index.ts` registers every model and declares `Tables`. Route code is generated through `orm(opts)` in scaffold.ts — never hand-write `User.findOne(...)` in templates
 - Generated routes must check that request values are strings (`typeof x !== 'string'` → 400) before they reach a filter, and strip `password`, `refreshToken`, `resetToken`, `verifyToken` (+ expiries) from records they return (e2e `validates request value types…` guards it)
 - `create-efc-app` writes only the **base** (server, `src/api` + health, `src/tasks` + SendEmail stub, database, task backend); features are registry items (`packages/create-efc-app/src/registry.ts` `ITEMS`) picked at creation or added with `efc add`. Items are rendered from scaffold.ts in **registry mode** (`registry: true`: login/password flows always handle User + Admin, routes always enqueue SendEmail, rbac + routeDocs on, no back-relations) by diffing scaffolds with/without the item; `renderVariant` throws unless every item is self-contained. `scripts/bundle-registry.mjs` renders 8 variants (ts/js × mongo/mongo-collection/pg-model/pg-table; existing Mongo apps' `efc.json` says `defineModel` → the `mongo` variant) into core `dist/registry`; `efc add` (core `src/cli/registry.ts`) reads it, tracks file hashes in the app's `efc.json`, and never overwrites a changed file without `--overwrite`. Items can declare `prompts` (env vars asked in the terminal by `efc add` and in `create-efc-app`; e.g. `email-client` SMTP, `auth@google`/`auth@apple` OAuth credentials) and `aliases` (`mailer` → `email-client`). Custom authenticatable entities beyond User/Admin are scaffolded via `efc add auth --entity <name>`, `efc add auth:<name>`, or `efc add auth new <name>` (e.g. `efc add auth:merchant`), generating a model + namespaced auth routes (`src/api/auth/<slug>/register|login|logout|me`). When changing a template, keep it free of cross-feature conditionals in registry mode
@@ -164,3 +168,14 @@ Load the `efc` skill for dense reference cards:
 /efc
 ```
 Modules: `api-surface.md`, `routing-rules.md`, `pre-flight.md`, `tasks-internals.md`, `auth-internals.md`, `what-not-to-invent.md`
+
+- Core builds keep tsup `shims: true`: shared modules use `import.meta.url` for worker/CLI paths; leaving it verbatim in CJS chunks makes public `require()` entrypoints fail to parse.
+
+- PostgreSQL model statements are automatically named through a private Drizzle driver Pool/client proxy (`db/prepared-statements.ts`); native `db` is unchanged. `databasePool.preparedStatements` defaults true (100 names per connection), accepts `{ max }` (nonnegative safe integer), or false/zero to disable for incompatible poolers. Preserve values, types/rowMode, caller names and transaction behavior. EFC schema sync/drop invalidates reusable SQL shapes; name budgets are lifetime-bounded, excess shapes run unnamed, no eviction/DEALLOCATE. Reconnect after external DDL.
+- M6 nightly benchmark comparison is a 10% relative regression gate (EFC / fastest contender). Missing operations/contenders and invalid timings must fail; never silently skip missing baseline coverage.
+
+- `logging.queries.metrics` opt-in collects bounded per-process model/op metrics (1000 entries by default, `{ maxEntries: 0 }` disables). `getQueryMetrics` returns detached snapshots; `resetQueryMetrics` clears the window. No SQL, values or error strings. Nested statement counts remain inclusive; overflow observations count as `dropped`. OpenTelemetry remains a separate Phase 3 milestone.
+
+Auth race guards: generated login CAS includes the verified password hash; login/refresh capture `efc_auth_at` before DB reads, and revocation rejects authentication at/before the cutoff. Generated logout is authenticated and invalidates DB refresh credentials even in bearer mode. The CommonJS testing entry delegates to ESM to share state with imported ESM routes.
+
+Reset links are consumed by a DB compare-and-set with expiry rechecked after hashing; success clears refresh credentials and pending challenges, preserving active 2FA. ESM/CJS auth/context/cache share internal process state. Custom entity logout must propagate revocation failures.

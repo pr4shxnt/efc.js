@@ -63,7 +63,11 @@ async function main(): Promise<void> {
               label: 'defineTable',
               hint: 'PostgreSQL-native — foreign keys, relations, include, Prisma-style queries',
             },
-            { value: 'defineModel', label: 'defineModel', hint: 'portable — the same API on MongoDB' },
+            {
+              value: 'defineModel',
+              label: 'defineModel',
+              hint: 'portable — the same API on MongoDB',
+            },
           ]
         : [
             {
@@ -134,11 +138,25 @@ async function main(): Promise<void> {
     required: false,
   });
   if (p.isCancel(picked)) cancel();
-  const items = withDependencies(picked as string[]);
+  let items = withDependencies(picked as string[]);
+  const twoFactorMethod = items.includes('account-security')
+    ? await p.select({
+        message: 'Two-factor authentication methods:',
+        options: [
+          { value: 'totp', label: 'Authenticator app (TOTP)' },
+          { value: 'email', label: 'Email OTP' },
+          { value: 'both', label: 'Both — users choose' },
+        ],
+      })
+    : undefined;
+  if (p.isCancel(twoFactorMethod)) cancel();
+  if (twoFactorMethod && twoFactorMethod !== 'totp')
+    items = withDependencies([...items, 'email-client']);
 
   // Each feature's own questions (SMTP for the email client, OAuth credentials…) — the same
   // ones `efc add` asks. Answers named like env vars go into .env.
   const answers: PromptAnswers = auth === 'none' ? {} : { authStrategy: auth as string };
+  if (twoFactorMethod) answers.TWO_FACTOR_METHOD = twoFactorMethod as string;
   const prompts = itemPrompts(items);
   for (const q of prompts) {
     if (q.name in answers || !promptApplies(q, answers)) continue;
