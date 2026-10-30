@@ -8,8 +8,8 @@
 
 - [x] Define core API (`ignite()` options, route + task conventions)
 - [x] Write `plan.md`
-- [ ] Decide package name & npm scope
-- [ ] Set up contribution guidelines & repo standards
+- [x] Decide package name & npm scope — unscoped `express-file-cluster`, `create-efc-app`, and `express-file-cluster-mcp`.
+- [x] Set up contribution guidelines & repo standards — `docs/contributing/index.md`, ESLint/Prettier, AGENTS.md and CI.
 - [x] Choose test runner (Vitest) + CI setup
 
 ---
@@ -22,7 +22,7 @@
 - [x] TypeScript build (`tsup`) + dual CJS/ESM output
 - [x] ESLint + Prettier config
 - [x] GitHub Actions: lint + typecheck + build + test on every PR (`.github/workflows/ci.yml`)
-- [ ] `packages/adapters` package scaffold — moved to Phase 2 (only needed once a second adapter exists)
+- [x] Adapter packaging decision — MongoDB and PostgreSQL adapters ship inside `packages/core/src/db`; the originally planned separate `packages/adapters` package is superseded.
 
 ### 1.2 File-Based Router
 
@@ -209,9 +209,25 @@ Goal: define a model and use it — no table chores, on either engine.
 ### Not done — deliberately out of scope (and the late addition)
 
 - [x] **Redis adapter (cache + session store)** — from plan.md's Phase 2 table, added 2026-10-10: `ignite({ cache })` with Redis or memory backends, `cache` API (`get/set/has/del/wrap/clear`), `cacheResponse()` middleware, and JWT session revocation (`revokeSession`, `revokeAllSessions`) enforced by `requireAuth`. Redis outages degrade to misses for cache calls; revocation checks reject with 503 by default (`onRevocationCheckError: 'allow'` to pass), revoke calls fail loudly. The memory backend lives in the cluster primary and workers share it over IPC. Scaffolded apps configure a cache (Redis if `REDIS_URL`, else memory), log out with `revokeSession` and revoke all sessions on password reset (`integration/cache.test.ts`, `integration/cluster.test.ts`, e2e logout replay on both stacks).
-- No schema-diff migration generator (`efc db generate`) — migrations are hand-written around `sync()`.
+- Schema-diff migration generation was outside Phase 2 and has since shipped in Phase 3 (`efc db generate`); hand-written migrations remain supported.
 
 ---
+
+## Phase 1/2 audit follow-up — 2026-10-30
+
+- [x] `compose` forwards callback errors and Express route/router skip signals without executing later composed handlers; HTTP regression coverage.
+- [x] Catch-all paths split raw captures before URI-decoding once, preserving encoded slashes and literal percent signs; both required and optional catch-alls tested under a base path.
+- [x] Generated password changes verify User/Admin credentials, persist a new hash, clear refresh credentials and revoke access tokens; generated-handler coverage across all model/language variants.
+- [x] Unimplemented 2FA and device-session handlers return authenticated 501 responses rather than fake success or device lists; docs and registry label these extension points. Device-session implementation remains outside the delivered framework scope; 2FA is implemented by the follow-up below.
+- [x] Reconcile superseded adapter-package planning and the stale migration-generator exclusion.
+
+## Two-factor authentication follow-up — 2026-10-30
+
+- [x] Init and account-security registry prompt: TOTP, email OTP, or both; users/admins enroll one allowed method. Init adds SMTP mailer setup for email choices.
+- [x] Password-confirmed enrollment and disable; full password+factor login shared by login/verify, token issuance gated, atomic replay prevention, expiry and purpose binding, rate limits and cache failure rejection.
+- [x] Independently encrypted TOTP secrets, keyed email digests, no secrets in record responses; enrollment/disable revoke access and refresh tokens. Refresh rotation rejects replay and OAuth cannot bypass 2FA.
+- [x] RFC vectors, ciphertext tampering, User/Admin flows across all model/language variants, concurrent code consumption and email expiry/delivery failures covered by regression tests.
+- [ ] Recovery codes / automated lost-device recovery (not implemented).
 
 ## Phase 3 — Stable v1.0 (Q1 2027)
 

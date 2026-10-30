@@ -22,7 +22,7 @@ scan.ts: filePathToUrlPath(relativePath)
 
 A catch-all must be the LAST segment — `[...slug]/edit.ts` throws at startup. Catch-all
 routes mount on a compiled RegExp (`RouteEntry.pattern`); a mapper restores named params,
-and catch-all values arrive as `string[]` (URI-decoded; `[]` when an optional one is empty).
+and catch-all values arrive as `string[]` (`[]` when an optional one is empty). Split the raw path captures before decoding each segment once: `%2F` stays inside one array item, `%252F` becomes `%2F`, and `%25` becomes `%`. Never decode Express's already-decoded `req.params` again.
 
 ### Examples derived from the exact regex
 

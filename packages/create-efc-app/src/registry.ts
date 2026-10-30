@@ -173,9 +173,32 @@ export const ITEMS: ItemDef[] = [
   {
     name: 'account-security',
     title: 'Account security',
-    description: 'change password, 2FA, sessions, token refresh',
+    description:
+      'password changes, TOTP or email OTP, token refresh; device-session extension points',
     group: 'user',
     registryDependencies: ['auth'],
+    prompts: [
+      {
+        name: 'TWO_FACTOR_METHOD',
+        type: 'select',
+        message: 'Two-factor authentication methods:',
+        default: 'totp',
+        options: [
+          { value: 'totp', label: 'Authenticator app (TOTP)' },
+          {
+            value: 'email',
+            label: 'Email OTP',
+            hint: 'requires the email-client SMTP integration',
+          },
+          {
+            value: 'both',
+            label: 'Both — users choose',
+            hint: 'requires the email-client SMTP integration',
+          },
+        ],
+        note: 'Email OTP requires efc add email-client and working SMTP settings. Each user enrolls one allowed method.',
+      },
+    ],
     enable: user('accountSecurity'),
   },
   {

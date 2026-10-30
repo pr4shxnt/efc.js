@@ -267,3 +267,21 @@ Accepts any value the [`jose`](https://github.com/panva/jose) library supports: 
 ## Algorithm
 
 Tokens are signed with **HS256** (HMAC-SHA256). The secret is UTF-8 encoded before signing. Asymmetric algorithms (RS256, ES256) are not currently supported.
+
+## Generated account-security routes
+
+These are app templates, not exports from `/auth`. `POST /auth/change-password` verifies the authenticated account's old password, hashes the replacement, clears stored refresh credentials, and uses `revokeAllSessions` (cache required). Its 200 response is `{ message: 'Password changed successfully' }`; invalid input returns 400, invalid credentials 401, and suspended accounts 403. Revocation failures propagate. Existing access tokens, including the caller's, are revoked.
+
+Generated 2FA routes (app code, not additional core exports):
+
+| Method/path | Input | Result |
+|---|---|---|
+| `GET /auth/2fa/setup` | authenticated | `{ enabled, method, methods }` |
+| `POST /auth/2fa/setup` | authenticated; `{ password, method }` | TOTP secret/`otpauthUrl` (200), or email `codeSent` (202) |
+| `POST /auth/2fa/setup` | authenticated; `{ password, method, code }` | confirms enrollment; revokes sessions (200) |
+| `POST /auth/login`, `POST /auth/2fa/verify` | `{ email, password, code? }` | no tokens until the enrolled factor passes; missing/invalid code returns 401 with `twoFactorRequired` and `method`; a password-verified email request without code sends one |
+| `POST /auth/2fa/disable` | authenticated; `{ password, code? }` | email without code sends a disable code (202); valid password/code disables and revokes sessions (200) |
+
+`TWO_FACTOR_METHOD=totp|email|both` limits enrollment choices. Each account has one method. TOTP is six-digit SHA-1 with 30-second steps (±1 step); email codes last five minutes. Accepted codes cannot be reused. Enrollment/disable require the current password. See [the full flow and upgrade steps](../guides/authentication.md#two-factor-authentication-totp-or-email-otp).
+
+Device-session `/auth/sessions` (GET) and `/auth/sessions/:id` (DELETE) remain authenticated 501 extension points.

@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { twoFactorLibrary, twoFactorRoutes } from './two-factor.js';
 
 export interface AdminFeatures {
   userManagement: boolean;
@@ -558,8 +559,8 @@ async function writeEnvFiles(dest: string, opts: ScaffoldOptions): Promise<void>
   ];
   const oauthEnv = oauthVars.map(([k, v]) => `\n${k}=${v}`).join('');
   const oauthExample = oauthVars.map(([k, , ex]) => `\n${k}=${ex}`).join('');
-  const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbUrl}\nJWT_SECRET=${secret}${redis}\nCORS_ORIGINS=http://localhost:3000${smtpVars}${oauthEnv}`;
-  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>${redis}\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com\n# Behind a proxy / load balancer: how many hops to trust, so rate limits see client IPs\n# TRUST_PROXY=1${smtpExample}${oauthExample}`;
+  const dotenv = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbUrl}\nJWT_SECRET=${secret}${opts.userFeatures.accountSecurity ? '\nTWO_FACTOR_METHOD=totp' : ''}${principals(opts).user || principals(opts).admin ? `\nTWO_FACTOR_KEY=${crypto.randomBytes(32).toString('hex')}` : ''}${redis}\nCORS_ORIGINS=http://localhost:3000${smtpVars}${oauthEnv}`;
+  const example = `PORT=3000\nNODE_ENV=development\nDATABASE_URL=${dbExampleUrl}\nJWT_SECRET=<generate with: openssl rand -hex 64>${opts.userFeatures.accountSecurity ? '\nTWO_FACTOR_METHOD=totp' : ''}${principals(opts).user || principals(opts).admin ? '\nTWO_FACTOR_KEY=<generate with: openssl rand -hex 32>' : ''}${redis}\nCORS_ORIGINS=http://localhost:3000,https://yourapp.com\n# Behind a proxy / load balancer: how many hops to trust, so rate limits see client IPs\n# TRUST_PROXY=1${smtpExample}${oauthExample}`;
   await fs.outputFile(path.join(dest, '.env'), dotenv);
   await fs.outputFile(path.join(dest, '.env.example'), example);
 }
@@ -685,6 +686,16 @@ export const User = ${modelApi(opts).name}('User', {
   resetTokenExpiry:   { type: 'date' },
   refreshToken:       { type: 'string' },
   refreshTokenExpiry: { type: 'date' },
+  twoFactorEnabled:   { type: 'boolean', default: false },
+  twoFactorSecret:    { type: 'string', default: '' },
+  twoFactorLastStep:  { type: 'number', default: -1 },
+  twoFactorPendingSecret: { type: 'string', default: '' },
+  twoFactorPendingExpiry: { type: 'date' },
+  twoFactorMethod: { type: 'string', default: '' },
+  twoFactorPendingMethod: { type: 'string', default: '' },
+  twoFactorEmailHash: { type: 'string', default: '' },
+  twoFactorEmailExpiry: { type: 'date' },
+  twoFactorEmailPurpose: { type: 'string', default: '' },
 }${relationsOption(opts, [
     { name: 'sessions', kind: 'hasMany', target: 'Session', foreignKey: 'user' },
     { name: 'notifications', kind: 'hasMany', target: 'Notification', foreignKey: 'user' },
@@ -715,6 +726,16 @@ export const Admin = ${modelApi(opts).name}('Admin', {
   resetTokenExpiry:   { type: 'date' },
   refreshToken:       { type: 'string' },
   refreshTokenExpiry: { type: 'date' },
+  twoFactorEnabled:   { type: 'boolean', default: false },
+  twoFactorSecret:    { type: 'string', default: '' },
+  twoFactorLastStep:  { type: 'number', default: -1 },
+  twoFactorPendingSecret: { type: 'string', default: '' },
+  twoFactorPendingExpiry: { type: 'date' },
+  twoFactorMethod: { type: 'string', default: '' },
+  twoFactorPendingMethod: { type: 'string', default: '' },
+  twoFactorEmailHash: { type: 'string', default: '' },
+  twoFactorEmailExpiry: { type: 'date' },
+  twoFactorEmailPurpose: { type: 'string', default: '' },
 }${relationsOption(opts, [
     { name: 'assignedTickets', kind: 'hasMany', target: 'SupportTicket', foreignKey: 'assignedTo' },
     { name: 'auditLogs', kind: 'hasMany', target: 'AuditLog', foreignKey: 'admin' },
@@ -740,9 +761,14 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   // referencing both unconditionally broke builds when only one portal was selected.
   const { user: hasUser, admin: hasAdmin } = principals(opts);
   const hasModels = hasUser || hasAdmin;
+  if (hasModels)
+    await fs.outputFile(
+      path.join(dest, 'src', 'lib', `two-factor.${ext}`),
+      twoFactorLibrary(ts, usesTables(opts), usesCollections(opts)),
+    );
 
   const loginDbImports = hasModels
-    ? `import crypto from 'node:crypto';\n${hasUser ? `import { User } from '../../model/User.js';\n` : ''}${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`
+    ? `import crypto from 'node:crypto';\nimport { acceptTwoFactor, updateSecurity } from '../../lib/two-factor.js';\n${hasUser ? `import { User } from '../../model/User.js';\n` : ''}${hasAdmin ? `import { Admin } from '../../model/Admin.js';\n` : ''}`
     : '';
 
   const loginBody =
@@ -752,8 +778,9 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     const match = await verifyPassword(password, admin.password);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
     if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
+  if (!(await acceptTwoFactor(Admin, admin, 'admin', req.body?.code))) return res.status(401).json({ error: 'Verification code required or invalid', twoFactorRequired: true, method: admin.twoFactorMethod || 'totp' });
+    const refreshToken = await issueRefreshToken(res, Admin, admin);
     const token = await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
-    const refreshToken = await issueRefreshToken(res, Admin, admin.id);
     return res.json({ message: 'Logged in as admin', ...(token ? { token, refreshToken } : {}) });
   }
 
@@ -762,8 +789,9 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   const match = await verifyPassword(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
+  if (!(await acceptTwoFactor(User, user, 'user', req.body?.code))) return res.status(401).json({ error: 'Verification code required or invalid', twoFactorRequired: true, method: user.twoFactorMethod || 'totp' });
+  const refreshToken = await issueRefreshToken(res, User, user);
   const token = await issueToken(res, { id: user.id, role: user.role, email: user.email });
-  const refreshToken = await issueRefreshToken(res, User, user.id);
   // bearer: the client stores both tokens itself; http-only: they travel as cookies.
   res.json({ message: 'Logged in', ...(token ? { token, refreshToken } : {}) });`
       : hasAdmin
@@ -772,8 +800,9 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   const match = await verifyPassword(password, admin.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
+  if (!(await acceptTwoFactor(Admin, admin, 'admin', req.body?.code))) return res.status(401).json({ error: 'Verification code required or invalid', twoFactorRequired: true, method: admin.twoFactorMethod || 'totp' });
+  const refreshToken = await issueRefreshToken(res, Admin, admin);
   const token = await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
-  const refreshToken = await issueRefreshToken(res, Admin, admin.id);
   // bearer: the client stores both tokens itself; http-only: they travel as cookies.
   res.json({ message: 'Logged in as admin', ...(token ? { token, refreshToken } : {}) });`
         : `  const user = await ${db.findOne('User', `{ email }`)};
@@ -781,8 +810,9 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   const match = await verifyPassword(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
+  if (!(await acceptTwoFactor(User, user, 'user', req.body?.code))) return res.status(401).json({ error: 'Verification code required or invalid', twoFactorRequired: true, method: user.twoFactorMethod || 'totp' });
+  const refreshToken = await issueRefreshToken(res, User, user);
   const token = await issueToken(res, { id: user.id, role: user.role, email: user.email });
-  const refreshToken = await issueRefreshToken(res, User, user.id);
   // bearer: the client stores both tokens itself; http-only: they travel as cookies.
   res.json({ message: 'Logged in', ...(token ? { token, refreshToken } : {}) });`;
 
@@ -790,7 +820,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     ? ts
       ? `import { issueToken, verifyPassword } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
-import { rateLimit } from 'express-file-cluster';
+import { HttpError, rateLimit } from 'express-file-cluster';
 ${loginDbImports}${loginMeta}// 10 attempts per 15 minutes per address and account. Keyed on the email too, so behind a
 // proxy without TRUST_PROXY (every client then has the proxy's IP) it still limits one
 // account at a time, never everyone.
@@ -798,7 +828,9 @@ export const middlewares = [
   rateLimit({
     window: '15m',
     max: 10,
-    key: (req) => \`\${req.ip}:\${String(req.body?.email ?? '').toLowerCase()}\`,
+    name: 'password-login',
+    onCacheError: 'reject',
+    key: (req) => String(req.body?.email ?? '').toLowerCase(),
   }),
 ];
 
@@ -806,17 +838,12 @@ const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 async function issueRefreshToken(
   res: Response,
-  model: ${
-    usesTables(opts)
-      ? '{ update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }'
-      : usesCollections(opts)
-        ? '{ findByIdAndUpdate: (id: string, data: Record<string, unknown>, options: { returnDocument: \'after\' }) => Promise<unknown> }'
-        : '{ update: (id: string, data: Record<string, unknown>) => Promise<unknown> }'
-  },
-  id: string,
+  model: Parameters<typeof updateSecurity>[0],
+  account: { id: string; twoFactorEnabled?: boolean; twoFactorSecret?: string },
 ): Promise<string> {
   const refreshToken = crypto.randomBytes(40).toString('hex');
-  await ${db.update('model', 'id', '{ refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) }')};
+  const updated = await updateSecurity(model, { id: account.id, twoFactorEnabled: !!account.twoFactorEnabled, ...(account.twoFactorEnabled ? { twoFactorSecret: account.twoFactorSecret ?? '' } : {}) }, { refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+  if (!updated) throw new HttpError(409, 'Account security changed; log in again');
   res.cookie('efc_refresh_token', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -827,7 +854,7 @@ async function issueRefreshToken(
 }
 
 export const POST = async (req: Request, res: Response) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body ?? {};
   // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
   if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
     return res.status(400).json({ error: 'email and password are required' });
@@ -837,7 +864,7 @@ ${loginBody}
 };
 `
       : `import { issueToken, verifyPassword } from 'express-file-cluster/auth';
-import { rateLimit } from 'express-file-cluster';
+import { HttpError, rateLimit } from 'express-file-cluster';
 ${loginDbImports}${loginMeta}// 10 attempts per 15 minutes per address and account. Keyed on the email too, so behind a
 // proxy without TRUST_PROXY (every client then has the proxy's IP) it still limits one
 // account at a time, never everyone.
@@ -845,15 +872,18 @@ export const middlewares = [
   rateLimit({
     window: '15m',
     max: 10,
-    key: (req) => \`\${req.ip}:\${String(req.body?.email ?? '').toLowerCase()}\`,
+    name: 'password-login',
+    onCacheError: 'reject',
+    key: (req) => String(req.body?.email ?? '').toLowerCase(),
   }),
 ];
 
 const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
-async function issueRefreshToken(res, model, id) {
+async function issueRefreshToken(res, model, account) {
   const refreshToken = crypto.randomBytes(40).toString('hex');
-  await ${db.update('model', 'id', '{ refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) }')};
+  const updated = await updateSecurity(model, { id: account.id, twoFactorEnabled: !!account.twoFactorEnabled, ...(account.twoFactorEnabled ? { twoFactorSecret: account.twoFactorSecret ?? '' } : {}) }, { refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+  if (!updated) throw new HttpError(409, 'Account security changed; log in again');
   res.cookie('efc_refresh_token', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -864,7 +894,7 @@ async function issueRefreshToken(res, model, id) {
 }
 
 export const POST = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body ?? {};
   // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
   if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
     return res.status(400).json({ error: 'email and password are required' });
@@ -955,7 +985,7 @@ ${registerDbImports}${registerMeta}export const POST = async (req: Request, res:
   const verifyToken = crypto.randomBytes(32).toString('hex');
   const user = await ${db.create('User', `{ name, email, password: hashed, verifyToken }`)};
 ${sendVerifyEmail}
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = user;
   res.status(201).json({ message: 'Account created successfully', user: safe });
 };
 `
@@ -971,7 +1001,7 @@ ${sendVerifyEmail}
   const verifyToken = crypto.randomBytes(32).toString('hex');
   const user = await ${db.create('User', `{ name, email, password: hashed, verifyToken }`)};
 ${sendVerifyEmail}
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = user;
   res.status(201).json({ message: 'Account created successfully', user: safe });
 };
 `;
@@ -1092,7 +1122,7 @@ export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Number(req.query.limit) || 20);
   const [all, total] = await Promise.all([${db.find('User', `{}`)}, ${db.count('User', `{}`)}]);
-  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...u }) => u);
+  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...u }) => u);
   res.json({ users, total, page, limit });
 };
 
@@ -1106,7 +1136,7 @@ ${roleGuard}  const { name, email, password, role } = req.body;
   if (existing) return res.status(409).json({ error: 'Email already in use' });
   const hashed = await hashPassword(password);
   const user = await ${db.create('User', `{ name, email, password: hashed, role: role ?? 'user' }`)};
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = user;
   res.status(201).json({ message: 'User created', user: safe });
 };
 `
@@ -1116,7 +1146,7 @@ export const GET = async (req, res) => {
 ${roleGuard}  const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Number(req.query.limit) || 20);
   const [all, total] = await Promise.all([${db.find('User', `{}`)}, ${db.count('User', `{}`)}]);
-  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...u }) => u);
+  const users = all.slice((page - 1) * limit, page * limit).map(({ password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...u }) => u);
   res.json({ users, total, page, limit });
 };
 
@@ -1130,7 +1160,7 @@ ${roleGuard}  const { name, email, password, role } = req.body;
   if (existing) return res.status(409).json({ error: 'Email already in use' });
   const hashed = await hashPassword(password);
   const user = await ${db.create('User', `{ name, email, password: hashed, role: role ?? 'user' }`)};
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = user;
   res.status(201).json({ message: 'User created', user: safe });
 };
 `;
@@ -1156,7 +1186,7 @@ export const GET = async (req: Request, res: Response) => {
 ${roleGuard}  const { id } = req.params;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = user;
   res.json({ user: safe });
 };
 
@@ -1168,7 +1198,7 @@ ${roleGuard}  const { id } = req.params;
   // The role lives in the user's JWTs: end them, or a demoted/suspended user keeps access
   // until they expire. (/auth/refresh also refuses inactive accounts.)
   if (role !== undefined || isActive === false) await revokeAllSessions(id);
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = updated;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = updated;
   res.json({ message: 'User updated', user: safe });
 };
 
@@ -1187,7 +1217,7 @@ export const GET = async (req, res) => {
 ${roleGuard}  const { id } = req.params;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = user;
   res.json({ user: safe });
 };
 
@@ -1199,7 +1229,7 @@ ${roleGuard}  const { id } = req.params;
   // The role lives in the user's JWTs: end them, or a demoted/suspended user keeps access
   // until they expire. (/auth/refresh also refuses inactive accounts.)
   if (role !== undefined || isActive === false) await revokeAllSessions(id);
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = updated;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = updated;
   res.json({ message: 'User updated', user: safe });
 };
 
@@ -1243,16 +1273,20 @@ export const GET = async (req: Request, res: Response) => {
   const { id } = (req as any).user;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = user;
   res.json({ user: safe });
 };
 
 export const PUT = async (req: Request, res: Response) => {
   const { id } = (req as any).user;
-  const { name, email } = req.body;
+  const { name, email } = req.body ?? {};
+  if ((name !== undefined && typeof name !== 'string') || (email !== undefined && typeof email !== 'string')) return res.status(400).json({ error: 'name and email must be strings' });
+  const existing = await ${db.findById('User', `id`)};
+  if (!existing) return res.status(404).json({ error: 'User not found' });
+  if (email !== undefined && email !== existing.email && existing.twoFactorEnabled && existing.twoFactorMethod === 'email') return res.status(409).json({ error: 'Disable email 2FA before changing the email address' });
   const updated = await ${db.update('User', `id`, `{ name, email }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = updated;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = updated;
   res.json({ message: 'Profile updated', user: safe });
 };
 `
@@ -1262,16 +1296,20 @@ export const GET = async (req, res) => {
   const { id } = req.user;
   const user = await ${db.findById('User', `id`)};
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = user;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = user;
   res.json({ user: safe });
 };
 
 export const PUT = async (req, res) => {
   const { id } = req.user;
-  const { name, email } = req.body;
+  const { name, email } = req.body ?? {};
+  if ((name !== undefined && typeof name !== 'string') || (email !== undefined && typeof email !== 'string')) return res.status(400).json({ error: 'name and email must be strings' });
+  const existing = await ${db.findById('User', `id`)};
+  if (!existing) return res.status(404).json({ error: 'User not found' });
+  if (email !== undefined && email !== existing.email && existing.twoFactorEnabled && existing.twoFactorMethod === 'email') return res.status(409).json({ error: 'Disable email 2FA before changing the email address' });
   const updated = await ${db.update('User', `id`, `{ name, email }`)};
   if (!updated) return res.status(404).json({ error: 'User not found' });
-  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, ...safe } = updated;
+  const { password: _, verifyToken: _vt, resetToken: _rt, resetTokenExpiry: _re, refreshToken: _ft, refreshTokenExpiry: _fe, twoFactorSecret: _tfs, twoFactorPendingSecret: _tfp, twoFactorPendingExpiry: _tfpe, twoFactorLastStep: _tfl, twoFactorEmailHash: _tfeh, twoFactorEmailExpiry: _tfee, twoFactorEmailPurpose: _tfep, twoFactorPendingMethod: _tfpm, ...safe } = updated;
   res.json({ message: 'Profile updated', user: safe });
 };
 `;
@@ -1590,13 +1628,16 @@ async function writeAuthExtendedRoutes(dest: string, opts: ScaffoldOptions): Pro
       : `  const user = await ${db.findOne('User', `{ refreshToken: token }`)};
   const account = user;`;
     const refreshPersist = hasAdmin
-      ? `  if (user) await ${db.update('User', `user.id`, `{ refreshToken: newRefreshToken, refreshTokenExpiry }`)};
-  else if (admin) await ${db.update('Admin', `admin.id`, `{ refreshToken: newRefreshToken, refreshTokenExpiry }`)};`
-      : `  await ${db.update('User', `user.id`, `{ refreshToken: newRefreshToken, refreshTokenExpiry }`)};`;
+      ? `  const model = user ? User : Admin;
+  const rotated = await updateSecurity(model, { id: account.id, refreshToken: token, twoFactorEnabled: !!account.twoFactorEnabled }, { refreshToken: newRefreshToken, refreshTokenExpiry });
+  if (!rotated) return res.status(401).json({ error: 'Refresh token expired or already used' });`
+      : `  const rotated = await updateSecurity(User, { id: account.id, refreshToken: token, twoFactorEnabled: !!account.twoFactorEnabled }, { refreshToken: newRefreshToken, refreshTokenExpiry });
+  if (!rotated) return res.status(401).json({ error: 'Refresh token expired or already used' });`;
     const refreshContent = ts
       ? `import { issueToken } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
 import crypto from 'node:crypto';
+import { updateSecurity } from '../../lib/two-factor.js';
 ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export const POST = async (req: Request, res: Response) => {
@@ -1633,6 +1674,7 @@ ${refreshPersist}
 `
       : `import { issueToken } from 'express-file-cluster/auth';
 import crypto from 'node:crypto';
+import { updateSecurity } from '../../lib/two-factor.js';
 ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export const POST = async (req, res) => {
@@ -1897,187 +1939,88 @@ ${rpPersist}
         response: `{ message: 'Password changed successfully' }`,
       },
     });
-    const cpContent = ts
-      ? `${RA}import type { Request, Response } from 'express';
-${cpMeta}${mwUser2}
-export const POST = async (req: Request, res: Response) => {
-  const { oldPassword, newPassword } = req.body;
-  if (!oldPassword || !newPassword) return res.status(400).json({ error: 'oldPassword and newPassword are required' });
-  // TODO: verify old password, hash and update new password, then sign out other devices:
-  // await revokeAllSessions(req.user.id)  (import from 'express-file-cluster/auth')
-  res.json({ message: 'Password changed successfully' });
-};
-`
-      : `${RA}${cpMeta}${mwUser2}
-export const POST = async (req, res) => {
-  const { oldPassword, newPassword } = req.body;
-  if (!oldPassword || !newPassword) return res.status(400).json({ error: 'oldPassword and newPassword are required' });
-  // TODO: verify old password, hash and update new password, then sign out other devices:
-  // await revokeAllSessions(req.user.id)  (import from 'express-file-cluster/auth')
+    const cpImports = `import { requireAuth, getCurrentUser, hashPassword, verifyPassword, revokeAllSessions } from 'express-file-cluster/auth';
+import { rateLimit } from 'express-file-cluster';
+import { User } from '../../model/User.js';
+${hasAdmin ? "import { Admin } from '../../model/Admin.js';\n" : ''}`;
+    const cpLookup = hasAdmin
+      ? `  const isAdmin = principal.role === 'admin';
+  const account = isAdmin ? await ${db.findById('Admin', 'id')} : await ${db.findById('User', 'id')};`
+      : `  const account = await ${db.findById('User', 'id')};`;
+    const passwordData = `{ password: hashed, refreshToken: '', refreshTokenExpiry: new Date(0) }`;
+    const cpPersist = hasAdmin
+      ? `  const updated = isAdmin ? await ${db.update('Admin', 'id', passwordData)} : await ${db.update('User', 'id', passwordData)};`
+      : `  const updated = await ${db.update('User', 'id', passwordData)};`;
+    const cpContent = `${cpImports}${ts ? "import type { Request, Response } from 'express';\n" : ''}${cpMeta}
+export const middlewares = [
+  ${opts.rbac ? "requireAuth('user', 'admin')" : 'requireAuth'},
+  rateLimit({ window: '15m', max: 10, name: 'change-password', key: () => String(getCurrentUser()?.id ?? '') }),
+];
+
+export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' : ''}) => {
+  const { oldPassword, newPassword } = req.body ?? {};
+  if (typeof oldPassword !== 'string' || typeof newPassword !== 'string' || !oldPassword || !newPassword) {
+    return res.status(400).json({ error: 'oldPassword and newPassword are required' });
+  }
+  const principal = getCurrentUser();
+  if (!principal || typeof principal.id !== 'string' || !principal.id) return res.status(401).json({ error: 'Unauthorized' });
+  const id = principal.id;
+${cpLookup}
+  if (!account || !(await verifyPassword(oldPassword, account.password))) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  if (!account.isActive) return res.status(403).json({ error: 'Account suspended' });
+  const hashed = await hashPassword(newPassword);
+${cpPersist}
+  if (!updated) return res.status(404).json({ error: 'Account not found' });
+  await revokeAllSessions(id);
+  res.clearCookie('efc_refresh_token');
   res.json({ message: 'Password changed successfully' });
 };
 `;
     await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `change-password.${ext}`), cpContent);
 
-    // 2fa/setup.ts
-    const tfaSetupMeta = mkMeta(opts, {
-      GET: {
-        description: 'Generate a TOTP secret and QR code to set up 2FA.',
-        response: `{ qrCode: 'otpauth://totp/...', secret: 'BASE32SECRET' }`,
-      },
-      POST: {
-        description: 'Confirm a TOTP code to enable 2FA for the authenticated user.',
-        request: `{ code: '123456' }`,
-        response: `{ message: '2FA enabled' }`,
-      },
-    });
-    const tfaSetupContent = ts
-      ? `${RA}import type { Request, Response } from 'express';
-${tfaSetupMeta}${mwUser3}
-export const GET = async (req: Request, res: Response) => {
-  // TODO: generate TOTP secret and return QR code URL
-  res.json({ qrCode: 'otpauth://totp/...', secret: 'BASE32SECRET' });
-};
+    for (const [file, content] of Object.entries(twoFactorRoutes(ts, usesTables(opts), hasAdmin))) {
+      await fs.outputFile(path.join(dest, 'src', 'api', 'auth', `${file}.${ext}`), content);
+    }
 
-export const POST = async (req: Request, res: Response) => {
-  const { code } = req.body;
-  if (!code) return res.status(400).json({ error: 'code is required' });
-  // TODO: verify TOTP code and enable 2FA
-  res.json({ message: '2FA enabled' });
-};
-`
-      : `${RA}${tfaSetupMeta}${mwUser3}
-export const GET = async (req, res) => {
-  // TODO: generate TOTP secret and return QR code URL
-  res.json({ qrCode: 'otpauth://totp/...', secret: 'BASE32SECRET' });
-};
-
-export const POST = async (req, res) => {
-  const { code } = req.body;
-  if (!code) return res.status(400).json({ error: 'code is required' });
-  // TODO: verify TOTP code and enable 2FA
-  res.json({ message: '2FA enabled' });
-};
+    // Device-session storage remains an explicit extension point.
+    for (const endpoint of [
+      { file: 'sessions/index', methods: ['GET'], feature: 'Device session management' },
+      { file: 'sessions/[id]', methods: ['DELETE'], feature: 'Device session management' },
+    ]) {
+      const message = `${endpoint.feature} is not implemented. Connect an implementation before enabling this feature.`;
+      const metadata = mkMeta(
+        opts,
+        Object.fromEntries(
+          endpoint.methods.map((method) => [
+            method,
+            {
+              description: `${endpoint.feature} extension point (not implemented).`,
+              status: 501,
+              response: JSON.stringify({ error: message, statusCode: 501 }),
+            },
+          ]),
+        ),
+      );
+      const handlers = endpoint.methods
+        .map(
+          (
+            method,
+          ) => `export const ${method} = (_req${ts ? ': Request' : ''}, res${ts ? ': Response' : ''}) => {
+  res.status(501).json({ error: ${JSON.stringify(message)}, statusCode: 501 });
+};`,
+        )
+        .join('\n\n');
+      const content = `${RA}${ts ? "import type { Request, Response } from 'express';\n" : ''}${metadata}${mwUser3}
+// Extension point: replace this handler only after wiring and testing the feature.
+${handlers}
 `;
-    await fs.outputFile(
-      path.join(dest, 'src', 'api', 'auth', '2fa', `setup.${ext}`),
-      tfaSetupContent,
-    );
-
-    // 2fa/verify.ts
-    const tfaVerifyMeta = mkMeta(opts, {
-      POST: {
-        description: 'Verify a TOTP code during login.',
-        request: `{ code: '123456' }`,
-        response: `{ message: '2FA verified' }`,
-      },
-    });
-    const tfaVerifyContent = ts
-      ? `${RA}import type { Request, Response } from 'express';
-${tfaVerifyMeta}export const POST = async (req: Request, res: Response) => {
-  const { code } = req.body;
-  if (!code) return res.status(400).json({ error: 'code is required' });
-  // TODO: verify TOTP code
-  res.json({ message: '2FA verified' });
-};
-`
-      : `${RA}${tfaVerifyMeta}export const POST = async (req, res) => {
-  const { code } = req.body;
-  if (!code) return res.status(400).json({ error: 'code is required' });
-  // TODO: verify TOTP code
-  res.json({ message: '2FA verified' });
-};
-`;
-    await fs.outputFile(
-      path.join(dest, 'src', 'api', 'auth', '2fa', `verify.${ext}`),
-      tfaVerifyContent,
-    );
-
-    // 2fa/disable.ts
-    const tfaDisableMeta = mkMeta(opts, {
-      POST: {
-        description: 'Disable 2FA for the authenticated user.',
-        request: `{ code: '123456' }`,
-        response: `{ message: '2FA disabled' }`,
-      },
-    });
-    const tfaDisableContent = ts
-      ? `${RA}import type { Request, Response } from 'express';
-${tfaDisableMeta}${mwUser3}
-export const POST = async (req: Request, res: Response) => {
-  const { code } = req.body;
-  if (!code) return res.status(400).json({ error: 'code is required' });
-  // TODO: verify code and disable 2FA
-  res.json({ message: '2FA disabled' });
-};
-`
-      : `${RA}${tfaDisableMeta}${mwUser3}
-export const POST = async (req, res) => {
-  const { code } = req.body;
-  if (!code) return res.status(400).json({ error: 'code is required' });
-  // TODO: verify code and disable 2FA
-  res.json({ message: '2FA disabled' });
-};
-`;
-    await fs.outputFile(
-      path.join(dest, 'src', 'api', 'auth', '2fa', `disable.${ext}`),
-      tfaDisableContent,
-    );
-
-    // sessions/index.ts
-    const sessListMeta = mkMeta(opts, {
-      GET: {
-        description: 'List all active sessions for the authenticated user.',
-        response: `{ sessions: [] }`,
-      },
-    });
-    const sessListContent = ts
-      ? `${RA}import type { Request, Response } from 'express';
-${sessListMeta}${mwUser3}
-export const GET = async (req: Request, res: Response) => {
-  // TODO: fetch sessions for req.user.id
-  res.json({ sessions: [] });
-};
-`
-      : `${RA}${sessListMeta}${mwUser3}
-export const GET = async (req, res) => {
-  // TODO: fetch sessions for req.user.id
-  res.json({ sessions: [] });
-};
-`;
-    await fs.outputFile(
-      path.join(dest, 'src', 'api', 'auth', 'sessions', `index.${ext}`),
-      sessListContent,
-    );
-
-    // sessions/[id].ts
-    const sessRevokeMeta = mkMeta(opts, {
-      DELETE: {
-        description: 'Revoke a single active session by ID.',
-        params: `{ id: 'sess_01HXZ' }`,
-        response: `{ message: 'Session sess_01HXZ revoked' }`,
-      },
-    });
-    const sessRevokeContent = ts
-      ? `${RA}import type { Request, Response } from 'express';
-${sessRevokeMeta}${mwUser3}
-export const DELETE = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  // TODO: revoke session by id
-  res.json({ message: \`Session \${id} revoked\` });
-};
-`
-      : `${RA}${sessRevokeMeta}${mwUser3}
-export const DELETE = async (req, res) => {
-  const { id } = req.params;
-  // TODO: revoke session by id
-  res.json({ message: \`Session \${id} revoked\` });
-};
-`;
-    await fs.outputFile(
-      path.join(dest, 'src', 'api', 'auth', 'sessions', `[id].${ext}`),
-      sessRevokeContent,
-    );
+      await fs.outputFile(
+        path.join(dest, 'src', 'api', 'auth', `${endpoint.file}.${ext}`),
+        content,
+      );
+    }
   }
 }
 
@@ -4263,6 +4206,7 @@ export async function signInWithOAuth(res${T(': Response')}, profile${T(': OAuth
     }
   }
   if (!user.isActive) throw new HttpError(403, 'Account suspended');
+  if (user.twoFactorEnabled) throw new HttpError(403, 'Use password login with an authenticator code for this account');
   // http-only: sets the cookie, returns undefined. bearer: returns the token.
   return issueToken(res, { id: user.id, role: user.role, email: user.email });
 }
@@ -4272,7 +4216,7 @@ export async function signInWithOAuth(res${T(': Response')}, profile${T(': OAuth
  * (PKCE, RFC 7636, between the app and this server). Only the app holding the verifier can
  * redeem the sign-in code — another app catching the myapp:// redirect can't.
  */
-export function appChallengeFrom(query${T(': Request[\'query\']')})${T(': string | undefined')} {
+export function appChallengeFrom(query${T(": Request['query']")})${T(': string | undefined')} {
   const challenge = query.code_challenge;
   if (challenge === undefined) return undefined;
   if (typeof challenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(challenge)) {

@@ -141,8 +141,7 @@
         <div class="hero-glow"></div>
       </div>
       <div class="container hero-inner">
-        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.10.1</span><code>efc db pull</code> keeps
-          your model names</a>
+        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.10.1</span>TOTP or email OTP, safer middleware and catch-all routes</a>
         <h1 class="hero-title">Express, but your folder <br />is your <span class="serif">router.</span></h1>
         <p class="hero-sub fade-up" style="--d: .2s">Drop a file in <code>src/api/</code> and it's a route. Clustering,
           background jobs and a typed data layer are already set up.</p>
@@ -464,7 +463,11 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
           <h2 class="h2">Recent releases.</h2>
         </header>
         <ol class="releases">
-          <li><span class="v">0.10.1</span><time datetime="2026-10-29">Oct 29</time>
+          <li><span class="v">0.10.1</span><time datetime="2026-10-30">Oct 30</time>
+            <p>Middleware errors stop the chain; catch-all parameters decode once. Generated password changes
+              revoke sessions, and init offers TOTP, email OTP, or both with enrollment, login and replay protection.
+              Update existing auth templates, model fields and <code>TWO_FACTOR_KEY</code>; configure SMTP for email OTP.
+              Device-session templates return 501; recovery codes are not implemented.</p>
             <p><code>efc db pull</code> keeps the names of models you already have and never writes a second file
               for their table — <code>--force</code> could overwrite <code>AuditLog.ts</code> with a pulled
               <code>Auditlog</code> on macOS and Windows.</p>

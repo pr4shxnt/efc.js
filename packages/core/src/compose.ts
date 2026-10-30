@@ -20,7 +20,9 @@ export function compose(...handlers: RequestHandler[]): RequestHandler {
         return;
       }
       try {
-        Promise.resolve(handler(req, res, () => dispatch(i + 1))).catch(next);
+        Promise.resolve(
+          handler(req, res, (err?: unknown) => (err ? next(err) : dispatch(i + 1))),
+        ).catch(next);
       } catch (err) {
         next(err);
       }

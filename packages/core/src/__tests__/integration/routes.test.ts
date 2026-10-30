@@ -186,6 +186,24 @@ export const GET = (_req, res) => res.json({ reached: true });`,
     expect((await request(server!).get('/docs/intro')).body).toEqual({ page: 'intro' });
   });
 
+  it.each(['[...path]', '[[...path]]'])(
+    'decodes %s parameters once, after splitting raw segments',
+    async (segment) => {
+      writeRoute(
+        apiDir,
+        `repos/[owner]/${segment}.js`,
+        `export const GET = (req, res) => res.json(req.params);`,
+      );
+      server = await ignite({ basePath: '/v1/api', cluster: false, port: 0 });
+      const res = await request(server!).get(
+        '/v1/api/repos/100%25/a%2Fb/a%252Fb/%E2%9C%93?ignored=true',
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ owner: '100%', path: ['a/b', 'a%2Fb', '✓'] });
+      expect((await request(server!).get('/v1/api/repos/owner/%ZZ')).status).toBe(400);
+    },
+  );
+
   it('returns 405 for unimplemented methods on a catch-all route', async () => {
     writeRoute(apiDir, 'files/[...path].js', `export const GET = (_req, res) => res.json({});`);
     server = await ignite({ basePath: '/', cluster: false, port: 0 });

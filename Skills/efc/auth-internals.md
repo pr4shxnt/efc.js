@@ -54,6 +54,14 @@ That's the entire implementation. Clears the cookie. The JWT itself is not inval
 
 ---
 
+## Generated account-security routes
+
+`change-password` checks nonempty string inputs and the authenticated account's current password, hashes and persists the replacement, clears its stored refresh token and expiry, then calls `revokeAllSessions`. Both User and Admin accounts are supported. Success signs out existing access and refresh tokens, including the current access token; revocation errors propagate rather than reporting success. This is generated app code, not a new core auth API.
+
+Generated 2FA is app code (`src/lib/two-factor` + routes), not a new core API. Init / `efc add account-security` asks `TWO_FACTOR_METHOD=totp|email|both`; init adds email-client/SMTP prompts for email/both. Users and admins enroll one allowed method. `POST /auth/2fa/setup` with `{ password, method }` starts enrollment (TOTP returns a Base32 secret + otpauthUrl, email returns 202 and queues a code); `{ password, method, code }` confirms. GET returns status/allowed methods only. Confirmation clears refresh credentials and calls `revokeAllSessions`. TOTP: RFC 6238 SHA-1, six digits, 30s ±1, atomic last-step comparison. Email: random six digits, 5m expiry, HMAC digest bound to purpose/account/address, atomic consume. Active/pending TOTP secrets use AES-256-GCM with account identity as AAD and independent 64-hex `TWO_FACTOR_KEY`. Strip active/pending secret, email hash/expiry/purpose and last-step fields from records.
+
+Login and `/auth/2fa/verify` share the full password+factor flow and one account rate-limit bucket (10/15m, cache errors reject). No tokens until the factor succeeds; email without code sends only after password verification. Disable needs authentication + password + a fresh code (email without code requests a disable code), erases secrets, and revokes access/refresh tokens. Refresh rotation compare-and-sets old token + enabled state. OAuth rejects 2FA-enabled accounts (use password+code); password reset preserves 2FA. No recovery codes. Device-session list/revoke remain authenticated **501** extension points.
+
 ## Session revocation (`revokeSession`, `revokeAllSessions`) — needs `cache`
 
 Every signed token now carries `jti` (randomUUID), `iat`, and `efc_iat` (ms) — via the shared `sign()` used by

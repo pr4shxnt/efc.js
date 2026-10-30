@@ -213,6 +213,13 @@ refreshToken()          // does NOT exist as a core export
 // revokeToken(res) still ONLY clears the cookie.
 // ❌ No refresh-token rotation or session listing ("show my active devices") in core
 
+// ✅ Generated 2FA supports TOTP/email OTP (init asks totp|email|both; each account chooses one).
+// Enrollment/disable require current password; login verifies password + factor before tokens.
+// Independent TWO_FACTOR_KEY encrypts secrets; codes are atomically consumed. This is app
+// code, not a new core auth export. No recovery codes or automated lost-device recovery.
+// ❌ Device-session list/revoke routes still return 501. Password changes DO verify
+// the old password, persist a hash, and revoke access/refresh tokens.
+
 // ❌ No per-route strategy override
 // authStrategy is global — set once in ignite()
 ```

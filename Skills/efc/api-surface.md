@@ -25,7 +25,7 @@ Source: `packages/core/src/index.ts`
 ```ts
 async function ignite(config: EFCConfig): Promise<http.Server | undefined> // undefined on the cluster primary
 function gracefulShutdown(server: http.Server | undefined, timeoutMs?: number): void
-function compose(...handlers: RequestHandler[]): RequestHandler
+function compose(...handlers: RequestHandler[]): RequestHandler // next(err) stops + forwards; next('route'|'router') passes to Express
 
 // Models — one API on MongoDB (mongoose) and PostgreSQL (Drizzle); engine picked at first use
 // Types are INFERRED from the schema literal — no interface needed:
@@ -330,3 +330,5 @@ function listTasks(): ReadonlyArray<{ name: string; options: TaskOptions }>
 | `tasks.connectionString` (pg-boss) | — | `databaseUrl` |
 
 `NODE_ENV` is the sole exception — a Node/Express-wide runtime-mode signal, not an app secret — and is still read directly via `process.env['NODE_ENV']` in three places: `ignite()`'s cluster-in-production default, the dev-only dashboard toggle, and the `http-only` auth strategy's cookie `Secure` flag.
+
+Generated app 2FA (not core exports): TOTP/email OTP enrollment, password+code login, disable. Init asks allowed methods (`TWO_FACTOR_METHOD`); each account chooses one. See `auth-internals.md` for endpoints, encrypted secrets, replay protection and OAuth limitations.

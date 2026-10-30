@@ -19,10 +19,12 @@ function asyncWrap(handler: RequestHandler): RequestHandler {
 function namedParams(route: RouteEntry): RequestHandler {
   const catchAlls = new Set([...route.urlPath.matchAll(/:([A-Za-z0-9_$]+)\*/g)].map((m) => m[1]!));
   return (req, _res, next) => {
-    const positional = req.params as Record<string, string | undefined>;
+    // Express has already decoded req.params. Read the raw captures so splitting
+    // happens before decoding (an encoded slash belongs to a single segment).
+    const captures = route.pattern!.exec(req.path);
     const named: Record<string, unknown> = {};
     route.params.forEach((name, i) => {
-      const value = positional[String(i)];
+      const value = captures?.[i + 1];
       if (value === undefined || value === '') {
         named[name] = catchAlls.has(name) ? [] : undefined;
       } else if (catchAlls.has(name)) {

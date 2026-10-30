@@ -4,7 +4,21 @@ All three packages (`express-file-cluster`, `create-efc-app`, `express-file-clus
 together under one version. Newest first. The public site's changelog (`client/index.html#changelog`)
 mirrors this file — see `AGENTS.md` §5.
 
-## 0.10.1 — 2026-10-29
+## 0.10.1 — 2026-10-30
+
+- **Fix — middleware and catch-all routing:** `compose()` forwards callback errors and Express
+  route/router skips without executing later handlers; catch-all parameters decode once and preserve
+  encoded slashes and literal percent signs.
+- **Generated account security:** password changes verify the current password, persist a new hash,
+  clear refresh credentials and revoke existing sessions. Init offers TOTP, email OTP, or both;
+  each user/admin enrolls one allowed method. Email choices add SMTP setup. Enrollment, login and
+  disable enforce credentials, expiry, rate limits and atomic replay protection. TOTP secrets are
+  encrypted with independent `TWO_FACTOR_KEY`; secret/challenge fields are stripped from responses.
+  Device-session list/revoke templates explicitly return 501 until implemented.
+- **Upgrade generated apps:** review and update auth/account-security templates and model fields,
+  configure `TWO_FACTOR_KEY` and SMTP for email OTP, and migrate when auto-sync is disabled. OAuth
+  accounts with 2FA enabled use password + code; recovery codes are not implemented. See
+  `docs/guides/authentication.md` for the complete flow and upgrade steps.
 
 - **Fix — `efc db pull` no longer writes a second model for a table you already have.** Table names
   drop word breaks (`AuditLog` → `auditlogs`), so a pull named that table's model `Auditlog` and wrote

@@ -282,3 +282,31 @@ future default doesn't lock anyone out. Apps scaffolded before 0.9.2 stored **bc
 `verifyPassword` deliberately rejects (EFC carries no bcrypt code or dependency): those users reset
 their password once — the reset route stores a scrypt hash. See the
 [auth API reference](../api-reference/auth.md#hashpassword--verifypassword--passwordneedsrehash).
+
+## Generated password changes and security extension points
+
+`efc add account-security` adds a protected `POST /auth/change-password`. Send nonempty strings `oldPassword` and `newPassword`. The route verifies the current password for the authenticated User or Admin, stores a new `hashPassword()` hash, invalidates its stored refresh token, and revokes existing access tokens with `revokeAllSessions`. The current session is also revoked: log in again with the new password. The endpoint limits attempts to ten per account per fifteen minutes and needs the scaffolded cache.
+
+Revocation errors propagate instead of reporting success. Because the database update precedes cache revocation, a cache failure can leave the new password persisted even though the request fails; restore cache access and log in again.
+
+Device-session list/revoke routes remain authenticated 501 extension points. Two-factor authentication is implemented as generated app code, described below.
+
+## Two-factor authentication: TOTP or email OTP
+
+When selecting **Account security** during `create-efc-app`, choose **Authenticator app (TOTP)**, **Email OTP**, or **Both — users choose**. Email-capable choices also add the email-client integration and ask for SMTP settings. `efc add account-security` asks the same method question; install `efc add email-client` as well when choosing email or both. `TWO_FACTOR_METHOD=totp|email|both` controls allowed methods; each User or Admin enrolls one allowed method. Changing the app setting does not silently downgrade enrolled accounts: an account using a method you disable cannot sign in until you restore it or migrate the account.
+
+Keep the generated `TWO_FACTOR_KEY` (64 hex characters / 32 random bytes) in your secret store and identical across instances. It encrypts TOTP secrets with AES-256-GCM and authenticates stored email-code digests, independently of `JWT_SECRET`. Keep it when upgrading or rotating JWT keys. Replacing it without migrating/re-enrolling the accounts prevents verification of existing secrets.
+
+1. Authenticate, then `GET /auth/2fa/setup` to see `{ enabled, method, methods }`.
+2. Start enrollment with `POST /auth/2fa/setup`, body `{ password, method: 'totp' | 'email' }`. The current password is required. TOTP returns `{ secret, otpauthUrl, expiresIn: 600 }`: enter the secret in an authenticator or render the URI as a QR code in your UI. Email sends a six-digit code to the account's stored email and returns 202 `{ method: 'email', codeSent: true, expiresIn: 300 }`.
+3. Confirm with `POST /auth/2fa/setup`, body `{ password, method, code }`. The method must match the pending enrollment. Only a valid, unexpired code enables 2FA. Successful enrollment clears refresh credentials and revokes existing access tokens, including the current session.
+4. Sign in with `POST /auth/login` or `/auth/2fa/verify`, body `{ email, password, code }`. Both endpoints run the same credential checks and rate limit. Without a code, an enrolled account gets 401 `{ twoFactorRequired: true, method }` and no access/refresh token. For email accounts, this password-verified request sends the OTP; repeat with the received code. For TOTP, use the current authenticator code. Wrong passwords never send an email code.
+5. Disable with authenticated `POST /auth/2fa/disable`, body `{ password, code }`. Email users first send `{ password }` to request a purpose-specific disable code (202), then submit it. Disable requires the current password and a fresh code, erases secrets, clears refresh credentials, and revokes access tokens. To switch methods, disable the current one and enroll the other. Disable email 2FA before changing the email address through the profile route.
+
+TOTP uses [RFC 6238](https://www.rfc-editor.org/rfc/rfc6238) SHA-1, six digits and 30-second intervals, accepting one interval of clock drift. Accepted time steps are atomically recorded so the same code cannot be reused, even across workers. Enrollment consumes its code too: wait for the next authenticator code before logging in. Email codes expire in five minutes, are purpose/account/address bound, and are consumed atomically; resending replaces the previous code. Only a keyed digest is stored. Pending TOTP secrets expire after ten minutes. Secret/code fields are stripped from generated record responses; enrollment responses use `Cache-Control: no-store`.
+
+Login and verification share a ten-attempt per-account, fifteen-minute limit across both paths; management endpoints share a separate limit. These limits require the scaffolded cache and reject requests when it is unavailable. Use Redis across multiple app instances. SMTP settings and a working task backend are required for email delivery; queue failures invalidate the pending code and propagate instead of reporting success.
+
+Refresh tokens are issued only after completing 2FA. Enabling/disabling clears older refresh tokens, and refresh rotation uses a database compare-and-set to reject replay. OAuth sign-in refuses accounts with 2FA enabled; use password plus verification code instead, so OAuth cannot bypass this app-level second factor. OAuth-only accounts must set a password before enrolling. Password reset does not disable 2FA. Recovery codes and automated lost-device recovery are not implemented; provide a separately verified support process before offering enrollment to end users.
+
+Existing apps must update their auth-owned models, login/refresh/OAuth helpers and record sanitizers as well as the 2FA routes. Review `efc diff auth account-security`, preserve edited files, and run the normal model migration process if auto-sync is disabled. Set `TWO_FACTOR_KEY` and configure the mailer before enabling email OTP. Updating only the setup endpoint leaves other login paths unchanged.

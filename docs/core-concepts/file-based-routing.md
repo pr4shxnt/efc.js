@@ -23,6 +23,8 @@ EFC turns your directory tree into your route tree. The scanner walks `src/api/`
 
 **`[...spread]` → catch-all** — matches one or more remaining segments; `req.params.slug` is a **string array** (`/docs/a/b` → `['a', 'b']`, each segment URI-decoded). With double brackets it also matches zero segments (`[]`). A catch-all must be the last segment of the path — `[...slug]/edit.ts` is rejected at startup.
 
+Catch-all paths are split into segments **before** each segment is URI-decoded once. `/docs/100%25/a%2Fb/a%252Fb` produces `['100%', 'a/b', 'a%2Fb']`; an encoded slash stays inside its original segment. Named parameters preceding the catch-all are also decoded once.
+
 **`index.ts` → parent path** — a file named `index.ts` (or `.js`) inside a directory maps to the directory's URL without a trailing `/index`.
 
 ---

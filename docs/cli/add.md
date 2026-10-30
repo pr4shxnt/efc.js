@@ -47,7 +47,7 @@ efc diff                              # compare installed features with the regi
 | `auth@apple` | Sign in with Apple: `GET /auth/apple` → Apple → `POST /auth/apple/callback` (+ `OAuthAccount`). Asks for Services ID, Team ID, Key ID and the `.p8` key | auth |
 | `user-profile` | `GET/PUT /user/profile` | auth |
 | `forgot-password` | `/auth/forgot-password`, `/auth/reset-password` | auth |
-| `account-security` | change password, 2FA, sessions, token refresh + `Session` model | auth |
+| `account-security` | password changes, token refresh, TOTP/email OTP (asks allowed methods); device-session extension points return 501; `Session` model | auth |
 | `email-verification` | `/auth/verify-email`, resend | auth |
 | `account-settings` | avatar, settings, account, dashboard, activity | auth |
 | `notifications` | `Notification` model + `/user/notifications` | auth |

@@ -182,7 +182,7 @@ describe('scaffold() — model API', () => {
     const src = allSource(dest);
     expect(src).toContain('User.findFirst({ where: { email } })');
     expect(src).toContain('User.create({ data: {');
-    expect(src).toContain('model.update({ where: { id }, data: {');
+    expect(src).toContain('model.updateMany({ where, data })');
     expect(src).not.toMatch(/\bUser\.(findOne|findById)\(/);
     expect(src).not.toContain('${'.concat('db.'));
     // The init migration creates referenced tables first and drops them last.
@@ -233,7 +233,7 @@ describe('scaffold() — model API', () => {
       expect(fs.existsSync(path.join(dest, 'src', 'model', 'index.ts'))).toBe(false);
       const src = allSource(dest);
       expect(src).toContain('User.findOne({ email })');
-      expect(src).toContain('model.update(id, {');
+      expect(src).toContain('model.updateMany(where, data)');
     }
   }, 60_000);
 
@@ -246,7 +246,8 @@ describe('scaffold() — model API', () => {
     expect(fs.existsSync(path.join(dest, 'src', 'model', 'index.ts'))).toBe(false);
     const src = allSource(dest);
     expect(src).toContain('User.findOne({ email })');
-    expect(src).toContain("model.findByIdAndUpdate(id, {");
+    expect(src).toContain('model.updateMany(where, data)');
+    expect(src).toContain('result.modifiedCount === 1');
     expect(src).toContain("{ returnDocument: 'after' })");
     expect(src).toContain('User.countDocuments(');
     expect(src).not.toMatch(/\bUser\.(update|delete|count)\(/);
