@@ -118,6 +118,12 @@ async function isRevoked(payload: JWTPayload): Promise<boolean> {
     typeof (payload as Record<string, unknown>)['efc_iat'] === 'number'
       ? ((payload as Record<string, unknown>)['efc_iat'] as number)
       : (payload.iat ?? 0) * 1000; // tokens minted before efc_iat existed
+  // Generated login/refresh flows capture authorization time before reading credentials.
+  // A token signed after revocation must not revive an authentication already in flight.
+  const authenticatedAt = payload['efc_auth_at'];
+  if (typeof authenticatedAt === 'number' && Number.isFinite(authenticatedAt)) {
+    return Math.min(issuedMs, authenticatedAt) <= Number(cutoff);
+  }
   return issuedMs < Number(cutoff);
 }
 

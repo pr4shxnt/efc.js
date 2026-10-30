@@ -24,7 +24,7 @@ type SecurityData = {
   refreshToken?: string; refreshTokenExpiry?: Date;
 };
 type SecurityWhere = {
-  id: string; refreshToken?: string; twoFactorEnabled?: ${table ? 'boolean' : 'boolean | { $ne: true }'}; twoFactorSecret?: string;
+  id: string; password?: string; refreshToken?: string; twoFactorEnabled?: ${table ? 'boolean' : 'boolean | { $ne: true }'}; twoFactorSecret?: string;
   twoFactorPendingSecret?: string; twoFactorEmailHash?: string; twoFactorPendingMethod?: string; twoFactorLastStep?: { ${less}: number };
 };
 interface SecurityModel {

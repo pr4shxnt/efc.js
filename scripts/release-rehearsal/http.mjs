@@ -13,7 +13,7 @@ const post = (p, body, headers = {}) => fetch(base + p, { method: 'POST', header
 ok((await post('/auth/register', { name: 'Ada', email, password: 'secret-pass-123' })).status === 201, 'register');
 const login = await post('/auth/login', { email, password: 'secret-pass-123' });
 ok(login.status === 200, 'login');
-const cookie = login.headers.get('set-cookie');
+const cookie = login.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
 ok((await fetch(base + '/auth/me', { headers: { cookie } })).status === 200, '/me with cookie');
 ok((await fetch(base + '/auth/me')).status === 401, '/me without cookie → 401');
 ok((await post('/auth/logout', {}, { cookie })).status === 200, 'logout');

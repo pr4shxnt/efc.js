@@ -235,7 +235,8 @@ Goal: define a model and use it — no table chores, on either engine.
 - [ ] WebSocket support (`export const WS = ...`)
 - [ ] OpenAPI auto-generation from route exports
 - [ ] OpenTelemetry distributed tracing
-- [ ] `efc/testing` (`createTestApp()` for integration tests)
+- [x] CommonJS package loading — tsup shims translate `import.meta.url` used by shared task/CLI modules; regression checks exercise both built testing exports.
+- [x] `express-file-cluster/testing` — `createTestApp()` mounts real route trees with shared production HTTP middleware/error handling, explicit fixture directory, optional auth, no listener/services/cwd mutation. Guide, API reference, package export and regression tests.
 - [ ] `efc studio` — live route map + worker/queue dashboard
 - [ ] Third-party security audit
 - [ ] Benchmarks vs bare Express / Fastify
@@ -282,11 +283,29 @@ Found by actually running each exit criterion end to end, not by reading code:
 0. **Data layer that competes with Prisma** — [`prisma-parity-plan.md`](./prisma-parity-plan.md): one shared foundation (inferred types, validation, auto-sync) under three APIs — portable `defineModel` (today's), PostgreSQL-native `defineTable` (Prisma-style queries, real relations/joins, SQL types) and MongoDB-native `defineCollection` (typed pipelines, `$lookup`, geo/text, bulkWrite, change streams); no cross-engine emulation. Milestones M1–M7.
    - [x] **M1** — inferred types (`InferRecord` / `InferCreate`, scaffolds without interfaces), engine-guard plumbing for the native APIs, portable `upsert` / `updateOne` / `deleteOne` / `exists` / `distinct`; nested dates revived on PostgreSQL
    - [x] **M2** — `defineTable`: SQL types (integer, bigint, decimal, uuid, json, varchar, native arrays/enums), serial/bigserial ids, snake_case naming; Prisma-style findMany/findUnique/count/aggregate/groupBy, create/createMany/update/updateMany/upsert (ON CONFLICT)/delete, cursor pagination, select/omit/distinct; shared pgTable layer
-   - [ ] M3 relations · [ ] M4 schema lifecycle · [ ] M5 `defineCollection` · [ ] M6 tooling · [ ] M7 docs
+   - [x] M3 relations · [x] M4 schema lifecycle · [x] M5 `defineCollection` · [x] M6 query logging/metrics, editable studio, pool settings, bounded prepared statements and strict 10% benchmarks — complete; `bench/results/m6-validation.md` · [x] M7 docs
 
-1. **`efc/testing` — `createTestApp()`** — the integration tests here hand-roll tmp projects + `ignite()`; ship that as a supported helper
+1. **Completed:** `express-file-cluster/testing` — `createTestApp()` for route integration tests; service boot remains covered by `ignite()` tests.
 2. **OpenAPI generation** — `schema` exports are Standard Schema validators; derive request schemas (+ `meta`) into an OpenAPI document
 3. **OpenTelemetry tracing** — request IDs and the request context are already in place
 4. **Plugin system** (`registerPlugin()`)
 5. **WebSockets** (`export const WS = ...`)
 6. Benchmarks vs bare Express / Fastify, security audit, semver/LTS policy, docs site
+
+## M6 completion — 2026-10-30
+
+- [x] Query logging, slow-query and N+1 detection; bounded opt-in process-local metrics with counters, latency summaries, overflow reporting, detached snapshots and reset.
+- [x] Editable studio and both driver pool settings verified through live integration tests.
+- [x] PostgreSQL named statements: 100-name default per-connection budget, transaction support, unnamed fallback, opt-out, schema-sync invalidation and safe pooled query error release; native db Pool unchanged.
+- [x] Nightly 10% gate, strict coverage/timing validation, exact sample/warmup allocation, harness unit tests in PR CI and nightly workflows.
+- [x] Local release rehearsal: all three scaffold/CLI journeys and packaged MCP startup/resources/tools passed.
+- [x] Lint/typecheck/build; 458 tests passed, 36 skipped, 32 additional scaffold/install e2e tests, five harness tests; all twelve benchmark operations pass against the unchanged baseline. Details: `bench/results/m6-validation.md`.
+
+## Auth and testing regression fixes — 2026-10-30
+
+- [x] Authenticated logout clears stored refresh credentials for User/Admin and cookie/bearer callers.
+- [x] Password snapshot CAS and authentication-time revocation prevent in-flight old-password logins from reviving sessions.
+- [x] CommonJS test-helper bridge shares ESM route auth/context; packaged auth regression coverage.
+- [x] Validation: lint, typecheck and build passed; full live-service suite including scaffold/install e2e: 507 passed, 4 skipped (51 files).
+
+- [x] Patch 0.10.2: synchronize package/scaffold/site versions and changelog; commit tested M6 and initial auth/testing regression fixes.

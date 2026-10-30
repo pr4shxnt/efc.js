@@ -6,7 +6,12 @@ import { defineTable } from '../../db/table-model.js';
 import { setDbEngine } from '../../db/engine.js';
 import { connectPostgres, closePostgres } from '../../db/postgres.js';
 import { transaction } from '../../db/transaction.js';
-import { configureQueryLog, onQuery, type QueryEvent } from '../../db/query-log.js';
+import {
+  configureQueryLog,
+  onQuery,
+  getQueryMetrics,
+  type QueryEvent,
+} from '../../db/query-log.js';
 import { configureLogger } from '../../logger.js';
 import { runWithContext } from '../../context.js';
 import type { DatabaseEngine } from '../../types.js';
@@ -131,6 +136,28 @@ for (const engine of ['mongodb', 'postgresql'] as const) {
       const events = await capture(() => Writer.create({} as never).catch(() => {}));
       expect(events).toHaveLength(1);
       expect(events[0]!.error).toMatch(/name/);
+    });
+
+    it('aggregates live operation metrics, including validation failures', async () => {
+      configureLogger(false);
+      configureQueryLog({ queries: { metrics: true, nPlusOne: false } });
+      await Writer.count();
+      await Writer.count();
+      await Writer.create({} as never).catch(() => {});
+      const metrics = getQueryMetrics();
+      expect(metrics.enabled).toBe(true);
+      expect(metrics.entries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            model: `QWriter${s}`,
+            op: 'count',
+            calls: 2,
+            statements: 2,
+            errors: 0,
+          }),
+          expect.objectContaining({ model: `QWriter${s}`, op: 'create', calls: 1, errors: 1 }),
+        ]),
+      );
     });
 
     it('carries the request ID', async () => {

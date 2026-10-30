@@ -6,6 +6,7 @@
 #
 # Needs: a clean build of the repo (npm ci), MongoDB on 127.0.0.1:27017, Redis on 6379, PostgreSQL reachable as
 # $PG_URL_BASE (default postgres://postgres@127.0.0.1:5433), python3, network access
+# Optional isolated endpoints: MONGO_URL_BASE, EFC_REHEARSAL_REDIS_URL.
 # for npx/verdaccio and the apps' dependencies. Nothing is installed globally on this
 # machine: npm's cache, global prefix and user config all live in the state dir.
 #
@@ -17,12 +18,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 HERE="$ROOT/scripts/release-rehearsal"
 PG_URL_BASE="${PG_URL_BASE:-postgres://postgres@127.0.0.1:5433}"
+MONGO_URL_BASE="${MONGO_URL_BASE:-mongodb://127.0.0.1:27017}"
+EFC_REHEARSAL_REDIS_URL="${EFC_REHEARSAL_REDIS_URL:-redis://127.0.0.1:6379}"
 S="${EFC_REHEARSAL_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/efc-rehearsal}"
 rm -rf "$S" && mkdir -p "$S"
 REG=http://127.0.0.1:4873/
 # The registry runs in its own process group: killing only npx would leave verdaccio
 # itself holding the port for the next run.
-trap 'kill -- "-${VERDACCIO:-0}" 2>/dev/null || true' EXIT
+trap 'if [ -n "${VERDACCIO:-}" ]; then kill -- "-$VERDACCIO" 2>/dev/null || true; fi' EXIT
 if curl -s -o /dev/null "$REG-/ping"; then
   echo "Port 4873 is already in use (another registry?) — stop it first." >&2
   exit 1
@@ -69,7 +72,8 @@ for spec in "mongo-app ts mongodb bullmq" "pg-app ts postgresql pg-boss" "js-app
   url=""
   if [ "$3" = mongodb ]; then
     # The scaffolded .env points at mongodb://localhost:27017/<app>; start from an empty one.
-    (cd "$ROOT" && node --input-type=module -e "import m from 'mongoose'; await m.connect('mongodb://127.0.0.1:27017/$1'); await m.connection.dropDatabase(); await m.disconnect();")
+    url="$MONGO_URL_BASE/$1"
+    (cd "$ROOT" && EFC_REHEARSAL_DATABASE_URL="$url" node --input-type=module -e "import m from 'mongoose'; await m.connect(process.env.EFC_REHEARSAL_DATABASE_URL); await m.connection.dropDatabase(); await m.disconnect();")
   fi
   if [ "$3" = postgresql ]; then
     url="$PG_URL_BASE/$1"
@@ -78,6 +82,15 @@ for spec in "mongo-app ts mongodb bullmq" "pg-app ts postgresql pg-boss" "js-app
   if ! python3 "$HERE/drive.py" "$S" "$S/apps" "$@" > "$S/drive-$1.log" 2>&1 || [ ! -f "$S/apps/$1/package.json" ]; then
     tail -30 "$S/drive-$1.log"; echo "FAIL npx create-efc-app"; exit 1
   fi
+  # Apply isolated service URLs to the generated app, without changing host services.
+  EFC_REHEARSAL_APP="$S/apps/$1" EFC_REHEARSAL_DATABASE_URL="$url" EFC_REHEARSAL_REDIS_URL="$EFC_REHEARSAL_REDIS_URL" node <<'NODE'
+const fs = require('node:fs');
+const file = require('node:path').join(process.env.EFC_REHEARSAL_APP, '.env');
+let env = fs.readFileSync(file, 'utf8');
+if (process.env.EFC_REHEARSAL_DATABASE_URL) env = env.replace(/^DATABASE_URL=.*$/m, () => `DATABASE_URL=${process.env.EFC_REHEARSAL_DATABASE_URL}`);
+env = env.replace(/^REDIS_URL=.*$/m, () => `REDIS_URL=${process.env.EFC_REHEARSAL_REDIS_URL}`);
+fs.writeFileSync(file, env);
+NODE
   echo "ok   npx create-efc-app@$CEA_VERSION"
   bash "$HERE/journey.sh" "$S" "$S/apps/$1" $url
 done

@@ -27,7 +27,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - Cache (`cache`, `cacheResponse`) on Redis or memory, also used as the JWT session-revocation store
 - CLI (`efc` binary) incl. migrations (hand-written or generated from model diffs: `efc db generate`), seeds, `efc db pull`, `efc import-prisma`, a studio (read-only; `--write` edits through the models, page-token + origin checked) and a shadcn-style feature registry (`efc add | list | view | diff | init`)
 
-**Status: v0.10.1 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6a query logging; custom auth entities; `efc add` feature registry). Fixes ship as patch releases (0.9.5, 0.9.6, …); features as minor bumps.** See `README.md` and `docs/` for full documentation.
+**Status: v0.10.2 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6 tooling/metrics/prepared statements/benchmarks complete; custom auth entities; `efc add` feature registry). Fixes ship as patch releases (0.9.5, 0.9.6, …); features as minor bumps.** See `README.md` and `docs/` for full documentation.
 
 ---
 
@@ -44,7 +44,7 @@ Skills/efc/              ← dense reference cards (/efc skill)
 
 ---
 
-## Three import paths — nothing else
+## Four import paths — nothing else
 
 ```ts
 import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, defineTable, defineCollection, transaction,
@@ -52,11 +52,14 @@ import { ignite, gracefulShutdown, compose, HttpError, db, defineModel, defineTa
 import { issueToken, revokeToken, revokeSession, revokeAllSessions, signToken, requireAuth,
          getCurrentUser, hashPassword, verifyPassword, passwordNeedsRehash } from 'express-file-cluster/auth'
 import { defineTask, enqueue } from 'express-file-cluster/tasks'
+import { createTestApp } from 'express-file-cluster/testing'
 ```
 
 **No other sub-paths exist.** `/db`, `/router`, `/errors`, `/models`, `/config` are all invalid.
 
 ---
+
+`express-file-cluster/testing` exports `createTestApp({ apiDir, ... })` and `TestAppOptions`: a real Express/router app sharing production HTTP middleware/error handling, without listen/cluster/services/signals or cwd changes. `apiDir` is a helper option only. Auth/logging are process-wide; the helper disables logging and does not reset model/cache/task state.
 
 ## Routing — the exact rules
 
@@ -165,3 +168,12 @@ Load the `efc` skill for dense reference cards:
 /efc
 ```
 Modules: `api-surface.md`, `routing-rules.md`, `pre-flight.md`, `tasks-internals.md`, `auth-internals.md`, `what-not-to-invent.md`
+
+- Core builds keep tsup `shims: true`: shared modules use `import.meta.url` for worker/CLI paths; leaving it verbatim in CJS chunks makes public `require()` entrypoints fail to parse.
+
+- PostgreSQL model statements are automatically named through a private Drizzle driver Pool/client proxy (`db/prepared-statements.ts`); native `db` is unchanged. `databasePool.preparedStatements` defaults true (100 names per connection), accepts `{ max }` (nonnegative safe integer), or false/zero to disable for incompatible poolers. Preserve values, types/rowMode, caller names and transaction behavior. EFC schema sync/drop invalidates reusable SQL shapes; name budgets are lifetime-bounded, excess shapes run unnamed, no eviction/DEALLOCATE. Reconnect after external DDL.
+- M6 nightly benchmark comparison is a 10% relative regression gate (EFC / fastest contender). Missing operations/contenders and invalid timings must fail; never silently skip missing baseline coverage.
+
+- `logging.queries.metrics` opt-in collects bounded per-process model/op metrics (1000 entries by default, `{ maxEntries: 0 }` disables). `getQueryMetrics` returns detached snapshots; `resetQueryMetrics` clears the window. No SQL, values or error strings. Nested statement counts remain inclusive; overflow observations count as `dropped`. OpenTelemetry remains a separate Phase 3 milestone.
+
+Auth race guards: generated login CAS includes the verified password hash; login/refresh capture `efc_auth_at` before DB reads, and revocation rejects authentication at/before the cutoff. Generated logout is authenticated and invalidates DB refresh credentials even in bearer mode. The CommonJS testing entry delegates to ESM to share state with imported ESM routes.

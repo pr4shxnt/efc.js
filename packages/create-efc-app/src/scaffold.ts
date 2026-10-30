@@ -281,7 +281,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
 
 async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<void> {
   const deps: Record<string, string> = {
-    'express-file-cluster': '^0.10.1',
+    'express-file-cluster': '^0.10.2',
   };
   if (opts.database === 'mongodb') deps['mongoose'] = '^9.7.2';
   if (opts.database === 'postgresql') {
@@ -473,8 +473,8 @@ ${
       : `- \`src/model/*.${ext}\` — \`defineModel\` models.`
 }
 - \`src/index.${ext}\` is the entry point; it imports \`efc.config.${ext}\` and passes it to \`ignite()\`.
-- Only three import paths exist: \`express-file-cluster\`, \`express-file-cluster/auth\`,
-  \`express-file-cluster/tasks\`.
+- Four import paths exist: \`express-file-cluster\`, \`express-file-cluster/auth\`,
+  \`express-file-cluster/tasks\`, and \`express-file-cluster/testing\` (\`createTestApp\` for route tests).
 ${
   opts.registry
     ? `- Ready-made features (auth, user/admin portals, billing, mailer…) come from the registry:
@@ -780,7 +780,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
     if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
   if (!(await acceptTwoFactor(Admin, admin, 'admin', req.body?.code))) return res.status(401).json({ error: 'Verification code required or invalid', twoFactorRequired: true, method: admin.twoFactorMethod || 'totp' });
     const refreshToken = await issueRefreshToken(res, Admin, admin);
-    const token = await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
+    const token = await issueToken(res, { id: admin.id, role: admin.role, email: admin.email, efc_auth_at: authenticatedAt });
     return res.json({ message: 'Logged in as admin', ...(token ? { token, refreshToken } : {}) });
   }
 
@@ -791,7 +791,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
   if (!(await acceptTwoFactor(User, user, 'user', req.body?.code))) return res.status(401).json({ error: 'Verification code required or invalid', twoFactorRequired: true, method: user.twoFactorMethod || 'totp' });
   const refreshToken = await issueRefreshToken(res, User, user);
-  const token = await issueToken(res, { id: user.id, role: user.role, email: user.email });
+  const token = await issueToken(res, { id: user.id, role: user.role, email: user.email, efc_auth_at: authenticatedAt });
   // bearer: the client stores both tokens itself; http-only: they travel as cookies.
   res.json({ message: 'Logged in', ...(token ? { token, refreshToken } : {}) });`
       : hasAdmin
@@ -802,7 +802,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   if (!admin.isActive) return res.status(403).json({ error: 'Account suspended' });
   if (!(await acceptTwoFactor(Admin, admin, 'admin', req.body?.code))) return res.status(401).json({ error: 'Verification code required or invalid', twoFactorRequired: true, method: admin.twoFactorMethod || 'totp' });
   const refreshToken = await issueRefreshToken(res, Admin, admin);
-  const token = await issueToken(res, { id: admin.id, role: admin.role, email: admin.email });
+  const token = await issueToken(res, { id: admin.id, role: admin.role, email: admin.email, efc_auth_at: authenticatedAt });
   // bearer: the client stores both tokens itself; http-only: they travel as cookies.
   res.json({ message: 'Logged in as admin', ...(token ? { token, refreshToken } : {}) });`
         : `  const user = await ${db.findOne('User', `{ email }`)};
@@ -812,7 +812,7 @@ async function writeAuthRoutes(dest: string, opts: ScaffoldOptions): Promise<voi
   if (!user.isActive) return res.status(403).json({ error: 'Account suspended' });
   if (!(await acceptTwoFactor(User, user, 'user', req.body?.code))) return res.status(401).json({ error: 'Verification code required or invalid', twoFactorRequired: true, method: user.twoFactorMethod || 'totp' });
   const refreshToken = await issueRefreshToken(res, User, user);
-  const token = await issueToken(res, { id: user.id, role: user.role, email: user.email });
+  const token = await issueToken(res, { id: user.id, role: user.role, email: user.email, efc_auth_at: authenticatedAt });
   // bearer: the client stores both tokens itself; http-only: they travel as cookies.
   res.json({ message: 'Logged in', ...(token ? { token, refreshToken } : {}) });`;
 
@@ -839,10 +839,10 @@ const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 async function issueRefreshToken(
   res: Response,
   model: Parameters<typeof updateSecurity>[0],
-  account: { id: string; twoFactorEnabled?: boolean; twoFactorSecret?: string },
+  account: { id: string; password: string; twoFactorEnabled?: boolean; twoFactorSecret?: string },
 ): Promise<string> {
   const refreshToken = crypto.randomBytes(40).toString('hex');
-  const updated = await updateSecurity(model, { id: account.id, twoFactorEnabled: !!account.twoFactorEnabled, ...(account.twoFactorEnabled ? { twoFactorSecret: account.twoFactorSecret ?? '' } : {}) }, { refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+  const updated = await updateSecurity(model, { id: account.id, password: account.password, twoFactorEnabled: !!account.twoFactorEnabled, ...(account.twoFactorEnabled ? { twoFactorSecret: account.twoFactorSecret ?? '' } : {}) }, { refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
   if (!updated) throw new HttpError(409, 'Account security changed; log in again');
   res.cookie('efc_refresh_token', refreshToken, {
     httpOnly: true,
@@ -854,6 +854,7 @@ async function issueRefreshToken(
 }
 
 export const POST = async (req: Request, res: Response) => {
+  const authenticatedAt = Date.now();
   const { email, password } = req.body ?? {};
   // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
   if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
@@ -882,7 +883,7 @@ const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 async function issueRefreshToken(res, model, account) {
   const refreshToken = crypto.randomBytes(40).toString('hex');
-  const updated = await updateSecurity(model, { id: account.id, twoFactorEnabled: !!account.twoFactorEnabled, ...(account.twoFactorEnabled ? { twoFactorSecret: account.twoFactorSecret ?? '' } : {}) }, { refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+  const updated = await updateSecurity(model, { id: account.id, password: account.password, twoFactorEnabled: !!account.twoFactorEnabled, ...(account.twoFactorEnabled ? { twoFactorSecret: account.twoFactorSecret ?? '' } : {}) }, { refreshToken, refreshTokenExpiry: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
   if (!updated) throw new HttpError(409, 'Account security changed; log in again');
   res.cookie('efc_refresh_token', refreshToken, {
     httpOnly: true,
@@ -894,6 +895,7 @@ async function issueRefreshToken(res, model, account) {
 }
 
 export const POST = async (req, res) => {
+  const authenticatedAt = Date.now();
   const { email, password } = req.body ?? {};
   // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
   if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
@@ -926,20 +928,36 @@ ${loginMeta}export const POST = async (req, res) => {
       : `export const meta = {\n  POST: {\n    description: 'Revoke the current session and clear the auth cookie.',\n    response: { status: 200, body: { message: 'Logged out successfully' } },\n  },\n};\n\n`
     : '';
 
+  const logoutDbImports = hasModels
+    ? `import { updateSecurity } from '../../lib/two-factor.js';\n${hasUser ? "import { User } from '../../model/User.js';\n" : ''}${hasAdmin ? "import { Admin } from '../../model/Admin.js';\n" : ''}`
+    : '';
+  const logoutInvalidate = hasModels
+    ? `  const principal = getCurrentUser();
+  if (!principal || typeof principal.id !== 'string') return res.status(401).json({ error: 'Unauthorized' });
+  const id = principal.id;
+${hasUser ? `  const user = ${hasAdmin ? "principal.role === 'admin' ? null : " : ''}await ${db.findById('User', 'id')};
+  if (user?.refreshToken) await updateSecurity(User, { id, refreshToken: user.refreshToken }, { refreshToken: '', refreshTokenExpiry: new Date(0) });` : ''}
+${hasAdmin ? `  const admin = ${hasUser ? "principal.role === 'admin' ? " : ''}await ${db.findById('Admin', 'id')}${hasUser ? ' : null' : ''};
+  if (admin?.refreshToken) await updateSecurity(Admin, { id, refreshToken: admin.refreshToken }, { refreshToken: '', refreshTokenExpiry: new Date(0) });` : ''}
+`
+    : '';
+  const logoutAuthImports = hasModels ? 'requireAuth, getCurrentUser, revokeSession' : 'revokeSession';
+  const logoutMiddlewares = hasModels ? 'export const middlewares = [requireAuth];\n\n' : '';
+
   const logoutContent = ts
-    ? `import { revokeSession } from 'express-file-cluster/auth';
+    ? `import { ${logoutAuthImports} } from 'express-file-cluster/auth';
 import type { Request, Response } from 'express';
-${logoutMeta}export const POST = async (req: Request, res: Response) => {
+${logoutDbImports}${logoutMeta}${logoutMiddlewares}export const POST = async (req: Request, res: Response) => {
   // Rejects this token from now on (not just the cookie) — see \`cache\` in efc.config.
-  await revokeSession(req, res);
+${logoutInvalidate}  await revokeSession(req, res);
   res.clearCookie('efc_refresh_token');
   res.json({ message: 'Logged out successfully' });
 };
 `
-    : `import { revokeSession } from 'express-file-cluster/auth';
-${logoutMeta}export const POST = async (req, res) => {
+    : `import { ${logoutAuthImports} } from 'express-file-cluster/auth';
+${logoutDbImports}${logoutMeta}${logoutMiddlewares}export const POST = async (req, res) => {
   // Rejects this token from now on (not just the cookie) — see \`cache\` in efc.config.
-  await revokeSession(req, res);
+${logoutInvalidate}  await revokeSession(req, res);
   res.clearCookie('efc_refresh_token');
   res.json({ message: 'Logged out successfully' });
 };
@@ -1641,6 +1659,7 @@ import { updateSecurity } from '../../lib/two-factor.js';
 ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export const POST = async (req: Request, res: Response) => {
+  const authenticatedAt = Date.now();
   const token = req.cookies?.['efc_refresh_token'] || req.body?.refreshToken;
   if (!token) return res.status(401).json({ error: 'Refresh token required' });
   // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
@@ -1664,7 +1683,7 @@ ${refreshPersist}
     maxAge: REFRESH_TOKEN_TTL_MS,
   });
 
-  const accessToken = await issueToken(res, { id: account.id, role: account.role, email: account.email });
+  const accessToken = await issueToken(res, { id: account.id, role: account.role, email: account.email, efc_auth_at: authenticatedAt });
   // bearer: the client stores both tokens itself; http-only: they travel as cookies.
   res.json({
     message: 'Token refreshed',
@@ -1678,6 +1697,7 @@ import { updateSecurity } from '../../lib/two-factor.js';
 ${refreshModelImports}${refreshMeta}const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export const POST = async (req, res) => {
+  const authenticatedAt = Date.now();
   const token = req.cookies?.efc_refresh_token || req.body?.refreshToken;
   if (!token) return res.status(401).json({ error: 'Refresh token required' });
   // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
@@ -1701,7 +1721,7 @@ ${refreshPersist}
     maxAge: REFRESH_TOKEN_TTL_MS,
   });
 
-  const accessToken = await issueToken(res, { id: account.id, role: account.role, email: account.email });
+  const accessToken = await issueToken(res, { id: account.id, role: account.role, email: account.email, efc_auth_at: authenticatedAt });
   // bearer: the client stores both tokens itself; http-only: they travel as cookies.
   res.json({
     message: 'Token refreshed',

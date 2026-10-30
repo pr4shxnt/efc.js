@@ -285,3 +285,6 @@ Generated 2FA routes (app code, not additional core exports):
 `TWO_FACTOR_METHOD=totp|email|both` limits enrollment choices. Each account has one method. TOTP is six-digit SHA-1 with 30-second steps (±1 step); email codes last five minutes. Accepted codes cannot be reused. Enrollment/disable require the current password. See [the full flow and upgrade steps](../guides/authentication.md#two-factor-authentication-totp-or-email-otp).
 
 Device-session `/auth/sessions` (GET) and `/auth/sessions/:id` (DELETE) remain authenticated 501 extension points.
+
+
+Generated User/Admin logout requires authentication, compare-and-sets the account's stored refresh token to empty (including bearer logout with no refresh cookie/body), then revokes the current access token and clears cookies. Login persists refresh credentials only while the password hash still matches its verified snapshot. Generated login/refresh tokens carry `efc_auth_at`, captured before credential reads; revocation rejects a token whose authentication started at or before the cutoff, even if it was signed afterwards. Custom token issuers may include this numeric epoch-millisecond claim for the same protection; it can only restrict access, never override a later server-issued time. Existing generated apps must update their owned auth routes as well as the framework to receive these fixes.

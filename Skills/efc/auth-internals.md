@@ -147,3 +147,6 @@ Format accepted by `jose`: `'15m'`, `'1h'`, `'7d'`, `'30d'`, integer seconds, et
 - No revocation without a `cache` configured (then `revokeToken` just clears the cookie and a copied token stays valid until it expires). With a cache: `revokeSession` / `revokeAllSessions`.
 - No CSRF token — relies on `SameSite: Strict` for http-only strategy.
 - No multi-strategy per-route override — `authStrategy` is global, set once in `ignite()`.
+
+
+Generated User/Admin logout requires authentication, compare-and-sets the account's stored refresh token to empty (including bearer logout with no refresh cookie/body), then revokes the current access token and clears cookies. Login persists refresh credentials only while the password hash still matches its verified snapshot. Generated login/refresh tokens carry `efc_auth_at`, captured before credential reads; revocation rejects a token whose authentication started at or before the cutoff, even if it was signed afterwards. Custom token issuers may include this numeric epoch-millisecond claim for the same protection; it can only restrict access, never override a later server-issued time. Existing generated apps must update their owned auth routes as well as the framework to receive these fixes.

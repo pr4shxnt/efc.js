@@ -37,8 +37,12 @@ Load **only** the module the work points to. Each is self-contained.
   docs/                   ← full documentation
 ```
 
-## Status (v0.10.1 — Beta, Phase 2 complete + defineTable with relations + generated migrations + `efc add` registry)
+## Status (v0.10.2 — Beta, Phase 2 complete + defineTable with relations + generated migrations + `efc add` registry)
 
 Implemented: file-based router (incl. `[[id]]`, `[...slug]`, `[[...slug]]`), request validation (`export const schema`, Standard Schema), multi-core clustering with graceful shutdown, http-only cookie + Bearer token auth (scrypt password hashing built in), structured logging (pino, request IDs), `defineModel` on MongoDB (mongoose) **and** PostgreSQL (Drizzle) with validation, query options, bulk ops, transactions, `sync()`/`drop()`, PostgreSQL-native `defineTable` (Prisma-style queries, foreign keys, many-to-many, `include`, relation filters, nested writes), MongoDB-native `defineCollection` (mongoose vocabulary, BSON types, geo/text, `bulkWrite`, change streams), query logging (`logging.queries`), BullMQ **and** pg-boss task backends with cron schedules and dead-letter CLI, worker_threads for CPU-bound tasks, migrations/seeds/studio (`efc db`) incl. migrations generated from model diffs (`efc db generate`), `efc db pull` and `efc import-prisma`, full CLI.
 
 **Not yet implemented (Phase 3+):** WebSockets, plugins, OpenAPI generation, OpenTelemetry, `efc lint`, `efc deploy`.
+
+Phase 3 testing utilities: `createTestApp` from `express-file-cluster/testing` mounts a real route tree without service boot or a listener. Read `docs/guides/testing.md` and `docs/api-reference/testing.md`; see process-wide auth/logging isolation limits.
+
+M6 completed 2026-10-30: query logging + bounded opt-in query metrics, editable studio, pool settings + bounded prepared statements, and a strict 10% nightly benchmark gate. See `bench/results/m6-validation.md` for measured evidence. OpenTelemetry is a separate Phase 3 task.

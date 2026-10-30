@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
 import ts from 'typescript';
+import crypto from 'node:crypto';
 import { scaffold, NO_ADMIN_FEATURES, NO_USER_FEATURES } from '../scaffold.js';
 import { VARIANTS, registryOptions } from '../registry.js';
 import { hashPassword, verifyPassword } from 'express-file-cluster/auth';
@@ -19,6 +20,7 @@ interface Reply {
   status(code: number): Reply;
   json(body: unknown): Reply;
   clearCookie(name: string): void;
+  cookie(name: string, value: string, options?: unknown): void;
 }
 function reply(): Reply {
   return {
@@ -32,6 +34,7 @@ function reply(): Reply {
       this.body = body;
       return this;
     },
+    cookie() {},
     clearCookie(name) {
       this.cleared.push(name);
     },
@@ -48,7 +51,11 @@ type Handler = (req: { body?: unknown }, res: Reply) => Promise<unknown> | unkno
 // by the harness. Both JS and TS pass through the same compiler as app code.
 function load(file: string, dependencies: Record<string, unknown>): Route {
   const source = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      esModuleInterop: true,
+    },
   }).outputText;
   const exports = {};
   new Function('require', 'exports', source)((name: string) => {
@@ -155,6 +162,129 @@ for (const variant of VARIANTS) {
         POST({ body: { oldPassword: 'new-admin', newPassword: 'another' } }, reply()),
       ).rejects.toThrow('cache unavailable');
     }, 30_000);
+
+    it.each(['user', 'admin'])(
+      'invalidates %s refresh credentials on logout and rejects stale password logins',
+      async (kind) => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'efc-auth-race-'));
+        dirs.push(dir);
+        await scaffold(registryOptions(variant, ['account-security'], { projectName: dir }));
+        const ext = variant.language === 'typescript' ? 'ts' : 'js';
+        const account: Record<string, unknown> = {
+          id: kind + '-id',
+          email: kind + '@test.dev',
+          role: kind,
+          password: 'old-hash',
+          isActive: true,
+          twoFactorEnabled: false,
+          refreshToken: 'copied-refresh',
+          refreshTokenExpiry: new Date(Date.now() + 600000),
+        };
+        const table = variant.modelApi === 'defineTable';
+        const model = (active: boolean) => ({
+          findById: async () => (active ? { ...account } : null),
+          findUnique: async () => (active ? { ...account } : null),
+          findFirst: async ({ where }: { where: Record<string, unknown> }) =>
+            active && Object.entries(where).every(([key, value]) => account[key] === value)
+              ? { ...account }
+              : null,
+          findOne: async (where: Record<string, unknown>) =>
+            active && Object.entries(where).every(([key, value]) => account[key] === value)
+              ? { ...account }
+              : null,
+          updateMany: async (...args: unknown[]) => {
+            const where = (table ? (args[0] as { where: object }).where : args[0]) as Record<
+              string,
+              unknown
+            >;
+            const data = (table ? (args[0] as { data: object }).data : args[1]) as object;
+            const count =
+              active &&
+              Object.entries(where).every(([key, value]) =>
+                typeof value === 'object' && value !== null && '$ne' in value
+                  ? account[key] !== value.$ne
+                  : account[key] === value,
+              )
+                ? 1
+                : 0;
+            if (count) Object.assign(account, data);
+            return table
+              ? { count }
+              : variant.modelApi === 'defineCollection'
+                ? { modifiedCount: count }
+                : count;
+          },
+        });
+        const User = model(kind === 'user');
+        const Admin = model(kind === 'admin');
+        const issueToken = vi.fn().mockResolvedValue('access');
+        const verify = vi.fn().mockResolvedValue(true);
+        const auth = {
+          requireAuth: () => {},
+          getCurrentUser: () => ({ id: account.id, role: kind }),
+          issueToken,
+          verifyPassword: verify,
+          revokeSession: vi.fn().mockResolvedValue(undefined),
+        };
+        const common = {
+          'node:crypto': crypto,
+          'express-file-cluster': {
+            HttpError: class extends Error {
+              constructor(_status: number, message: string) {
+                super(message);
+              }
+            },
+            rateLimit: () => () => {},
+          },
+        };
+        const library = load(path.join(dir, 'src/lib', `two-factor.${ext}`), {
+          ...common,
+          'express-file-cluster/tasks': { enqueue: async () => {} },
+        });
+        const deps = {
+          ...common,
+          'express-file-cluster/auth': auth,
+          '../../model/User.js': { User },
+          '../../model/Admin.js': { Admin },
+          '../../lib/two-factor.js': library,
+        };
+        const route = (name: string) =>
+          load(path.join(dir, 'src/api/auth', `${name}.${ext}`), deps).POST as (
+            req: { body?: unknown; cookies?: Record<string, string> },
+            res: Reply,
+          ) => Promise<unknown>;
+        const logout = route('logout');
+        const refresh = route('refresh');
+        const login = route('login');
+        await logout({}, reply()); // Bearer logout also invalidates refresh without a cookie/body.
+        expect(account.refreshToken).toBe('');
+        const replay = reply();
+        await refresh({ body: { refreshToken: 'copied-refresh' } }, replay);
+        expect(replay.statusCode).toBe(401);
+        expect(issueToken).not.toHaveBeenCalled();
+        // Snapshot was read before the password change, but the DB CAS runs afterwards.
+        verify.mockImplementationOnce(async () => {
+          account.password = 'new-hash';
+          return true;
+        });
+        await expect(
+          login({ body: { email: account.email, password: 'old-password' } }, reply()),
+        ).rejects.toThrow('Account security changed');
+        expect(account.refreshToken).toBe('');
+        expect(issueToken).not.toHaveBeenCalled();
+        // Successful tokens carry the time from BEFORE verification, not token issuance.
+        const before = Date.now();
+        await login({ body: { email: account.email, password: 'new-password' } }, reply());
+        const claims = issueToken.mock.calls[0]![1] as { efc_auth_at: number };
+        expect(claims.efc_auth_at).toBeGreaterThanOrEqual(before);
+        expect(claims.efc_auth_at).toBeLessThanOrEqual(Date.now());
+        const rotated = reply();
+        issueToken.mockClear();
+        await refresh({ body: { refreshToken: account.refreshToken } }, rotated);
+        expect(rotated.statusCode).toBe(200);
+        expect(issueToken.mock.calls[0]![1]).toHaveProperty('efc_auth_at');
+      },
+    );
 
     it('returns 501 from unimplemented device-session handlers', async () => {
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'efc-security-extension-'));

@@ -43,11 +43,12 @@ jobs:
         working-directory: bench
         run: |
           npm ci
+          npm test
           npx prisma generate
           npx prisma db push
       - name: Run and compare with the baseline
         working-directory: bench
-        run: npx tsx run.ts --json results/latest.json --compare results/baseline.json
+        run: npx tsx run.ts --iterations 5000 --rounds 11 --warmup 1000 --json results/latest.json --compare results/baseline.json --tolerance 10
       - uses: actions/upload-artifact@v4
         if: always()
         with:

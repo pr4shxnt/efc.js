@@ -140,3 +140,9 @@ const clusterEnabled = config.cluster ?? (process.env['NODE_ENV'] === 'productio
 - `config.cluster: false` → **OFF** regardless of NODE_ENV
 
 `efc start dev` sets `NODE_ENV=development` → clustering is automatically off in dev.
+
+## PostgreSQL prepared statements (M6)
+
+`databasePool.preparedStatements?: boolean | { max?: number }` defaults true/100 names per physical connection; false or max 0 disables (Mongo ignores). A private Pool/client proxy is passed to Drizzle, preserving Pool identity and transaction-client release; exported native `db` is unchanged. Object query configs for single SELECT/INSERT/UPDATE/DELETE/WITH statements get a SQL-shape hash name; parameters/types/rowMode are untouched, explicit names/control/DDL/multi-statements unchanged. Lifetime budget bounds server names, with unnamed fallback (no eviction/DEALLOCATE). Schema sync/drop bumps generation; connection budgets never reset. External DDL requires reconnecting, and incompatible poolers require opting out. `prepared-statements.integration.test.ts` proves reuse, transactions, budget/disable and schema invalidation.
+
+`logging.queries.metrics: true | { maxEntries }` enables bounded per-process model/op aggregates (default off; enabled default 1000, zero disables). Main exports `getQueryMetrics`, `resetQueryMetrics`, `QueryMetric`, `QueryMetricsSnapshot`. Snapshots contain counters/latency summaries, since and dropped observations; no SQL/params/error details. Nested statement counts inclusive; reset/reconfigure starts a new window. Not distributed tracing.

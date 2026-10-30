@@ -20,6 +20,8 @@ steps = [
     ('Multi-core clustering', ENTER),
     ('Authentication:', ENTER),  # default: http-only cookie
     ('Add features now', features),
+    ('Two-factor authentication methods:', ENTER),  # TOTP: no SMTP credentials needed
+
 ]
 pid, fd = pty.fork()
 if pid != 0:

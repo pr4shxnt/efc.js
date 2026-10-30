@@ -17,7 +17,7 @@ import { ... } from 'express-file-cluster/config'
 import { ... } from 'express-file-cluster/models'
 ```
 
-Only three sub-paths exist: (no suffix), `/auth`, `/tasks`.
+Four import paths exist: (no suffix), `/auth`, `/tasks`, `/testing`. `/testing` exports `createTestApp` and `TestAppOptions`; it does not boot services or mock databases/tasks.
 
 ---
 
@@ -26,6 +26,7 @@ Only three sub-paths exist: (no suffix), `/auth`, `/tasks`.
 ```ts
 // ❌ NOT exported from any EFC path
 createApp()
+createTestApp()        // ← EXISTS only from express-file-cluster/testing; apiDir is test-only
 createServer()
 useMiddleware()
 addRoute()
