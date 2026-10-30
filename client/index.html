@@ -465,9 +465,11 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
         <ol class="releases">
           <li><span class="v">0.10.2</span><time datetime="2026-10-30">Oct 30</time>
             <p>Logout invalidates stored refresh credentials; password snapshots and authentication-time
-              revocation prevent stale logins from reviving sessions. Adds <code>createTestApp()</code>,
+              revocation prevent stale logins from reviving sessions. Reset links are consumed once and invalidate
+              refresh credentials; custom logout propagates failures, and mixed ESM/CJS middleware shares state.
+              Adds <code>createTestApp()</code>,
               bounded query metrics and PostgreSQL prepared statements, plus a strict nightly 10% benchmark gate.</p>
-            <p>Update owned login, refresh, logout and two-factor helper files alongside the framework.
+            <p>Update owned login, refresh, logout, reset-password, change-password and two-factor helper files alongside the framework.
               Disable PostgreSQL preparation for incompatible poolers.</p>
           </li>
           <li><span class="v">0.10.1</span><time datetime="2026-10-30">Oct 30</time>

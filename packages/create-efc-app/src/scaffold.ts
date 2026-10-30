@@ -1897,15 +1897,17 @@ ${sendResetEmail}  }
   const account = user || admin;`
       : `  const user = await ${db.findOne('User', `{ resetToken: token }`)};
   const account = user;`;
+    const resetData = `{ password: hashed, resetToken: '', resetTokenExpiry: new Date(0), refreshToken: '', refreshTokenExpiry: new Date(0), twoFactorPendingSecret: '', twoFactorPendingMethod: '', twoFactorPendingExpiry: new Date(0), twoFactorEmailHash: '', twoFactorEmailExpiry: new Date(0) }`;
+    const resetWhere = `{ id: account.id, resetToken: token, resetTokenExpiry: { ${usesTables(opts) ? 'gt' : '$gt'}: new Date() } }`;
     const rpPersist = hasAdmin
-      ? `  if (user) await ${db.update('User', `user.id`, `{ password: hashed, resetToken: '' }`)};
-  else if (admin) await ${db.update('Admin', `admin.id`, `{ password: hashed, resetToken: '' }`)};`
-      : `  await ${db.update('User', `user.id`, `{ password: hashed, resetToken: '' }`)};`;
+      ? `  const consumed = await updateSecurity(user ? User : Admin, ${resetWhere}, ${resetData});`
+      : `  const consumed = await updateSecurity(User, ${resetWhere}, ${resetData});`;
     const rpContent = ts
       ? `import type { Request, Response } from 'express';
 import { hashPassword, revokeAllSessions } from 'express-file-cluster/auth';
+import { updateSecurity } from '../../lib/two-factor.js';
 ${rpModelImports}${rpMeta}export const POST = async (req: Request, res: Response) => {
-  const { token, password } = req.body;
+  const { token, password } = req.body ?? {};
   // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
   if (typeof token !== 'string' || typeof password !== 'string' || !token || !password) {
     return res.status(400).json({ error: 'token and password are required' });
@@ -1919,6 +1921,7 @@ ${rpLookup}
 
   const hashed = await hashPassword(password);
 ${rpPersist}
+  if (!consumed) return res.status(400).json({ error: 'Invalid, expired or already used reset token' });
   // Tokens issued with the old password stop working everywhere.
   await revokeAllSessions(account.id);
 
@@ -1926,8 +1929,9 @@ ${rpPersist}
 };
 `
       : `import { hashPassword, revokeAllSessions } from 'express-file-cluster/auth';
+import { updateSecurity } from '../../lib/two-factor.js';
 ${rpModelImports}${rpMeta}export const POST = async (req, res) => {
-  const { token, password } = req.body;
+  const { token, password } = req.body ?? {};
   // Strings only: an object such as {"$ne": null} would be read as a filter operator and match any account.
   if (typeof token !== 'string' || typeof password !== 'string' || !token || !password) {
     return res.status(400).json({ error: 'token and password are required' });
@@ -1941,6 +1945,7 @@ ${rpLookup}
 
   const hashed = await hashPassword(password);
 ${rpPersist}
+  if (!consumed) return res.status(400).json({ error: 'Invalid, expired or already used reset token' });
   // Tokens issued with the old password stop working everywhere.
   await revokeAllSessions(account.id);
 
@@ -1967,7 +1972,7 @@ ${hasAdmin ? "import { Admin } from '../../model/Admin.js';\n" : ''}`;
       ? `  const isAdmin = principal.role === 'admin';
   const account = isAdmin ? await ${db.findById('Admin', 'id')} : await ${db.findById('User', 'id')};`
       : `  const account = await ${db.findById('User', 'id')};`;
-    const passwordData = `{ password: hashed, refreshToken: '', refreshTokenExpiry: new Date(0) }`;
+    const passwordData = `{ password: hashed, refreshToken: '', refreshTokenExpiry: new Date(0), resetToken: '', resetTokenExpiry: new Date(0) }`;
     const cpPersist = hasAdmin
       ? `  const updated = isAdmin ? await ${db.update('Admin', 'id', passwordData)} : await ${db.update('User', 'id', passwordData)};`
       : `  const updated = await ${db.update('User', 'id', passwordData)};`;

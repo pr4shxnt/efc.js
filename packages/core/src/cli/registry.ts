@@ -883,11 +883,7 @@ function entityLogoutContent(cfg: EfcJson): string {
 export const middlewares = [requireAuth];
 
 export const POST = async ${typedArgs} => {
-  try {
-    await revokeSession(req, res);
-  } catch {
-    res.clearCookie('efc_token');
-  }
+  await revokeSession(req, res);
   res.json({ message: 'Logged out successfully' });
 };
 `;

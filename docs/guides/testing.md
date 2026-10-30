@@ -27,3 +27,5 @@ Authentication and logging are process-wide in EFC. The helper disables the proc
 See the [API reference](../api-reference/testing.md) for all options.
 
 The CommonJS `/testing` entry delegates to the ESM helper using native `import()`, so dynamically imported ESM routes share its authentication and request context. The Node/runner must support the route files' module format.
+
+The ESM and CommonJS builds share process-wide auth configuration, request AsyncLocalStorage and cache state. CommonJS `requireAuth` global middleware therefore sees helper auth options, preserves `getCurrentUser()` across awaits into ESM routes, and observes the same revocations. Model/queue fixtures are still configured separately.

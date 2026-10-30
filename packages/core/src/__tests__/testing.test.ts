@@ -8,6 +8,8 @@ import express from 'express';
 import request from 'supertest';
 import { jwtVerify } from 'jose';
 import { createTestApp } from '../testing.js';
+import type * as AuthModule from '../auth/index.js';
+import { configureCache, closeCache } from '../cache/index.js';
 
 const dirs: string[] = [];
 const authPath = JSON.stringify(path.resolve(import.meta.dirname, '../auth/index.ts'));
@@ -55,6 +57,41 @@ describe('createTestApp', () => {
         const me = await request(app).get('/v1/api/me').auth(login.body.token, { type: 'bearer' });
         expect(me.status).toBe(200);
         expect(me.body.id).toBe('packaged');
+      }
+    },
+  );
+
+  it.skipIf(!fs.existsSync(path.resolve(import.meta.dirname, '../../dist/testing.js')))(
+    'shares CommonJS middleware authentication, request context and revocation with ESM routes',
+    async () => {
+      const require = createRequire(import.meta.url);
+      const helper = require('express-file-cluster/testing') as {
+        createTestApp: typeof createTestApp;
+      };
+      const cjsAuth = require('express-file-cluster/auth') as typeof AuthModule;
+      const esmAuth = await import('express-file-cluster/auth');
+      const packagedAuth = JSON.stringify(
+        path.resolve(import.meta.dirname, '../../dist/auth/index.js'),
+      );
+      await configureCache({ backend: 'memory', prefix: 'mixed-' + crypto.randomUUID() + ':' });
+      try {
+        const app = await helper.createTestApp({
+          apiDir: fixture({
+            'me.mjs': `import { getCurrentUser } from ${packagedAuth}; export const GET = async (_req, res) => { await Promise.resolve(); res.json({ user: getCurrentUser() }); };`,
+          }),
+          auth: { secret: 'mixed-module-auth', strategy: 'bearer' },
+          globalMiddlewares: [cjsAuth.requireAuth],
+        });
+        const token = await cjsAuth.signToken({ id: 'mixed', efc_auth_at: Date.now() });
+        const first = await request(app).get('/v1/api/me').auth(token, { type: 'bearer' });
+        expect(first.status).toBe(200);
+        expect(first.body.user.id).toBe('mixed');
+        await esmAuth.revokeAllSessions('mixed');
+        expect((await request(app).get('/v1/api/me').auth(token, { type: 'bearer' })).status).toBe(
+          401,
+        );
+      } finally {
+        await closeCache();
       }
     },
   );

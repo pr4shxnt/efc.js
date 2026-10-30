@@ -336,6 +336,57 @@ export const POST = async (req${ts ? ': Request' : ''}, res${ts ? ': Response' :
     }
   }, 60_000);
 
+  it('consumes a reset link once across workers and rejects pre-reset access/refresh credentials', async () => {
+    const base = serverUrl;
+    const json = { 'content-type': 'application/json' };
+    const email = `reset-${crypto.randomUUID()}@example.com`;
+    const post = (route: string, body: object) =>
+      fetch(base + route, { method: 'POST', headers: json, body: JSON.stringify(body) });
+    expect(
+      (await post('/auth/register', { name: 'Reset', email, password: 'original-password' }))
+        .status,
+    ).toBe(201);
+    const login = await post('/auth/login', { email, password: 'original-password' });
+    expect(login.status).toBe(200);
+    const cookie = cookieHeader(login);
+    expect((await post('/auth/forgot-password', { email })).status).toBe(200);
+    // Test-only DB read: reset tokens are intentionally absent from public API responses.
+    let token: string;
+    if (stack.database === 'mongodb') {
+      const { default: mongoose } = await import('mongoose');
+      const conn = await mongoose.createConnection(stack.url).asPromise();
+      try {
+        token = (await conn.collection('users').findOne({ email }))!.resetToken as string;
+      } finally {
+        await conn.close();
+      }
+    } else {
+      const { default: pg } = await import('pg');
+      const conn = new pg.Client({ connectionString: stack.url });
+      await conn.connect();
+      try {
+        token = (await conn.query('SELECT "resetToken" FROM users WHERE email = $1', [email]))
+          .rows[0].resetToken as string;
+      } finally {
+        await conn.end();
+      }
+    }
+    expect(typeof token).toBe('string');
+    expect(token).not.toBe('');
+    const passwords = ['reset-winner-one', 'reset-winner-two'];
+    const results = await Promise.all(
+      passwords.map((password) => post('/auth/reset-password', { token, password })),
+    );
+    expect(results.map((result) => result.status).sort()).toEqual([200, 400]);
+    expect(
+      (await fetch(base + '/auth/refresh', { method: 'POST', headers: { cookie } })).status,
+    ).toBe(401);
+    expect((await fetch(base + '/auth/me', { headers: { cookie } })).status).toBe(401);
+    expect((await post('/auth/reset-password', { token, password: 'replayed' })).status).toBe(400);
+    const winner = results.findIndex((result) => result.status === 200);
+    expect((await post('/auth/login', { email, password: passwords[winner] })).status).toBe(200);
+  });
+
   // Request values used in lookups must be strings; objects are refused before any query.
   it('validates request value types in the auth routes', async () => {
     const base = serverUrl;

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { processState } from '../process-state.js';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
 import type { AuthStrategy } from '../types.js';
@@ -13,15 +14,15 @@ interface AuthConfig {
   cookieDomain?: string | undefined;
 }
 
-let _config: AuthConfig | null = null;
+const state = processState('auth', () => ({ config: null as AuthConfig | null }));
 
 export function configureAuth(config: AuthConfig): void {
-  _config = config;
+  state.config = config;
 }
 
 function getConfig(): AuthConfig {
-  if (!_config) throw new Error('[EFC] Auth not configured — pass jwtSecret to ignite()');
-  return _config;
+  if (!state.config) throw new Error('[EFC] Auth not configured — pass jwtSecret to ignite()');
+  return state.config;
 }
 
 // Every token carries a unique `jti` (so one session can be revoked) and its issue

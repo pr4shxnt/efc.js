@@ -79,12 +79,14 @@ for (const variant of VARIANTS) {
         password: await hashPassword('old-user'),
         isActive: true,
         refreshToken: 'refresh-user',
+        resetToken: 'old-reset-user',
       };
       const admin = {
         id: 'admin-id',
         password: await hashPassword('old-admin'),
         isActive: true,
         refreshToken: 'refresh-admin',
+        resetToken: 'old-reset-admin',
       };
       const model = (account: typeof user) => ({
         findById: vi.fn(async (id: string) => (id === account.id ? account : null)),
@@ -147,6 +149,7 @@ for (const variant of VARIANTS) {
       expect(await verifyPassword('new-user', user.password)).toBe(true);
       expect(await verifyPassword('old-user', user.password)).toBe(false);
       expect(user.refreshToken).toBe('');
+      expect(user.resetToken).toBe('');
       expect(revokeAllSessions).toHaveBeenCalledWith('user-id');
       expect(success.cleared).toContain('efc_refresh_token');
       expect(await verifyPassword('old-admin', admin.password)).toBe(true);
@@ -157,6 +160,7 @@ for (const variant of VARIANTS) {
       expect(await verifyPassword('new-admin', admin.password)).toBe(true);
       expect(revokeAllSessions).toHaveBeenCalledWith('admin-id');
       expect(admin.refreshToken).toBe('');
+      expect(admin.resetToken).toBe('');
       revokeAllSessions.mockRejectedValueOnce(new Error('cache unavailable'));
       await expect(
         POST({ body: { oldPassword: 'new-admin', newPassword: 'another' } }, reply()),

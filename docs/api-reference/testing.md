@@ -22,3 +22,5 @@ Shared behavior with production: JSON/form/cookie parsing, AsyncLocalStorage req
 This helper's `apiDir` is **not** a new `ignite()` option. `createTestApp` is exported only from `/testing`; no `/db`, `/router` or `/middleware` subpaths are added.
 
 The CommonJS `/testing` entry delegates to the ESM helper using native `import()`, so dynamically imported ESM routes share its authentication and request context. The Node/runner must support the route files' module format.
+
+The ESM and CommonJS builds share process-wide auth configuration, request AsyncLocalStorage and cache state. CommonJS `requireAuth` global middleware therefore sees helper auth options, preserves `getCurrentUser()` across awaits into ESM routes, and observes the same revocations. Model/queue fixtures are still configured separately.

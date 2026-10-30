@@ -60,3 +60,9 @@ invalidation on logout, password-snapshot/authentication-time guards for in-flig
 login revocation, and the native-import CommonJS testing bridge. Lint, typecheck and
 build passed; the full live-service suite with opt-in scaffold/install e2e passed
 **507 tests (4 skipped), 51 files**. The benchmark measurements above are unchanged.
+
+Additional 0.10.2 auth review: atomic reset-token consumption/expiry checks, reset refresh
+credential invalidation, shared ESM/CJS auth/context/cache state and custom-entity logout
+error propagation passed the full live-service suite: **528 tests, 4 skipped, 52 files**.
+This includes three new generated-app reset-concurrency journeys. Lint/typecheck/build
+passed; benchmark measurements remain unchanged.

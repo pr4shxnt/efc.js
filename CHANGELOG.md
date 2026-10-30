@@ -9,13 +9,17 @@ mirrors this file — see `AGENTS.md` §5.
 - **Auth fixes:** authenticated User/Admin logout invalidates stored refresh credentials, including
   bearer callers. Login checks the verified password snapshot before persisting refresh credentials;
   authentication-time revocation prevents in-flight old-password logins from reviving sessions.
+- **Recovery and mixed-module fixes:** reset links are consumed atomically with a fresh DB expiry
+  check; reset clears refresh credentials and pending challenges while preserving active 2FA.
+  Password changes invalidate reset links. Custom-entity logout propagates revocation failures.
+  ESM/CJS auth, context and cache state are shared for mixed-module middleware.
 - **Route testing:** `express-file-cluster/testing` adds `createTestApp()` using production HTTP
   middleware, routing and error handling without booting services. CommonJS callers delegate to
   the ESM implementation for dynamically imported ESM routes.
 - **Database tooling:** bounded opt-in query metrics (`getQueryMetrics` / `resetQueryMetrics`),
   bounded PostgreSQL prepared statements with opt-out and schema-sync invalidation, and a strict
   nightly 10% benchmark regression gate with validated sample allocation and baseline coverage.
-- **Upgrade generated apps:** update owned login, refresh, logout and two-factor helper files as
+- **Upgrade generated apps:** update owned login, refresh, logout, reset-password, change-password and two-factor helper files as
   well as the framework. PostgreSQL preparation defaults to 100 names per connection; disable it
   for incompatible poolers. See the auth, testing, database and logging guides.
 

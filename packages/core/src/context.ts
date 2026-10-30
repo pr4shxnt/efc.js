@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Logger } from 'pino';
+import { processState } from './process-state.js';
 
 export interface RequestContext {
   user?: Record<string, unknown> | undefined;
@@ -9,7 +10,7 @@ export interface RequestContext {
   queryCounts?: Map<string, number>;
 }
 
-const storage = new AsyncLocalStorage<RequestContext>();
+const storage = processState('request-context', () => new AsyncLocalStorage<RequestContext>());
 
 // Wraps one request's lifecycle in an AsyncLocalStorage context. Node propagates
 // the store through the async chain the callback initiates (awaits, .then, etc.),

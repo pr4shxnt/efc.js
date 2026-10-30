@@ -309,3 +309,11 @@ Found by actually running each exit criterion end to end, not by reading code:
 - [x] Validation: lint, typecheck and build passed; full live-service suite including scaffold/install e2e: 507 passed, 4 skipped (51 files).
 
 - [x] Patch 0.10.2: synchronize package/scaffold/site versions and changelog; commit tested M6 and initial auth/testing regression fixes.
+
+## Additional auth review — 2026-10-30
+
+- [x] Commit 0.10.2 checkpoint without co-author: `ca6d717`.
+- [x] Atomic reset-token consumption and database expiry checks; revoke refresh credentials and pending challenges on reset, preserve active 2FA; invalidate reset links on password change.
+- [x] Mixed ESM/CJS middleware shares auth, context and revocation/cache state.
+- [x] Custom auth-entity logout propagates revocation failures.
+- [x] Validation: lint/typecheck/build passed; full suite with live MongoDB/PostgreSQL/Redis and scaffold/install e2e: 528 passed, 4 skipped (52 files).

@@ -177,3 +177,5 @@ Modules: `api-surface.md`, `routing-rules.md`, `pre-flight.md`, `tasks-internals
 - `logging.queries.metrics` opt-in collects bounded per-process model/op metrics (1000 entries by default, `{ maxEntries: 0 }` disables). `getQueryMetrics` returns detached snapshots; `resetQueryMetrics` clears the window. No SQL, values or error strings. Nested statement counts remain inclusive; overflow observations count as `dropped`. OpenTelemetry remains a separate Phase 3 milestone.
 
 Auth race guards: generated login CAS includes the verified password hash; login/refresh capture `efc_auth_at` before DB reads, and revocation rejects authentication at/before the cutoff. Generated logout is authenticated and invalidates DB refresh credentials even in bearer mode. The CommonJS testing entry delegates to ESM to share state with imported ESM routes.
+
+Reset links are consumed by a DB compare-and-set with expiry rechecked after hashing; success clears refresh credentials and pending challenges, preserving active 2FA. ESM/CJS auth/context/cache share internal process state. Custom entity logout must propagate revocation failures.
