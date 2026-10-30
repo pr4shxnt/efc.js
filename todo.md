@@ -317,3 +317,5 @@ Found by actually running each exit criterion end to end, not by reading code:
 - [x] Mixed ESM/CJS middleware shares auth, context and revocation/cache state.
 - [x] Custom auth-entity logout propagates revocation failures.
 - [x] Validation: lint/typecheck/build passed; full suite with live MongoDB/PostgreSQL/Redis and scaffold/install e2e: 528 passed, 4 skipped (52 files).
+
+- [x] Release CI: build workspace packages before type checking cross-workspace test imports, including the npm publish workflow.
