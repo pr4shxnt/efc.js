@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    # Website deployments do not publish framework packages. Releases bump all
+    # three manifests; dependency-only manifest edits still require a new version.
+    paths:
+      - 'packages/core/package.json'
+      - 'packages/create-efc-app/package.json'
+      - 'packages/mcp/package.json'
 
 jobs:
   publish:

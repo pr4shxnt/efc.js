@@ -4,6 +4,13 @@
 
 ---
 
+## Learning website
+
+- [x] Rebuild learn-efc as an article-first backend handbook: web and server fundamentals → Node.js and Express → EFC and databases → production, initialization, and CORS.
+- [x] Add original Express/EFC comparisons, visual concept diagrams, selected interactive checkpoints, searchable topics, responsive reading navigation, and browser-local reading progress.
+
+---
+
 ## Phase 0 — Design & Planning
 
 - [x] Define core API (`ignite()` options, route + task conventions)
@@ -374,3 +381,9 @@ Found by actually running each exit criterion end to end, not by reading code:
 
 - [x] Publish all three packages through upstream main after CI and verify npm latest — published 2026-10-31 (siggold#37), tagged `v0.12.0` with GitHub releases for v0.5.0–v0.12.0.
 - [ ] Publish all three packages through upstream main after CI and verify npm latest.
+
+### Learn EFC hosting
+
+- [x] Add three-job app workflow: lint/typecheck/content tests, standalone build/HTTP smoke tests, then upstream-main SSH deployment with pinned host identity and health-check rollback.
+- [x] Document the namespaced Actions secrets, release directory layout, Node.js 24 prerequisite, systemd service, and Nginx proxy setup.
+- [x] Install checksum-verified Node.js 24.22.2 and the systemd/Nginx setup on the hosting server; use the public server IP in canonical URLs and share images.
