@@ -372,5 +372,5 @@ Found by actually running each exit criterion end to end, not by reading code:
 
 ### 0.12.0 release
 
-- [x] Synchronize all package versions, lockfile, scaffold dependency ranges, public site, changelog and bundled documentation.
+- [x] Publish all three packages through upstream main after CI and verify npm latest — published 2026-10-31 (siggold#37), tagged `v0.12.0` with GitHub releases for v0.5.0–v0.12.0.
 - [ ] Publish all three packages through upstream main after CI and verify npm latest.
