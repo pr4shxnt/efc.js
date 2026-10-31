@@ -65,3 +65,10 @@ What each model API does on which engine — and the test that proves it. Every 
 | File WS exports, middleware/auth/context, origin and payload limits, heartbeat and drain | Implemented; worker-local | `websocket.test.ts: shares real middleware, auth, decoded params and async request context, while HTTP coexists` |
 
 No automatic auth-policy inference, message-schema validation, cross-worker broadcast bus or Swagger UI is included.
+
+## Tracing (unreleased)
+
+| Feature | Status | Evidence |
+|---|---|---|
+| HTTP W3C parentage, concurrent context isolation, template attributes and correlated logs | Opt-in; app-owned SDK | `tracing.test.ts: continues remote traces, isolates concurrent requests and records templates without URL/query/credential values` |
+| Trace-only carrier handling and clean task auth scopes | Native queue hooks; unchanged payloads | `tracing.test.ts: uses native queue metadata, keeps trace-only carriers, and clears auth/request state for task handlers` |

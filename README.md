@@ -696,7 +696,7 @@ npm run lint         # ESLint
 |---|---|---|
 | **1** | ✅ Complete | Router, clustering, MongoDB, BullMQ, auth, CLI, scaffolder |
 | **2** | ✅ Complete | PostgreSQL (Drizzle), pg-boss, `defineModel` upgrades, request validation, structured logging, cron tasks, catch-all/optional routes, migrations & studio, dead-letter CLI |
-| **3** | 🟡 In progress | Shipped: testing utilities, OpenAPI and WebSockets. Next: OpenTelemetry, plugins and stable-release validation. |
+| **3** | 🟡 In progress | Shipped: testing utilities, OpenAPI and WebSockets. Unreleased: OpenTelemetry tracing. Next: plugins and stable-release validation. |
 | **4** | ⬜ Planned | Edge/serverless adapter, gRPC, GraphQL |
 
 See [`todo.md`](./todo.md) for the full implementation checklist.

@@ -47,10 +47,10 @@ Cookie name: exactly `'efc_token'` (hardcoded).
 ## `revokeToken(res)`
 
 ```ts
-res.clearCookie('efc_token')
+res.clearCookie('efc_token', { ...(cookieDomain !== undefined && { domain: cookieDomain }) })
 ```
 
-That's the entire implementation. Clears the cookie. The JWT itself is not invalidated — use `revokeSession` for that.
+Uses the configured domain when clearing the cookie. The JWT itself is not invalidated — use `revokeSession` for that.
 
 ---
 
@@ -152,3 +152,5 @@ Format accepted by `jose`: `'15m'`, `'1h'`, `'7d'`, `'30d'`, integer seconds, et
 Generated User/Admin logout requires authentication, compare-and-sets the account's stored refresh token to empty (including bearer logout with no refresh cookie/body), then revokes the current access token and clears cookies. Login persists refresh credentials only while the password hash still matches its verified snapshot. Generated login/refresh tokens carry `efc_auth_at`, captured before credential reads; revocation rejects a token whose authentication started at or before the cutoff, even if it was signed afterwards. Custom token issuers may include this numeric epoch-millisecond claim for the same protection; it can only restrict access, never override a later server-issued time. Existing generated apps must update their owned auth routes as well as the framework to receive these fixes.
 
 Password reset atomically consumes the matching, still-unexpired reset token while replacing the password and clearing stored refresh credentials and pending 2FA challenges. Concurrent use has one winner; expiry is rechecked in the database after hashing. Active 2FA enrollment remains enabled. Password changes also invalidate outstanding reset links. Custom auth-entity logout propagates revocation-store failures instead of returning a false success. Existing apps must update their owned reset-password, change-password, two-factor helper and custom logout files.
+
+Unreleased hardening: authentication no longer writes/continues after a request timeout or disconnect. User cutoffs do not expire automatically; changing jwtExpiresIn cannot shorten protection for old tokens. In-memory revocation entries are eviction-protected; capacity exhaustion rejects revocation writes rather than reviving a session. Durable/no-eviction Redis is required for persistence across restarts; clearing session entries intentionally removes their protection.

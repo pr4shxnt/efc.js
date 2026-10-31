@@ -875,7 +875,7 @@ Lock the API surface, architecture, and scaffolding before writing framework cod
 | 1   | Plugin system (`registerPlugin()` lifecycle hooks)   | High     |
 | 2   | WebSocket support (`export const WS = ...`, v0.11.0) | High     |
 | 3   | OpenAPI auto-generation from route exports (v0.11.0) | High     |
-| 4   | OpenTelemetry distributed tracing (HTTP + tasks)     | High     |
+| 4   | OpenTelemetry distributed tracing (HTTP + tasks, unreleased) | High     |
 | 5   | `efc/testing` (`createTestApp()`)                    | High     |
 | 6   | `efc studio` — live route map, worker + queue status | Medium   |
 | 7   | Third-party security audit (auth, cookies, queue)    | High     |

@@ -107,13 +107,22 @@ export default defineTask({ retries: 2, backoff: 'fixed' }, async (payload) => {
 
     await enqueue('Record', { to: 'a@example.com' });
     await enqueue('Record', 'just-a-string');
+    await enqueue('Record', { __efcValue: 'business', other: 1 });
+    await enqueue('Record', { __efcValue: 'single' });
     await enqueue('Flaky', { n: 1 });
-    await waitFor(() => events().length === 4);
+    await waitFor(() => events().length === 6);
 
     const records = events()
       .filter((e) => e.name === 'Record')
       .map((e) => e.payload);
-    expect(records).toEqual(expect.arrayContaining([{ to: 'a@example.com' }, 'just-a-string']));
+    expect(records).toEqual(
+      expect.arrayContaining([
+        { to: 'a@example.com' },
+        'just-a-string',
+        { __efcValue: 'business', other: 1 },
+        { __efcValue: 'single' },
+      ]),
+    );
     expect(
       events()
         .filter((e) => e.name === 'Flaky')

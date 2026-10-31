@@ -123,3 +123,5 @@ resetQueryMetrics(); // optional: start a fresh window without disabling collect
 Snapshots are detached from internal state and contain no SQL, parameter values, error details or request IDs. Each entry aggregates completed calls, failures, inclusive statement counts and durations in milliseconds. Nested model calls retain their own entries; their statements also count toward the outer operation, so summing entries is not a global database statement total. `slow` counts calls at or above `slowMs`.
 
 When the entry limit is reached, existing pairs keep updating; observations for new pairs increment `dropped`. Reset/reconfiguration clears entries, dropped counts and the `since` timestamp. Metrics are off by default. These are per-process counters, not a cluster-wide service or an OpenTelemetry exporter; collect from each worker/instance separately and secure any diagnostic endpoint you add.
+
+Unreleased: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.

@@ -1,9 +1,11 @@
+import { asyncWrap, asyncErrorWrap } from './middleware.js';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import type { EFCConfig } from './types.js';
 import { runWithContext } from './context.js';
 import { requestLogger, getLogger } from './logger.js';
+import { httpTracing, traceHttpError } from './tracing.js';
 import { isHttpError } from './errors.js';
 
 /** Shared production/test HTTP middleware stack; service boot remains in ignite(). */
@@ -23,6 +25,8 @@ export function createHttpApp(config: EFCConfig): express.Express {
   app.use((_req, _res, next) => {
     runWithContext({}, next);
   });
+  if (config.tracing && (config.tracing === true || config.tracing.http !== false))
+    app.use(httpTracing());
   app.use(requestLogger());
 
   if (config.requestTimeout) {
@@ -51,7 +55,7 @@ export function createHttpApp(config: EFCConfig): express.Express {
   app.use(cookieParser());
 
   for (const mw of globalMiddlewares) {
-    app.use(mw);
+    app.use(asyncWrap(mw));
   }
 
   return app;
@@ -61,43 +65,44 @@ export function mountErrorHandler(
   app: express.Express,
   onError?: express.ErrorRequestHandler,
 ): void {
+  app.use(traceHttpError);
   if (onError) {
-    app.use(onError);
-  } else {
-    app.use(
-      (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-        // e.g. a handler that kept going after requestTimeout already answered 408.
-        if (res.headersSent) {
-          getLogger().warn({ err }, 'Error after the response was sent');
-          return;
-        }
-        // isHttpError() covers the common case, but errors can also arrive as plain
-        // objects with a numeric statusCode (e.g. thrown across a module boundary, or
-        // duck-typed by user code) — fall back to that shape before giving up to 500.
-        // Only 4xx: a library's 5xx message can describe internals (hosts, SQL, paths).
-        const status = (err as { statusCode?: unknown } | null)?.statusCode;
-        const duckTyped =
-          err instanceof Error && typeof status === 'number' && status >= 400 && status < 500
-            ? (err as Error & { statusCode: number })
-            : null;
-
-        if (isHttpError(err)) {
-          // ModelValidationError carries per-field issues; surface them like route validation does.
-          const issues = (err as { issues?: unknown }).issues;
-          res.status(err.statusCode).json({
-            error: err.message,
-            statusCode: err.statusCode,
-            ...(issues !== undefined && { issues }),
-          });
-        } else if (duckTyped) {
-          res
-            .status(duckTyped.statusCode)
-            .json({ error: duckTyped.message, statusCode: duckTyped.statusCode });
-        } else {
-          getLogger().error({ err }, 'Unhandled error');
-          res.status(500).json({ error: 'Internal Server Error', statusCode: 500 });
-        }
-      },
-    );
+    app.use(asyncErrorWrap(onError));
   }
+  app.use(
+    (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      // e.g. a handler that kept going after requestTimeout already answered 408.
+      if (res.headersSent) {
+        getLogger().warn({ err }, 'Error after the response was sent');
+        if (!res.writableEnded) res.destroy();
+        return;
+      }
+      // isHttpError() covers the common case, but errors can also arrive as plain
+      // objects with a numeric statusCode (e.g. thrown across a module boundary, or
+      // duck-typed by user code) — fall back to that shape before giving up to 500.
+      // Only 4xx: a library's 5xx message can describe internals (hosts, SQL, paths).
+      const status = (err as { statusCode?: unknown } | null)?.statusCode;
+      const duckTyped =
+        err instanceof Error && typeof status === 'number' && status >= 400 && status < 500
+          ? (err as Error & { statusCode: number })
+          : null;
+
+      if (isHttpError(err)) {
+        // ModelValidationError carries per-field issues; surface them like route validation does.
+        const issues = (err as { issues?: unknown }).issues;
+        res.status(err.statusCode).json({
+          error: err.message,
+          statusCode: err.statusCode,
+          ...(issues !== undefined && { issues }),
+        });
+      } else if (duckTyped) {
+        res
+          .status(duckTyped.statusCode)
+          .json({ error: duckTyped.message, statusCode: duckTyped.statusCode });
+      } else {
+        getLogger().error({ err }, 'Unhandled error');
+        res.status(500).json({ error: 'Internal Server Error', statusCode: 500 });
+      }
+    },
+  );
 }

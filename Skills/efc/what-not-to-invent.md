@@ -277,3 +277,5 @@ const conn = db.model('User')  // throws: db not ready
 ```
 
 Since 0.11.0, WebSockets and OpenAPI are implemented. Read the new guides/API references before using them. Use `WS` file exports and `ignite({openapi})`/`generateOpenAPI`, with the four existing import paths only. No Socket.IO protocol, cross-worker broadcast bus, message-schema validator, Swagger UI, or automatic auth-policy inference is provided.
+
+Unreleased tracing exception: HTTP/task instrumentation exists behind `tracing`, with app-owned SDK/exporter/context manager. No EFC OTLP endpoint/env config, auto-instrumentation installer, message tracing, SQL tracing or baggage propagation is supplied.

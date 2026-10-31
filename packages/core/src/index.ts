@@ -1,3 +1,5 @@
+import { drainServices } from './shutdown.js';
+import { configureTracing, shutdownTracing } from './tracing.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import express from 'express';
@@ -117,6 +119,7 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
     );
   }
   configureQueryLog(config.logging);
+  configureTracing(config.tracing);
 
   if (clusterEnabled && cluster.isPrimary) {
     // The memory cache lives in the primary so all workers share it (cache/ipc.ts).
@@ -187,6 +190,7 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   if (config.tasks) {
     if (config.tasks.backend === 'bullmq') {
       await initBullMQ({
+        tracing: !!config.tracing && (config.tracing === true || config.tracing.tasks !== false),
         redisUrl: config.tasks.redisUrl ?? 'redis://localhost:6379',
         concurrency: config.tasks.concurrency ?? 5,
         enqueueTimeout: config.tasks.enqueueTimeout ?? 5000,
@@ -200,6 +204,7 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
         );
       }
       await initPgBoss({
+        tracing: !!config.tracing && (config.tracing === true || config.tracing.tasks !== false),
         connectionString,
         concurrency: config.tasks.concurrency ?? 5,
         enqueueTimeout: config.tasks.enqueueTimeout ?? 5000,
@@ -265,9 +270,18 @@ export function gracefulShutdown(server: http.Server | undefined, timeoutMs = 10
       server.close(() => {
         getLogger().info('Server closed');
         // Let in-flight task jobs finish before exiting; the timeout below still caps it.
-        Promise.all([websocketDrain, closeBullMQ(), closePgBoss(), closeCache()])
-          .catch((err: unknown) => getLogger().error({ err }, 'Task backend close failed'))
-          .finally(() => process.exit(0));
+        drainServices({
+          transports: [websocketDrain],
+          tasks: [closeBullMQ, closePgBoss],
+          cache: closeCache,
+          tracing: shutdownTracing,
+        }).then(
+          () => process.exit(0),
+          (err: unknown) => {
+            getLogger().error({ err }, 'Service shutdown failed');
+            process.exit(1);
+          },
+        );
       });
       setTimeout(() => {
         getLogger().error('Forced exit after timeout');
@@ -380,3 +394,5 @@ export { generateOpenAPI } from './openapi.js';
 export type { OpenAPIOptions, OpenAPIDocument, JSONSchema } from './openapi.js';
 export { attachWebSockets, closeWebSockets } from './websocket.js';
 export type { WebSocketHandler, WebSocketOptions } from './websocket.js';
+
+export type { TracingOptions } from './tracing.js';

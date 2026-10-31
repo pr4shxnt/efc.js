@@ -77,7 +77,7 @@ if (!def) throw Error(`[EFC] Cannot enqueue unknown task: "${name}"...`)
 
 So `enqueue` throws for both "no backend" and "unknown task name".
 
-It also rejects when Redis is unreachable: the Queue's ioredis connection has `enableOfflineQueue: false`, and `waitUntilReady()` + `queue.add()` is raced against `tasks.enqueueTimeout` (default 5000 ms). Message: `[EFC] Cannot enqueue task "X": Redis at host:port did not respond within Nms`. A rejected job is never queued later.
+It also rejects when Redis is unreachable: the Queue's ioredis connection has `enableOfflineQueue: false`, and `waitUntilReady()` + `queue.add()` is raced against `tasks.enqueueTimeout` (default 5000 ms). Message: `[EFC] Cannot enqueue task "X": Redis at host:port did not respond within Nms`. An expired readiness wait cannot submit later. An already-sent backend command has an uncertain outcome on timeout/disconnect; handlers must be idempotent before retrying.
 
 ---
 
@@ -162,7 +162,7 @@ Defaults: `host: 'localhost'`, `port: 6379`. User/password are URI-decoded.
 - `new PgBoss({ connectionString: tasks.connectionString ?? databaseUrl, schema? })`, `start()`.
 - One pg-boss queue per task, named `<tasks.queue>.<TaskName>` (default prefix `efc`); `createQueue` is idempotent.
 - `retryLimit = retries` (pg-boss counts re-runs, like EFC), `retryDelay: 1`, `retryBackoff` for exponential.
-- Non-object payloads are boxed as `{ __efcValue: payload }` and unboxed for the handler.
+- Non-object/reserved-key payloads use a versioned internal wrapper; application objects with `__efcValue` survive unchanged. Old one-key primitive boxes remain readable.
 - `enqueue` = `boss.send(...)` raced against `enqueueTimeout`.
 
 ## Dead letters (`tasks/admin.ts`, CLI `efc tasks failed|retry|purge`)
@@ -171,3 +171,11 @@ Defaults: `host: 'localhost'`, `port: 6379`. User/password are URI-decoded.
 BullMQ: `queue.getFailed`, `job.retry('failed')`, `job.remove()`. pg-boss: reads `pgboss.job WHERE state='failed'`,
 then `boss.retry` / `boss.deleteJob`. A retried job gets exactly one more attempt on both backends.
 CLI picks BullMQ when `REDIS_URL` is set, else pg-boss for a `postgres` `DATABASE_URL`; `--backend/--queue` override.
+
+Unreleased tracing: `tracing: true`/`{tasks:true}` enables native BullMQ telemetry (minimum 5.79.1) or pg-boss openTelemetry + propagateContext (minimum 12.38.0), using W3C trace-only metadata without changing payloads. Retries have separate consumer spans; cron runs have no boot-time parent. Task handlers get a fresh EFC auth/request scope. Thread consumer spans export on the queue worker; W3C context crosses thread/nested-enqueue messages without copying the SDK.
+
+The task registry and enqueue implementation share process state across the package’s ESM/CJS exports; the worker-thread enqueue bridge stays isolate-local.
+
+Hardening: thread completion waits for pending bridge acknowledgments and terminates the owned isolate; any exit before completion rejects, including exit code 0. Ignore unrelated progress messages. pg-boss null send acknowledgments reject. Async file/global middleware and custom error handlers are promise-aware. Shutdown waits for all task drains before cache, then telemetry; failures aggregate and exit nonzero.
+
+Thread task progress messages are isolated from the internal completion/enqueue protocol by a per-worker token. Ordinary `parentPort.postMessage()` payloads cannot accidentally acknowledge a task or enqueue another one. This is protocol isolation, not a security sandbox for untrusted task code.

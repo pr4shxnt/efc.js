@@ -1,3 +1,4 @@
+import { bullMQTelemetry, taskContext } from '../tracing.js';
 import type { Job } from 'bullmq';
 import type * as BullMQNS from 'bullmq';
 import { taskRegistry, setEnqueueImpl } from './index.js';
@@ -6,6 +7,7 @@ import { runInThread } from './thread-runner.js';
 import { getLogger } from '../logger.js';
 
 interface BullMQOpts {
+  tracing?: boolean;
   redisUrl: string;
   concurrency: number;
   enqueueTimeout: number;
@@ -45,7 +47,7 @@ async function syncSchedules(queue: BullMQNS.Queue): Promise<void> {
         pattern: def.options.schedule,
         ...(def.options.timezone !== undefined && { tz: def.options.timezone }),
       },
-      { name: def.name, data: {}, opts: jobOptions(def) },
+      { name: def.name, data: {}, opts: { ...jobOptions(def), telemetry: { omitContext: true } } },
     );
   }
   for (const s of await queue.getJobSchedulers(0, -1)) {
@@ -75,7 +77,9 @@ export async function initBullMQ(opts: BullMQOpts): Promise<void> {
   // With the offline queue on (ioredis default) queue.add() buffers forever while Redis is
   // down, so enqueue() never settles. Off, commands reject once the connection drops; the
   // initial connect is bounded by the enqueueTimeout race below.
+  const telemetry = opts.tracing ? bullMQTelemetry() : undefined;
   const queue = new bullmq.Queue(opts.queue, {
+    ...(telemetry && { telemetry }),
     connection: { ...connection, enableOfflineQueue: false },
   });
   // Without a listener, ioredis connection errors surface as unhandled 'error' events.
@@ -83,19 +87,15 @@ export async function initBullMQ(opts: BullMQOpts): Promise<void> {
 
   const worker = new bullmq.Worker(
     opts.queue,
-    async (job: Job) => {
-      const def = taskRegistry.get(job.name);
-      if (!def) {
-        throw new Error(`[EFC] No task registered for name: ${job.name}`);
-      }
-
-      if (def.options.thread && def.filePath) {
-        await runInThread(def.filePath, job.data);
-      } else {
-        await def.handler(job.data);
-      }
-    },
-    { connection, concurrency: opts.concurrency },
+    async (job: Job) =>
+      taskContext(async () => {
+        const def = taskRegistry.get(job.name);
+        if (!def) throw new Error(`[EFC] No task registered for name: ${job.name}`);
+        if (def.options.thread && def.filePath)
+          await runInThread(def.filePath, job.data, !!opts.tracing);
+        else await def.handler(job.data);
+      }, !!opts.tracing),
+    { connection, concurrency: opts.concurrency, ...(telemetry && { telemetry }) },
   );
 
   worker.on('failed', (job: Job | undefined, err: Error) => {
@@ -121,19 +121,21 @@ export async function initBullMQ(opts: BullMQOpts): Promise<void> {
       );
     }
 
-    const add = queue.waitUntilReady().then(() => queue.add(name, payload, jobOptions(def)));
+    let expired = false;
+    const deadline = new Error(
+      `[EFC] Cannot enqueue task "${name}": Redis at ${connection.host}:${connection.port} did not respond within ${opts.enqueueTimeout}ms`,
+    );
+    const add = queue.waitUntilReady().then(() => {
+      if (expired) throw deadline;
+      return queue.add(name, payload, jobOptions(def));
+    });
 
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () =>
-          reject(
-            new Error(
-              `[EFC] Cannot enqueue task "${name}": Redis at ${connection.host}:${connection.port} did not respond within ${opts.enqueueTimeout}ms`,
-            ),
-          ),
-        opts.enqueueTimeout,
-      );
+      timer = setTimeout(() => {
+        expired = true;
+        reject(deadline);
+      }, opts.enqueueTimeout);
     });
 
     try {

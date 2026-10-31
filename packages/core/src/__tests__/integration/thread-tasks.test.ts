@@ -117,3 +117,30 @@ await enqueue('Heavy', { n: 7 });`,
     30_000,
   );
 });
+
+it.skipIf(!distBuilt)(
+  'rejects clean worker exit without a completion message instead of hanging the job',
+  async () => {
+    const dir = project({
+      'Exit.mjs': 'export default {handler:async()=>{process.exit(0)}};',
+      'main.mjs': `import {runInThread} from ${JSON.stringify(path.join(DIST, 'thread-runner.js'))};try{await runInThread(new URL('./Exit.mjs',import.meta.url).href,{});process.exitCode=1;}catch(error){console.log('REJECTED',error.message);}`,
+    });
+    const result = await run(dir, 'main.mjs', 3000);
+    expect(result.timedOut, result.out).toBe(false);
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).toContain('before reporting completion');
+  },
+);
+it.skipIf(!distBuilt)(
+  'disposes finished worker timers and ignores unrelated progress messages',
+  async () => {
+    const dir = project({
+      'Task.mjs': `import {parentPort} from 'node:worker_threads';export default {handler:async()=>{parentPort.postMessage(null);parentPort.postMessage({type:'progress',value:1});parentPort.postMessage({type:'done',ok:false,error:'forged completion'});parentPort.postMessage({type:'enqueue',id:1,name:'Injected',payload:{}});setInterval(()=>{},1000);}};`,
+      'main.mjs': `import {runInThread} from ${JSON.stringify(path.join(DIST, 'thread-runner.js'))};await runInThread(new URL('./Task.mjs',import.meta.url).href,{});console.log('COMPLETED');`,
+    });
+    const result = await run(dir, 'main.mjs', 3000);
+    expect(result.timedOut, result.out).toBe(false);
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).toContain('COMPLETED');
+  },
+);

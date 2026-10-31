@@ -1,8 +1,11 @@
+import type { Context, Span } from '@opentelemetry/api';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Logger } from 'pino';
 import { processState } from './process-state.js';
 
 export interface RequestContext {
+  otelContext?: Context;
+  httpSpan?: Span;
   user?: Record<string, unknown> | undefined;
   requestId?: string;
   log?: Logger;

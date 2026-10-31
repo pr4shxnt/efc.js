@@ -1,3 +1,4 @@
+import { traceLogFields } from './tracing.js';
 import cluster from 'node:cluster';
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from 'express';
@@ -82,7 +83,9 @@ export function configureLogger(config: LoggingConfig | false | undefined): void
  * elsewhere (startup, task handlers, timers) it is the root logger.
  */
 export function getLogger(): Logger {
-  return getRequestContext()?.log ?? rootLogger;
+  const log = getRequestContext()?.log ?? rootLogger;
+  const fields = traceLogFields();
+  return fields.span_id && log.bindings().span_id !== fields.span_id ? log.child(fields) : log;
 }
 
 /** Root logger proxy — always reflects the latest configureLogger() call. */
@@ -107,7 +110,7 @@ export function requestLogger(): RequestHandler {
   return (req, res, next) => {
     const incoming = req.get('x-request-id');
     const id = incoming && SAFE_REQUEST_ID.test(incoming) ? incoming : randomUUID();
-    const log = rootLogger.child({ reqId: id });
+    const log = rootLogger.child({ reqId: id, ...traceLogFields() });
 
     req.id = id;
     req.log = log;

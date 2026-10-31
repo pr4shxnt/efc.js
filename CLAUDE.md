@@ -130,7 +130,6 @@ src/api/docs/[...slug].ts    → /docs/a/b  (req.params.slug = ['a', 'b'])
 ## What is NOT implemented (Phase 3+)
 
 - Plugin system
-- OpenTelemetry
 - `efc lint`, `efc deploy` commands
 
 Do not suggest or generate code for these features.
@@ -173,7 +172,7 @@ Modules: `api-surface.md`, `routing-rules.md`, `pre-flight.md`, `tasks-internals
 - PostgreSQL model statements are automatically named through a private Drizzle driver Pool/client proxy (`db/prepared-statements.ts`); native `db` is unchanged. `databasePool.preparedStatements` defaults true (100 names per connection), accepts `{ max }` (nonnegative safe integer), or false/zero to disable for incompatible poolers. Preserve values, types/rowMode, caller names and transaction behavior. EFC schema sync/drop invalidates reusable SQL shapes; name budgets are lifetime-bounded, excess shapes run unnamed, no eviction/DEALLOCATE. Reconnect after external DDL.
 - M6 nightly benchmark comparison is a 10% relative regression gate (EFC / fastest contender). Missing operations/contenders and invalid timings must fail; never silently skip missing baseline coverage.
 
-- `logging.queries.metrics` opt-in collects bounded per-process model/op metrics (1000 entries by default, `{ maxEntries: 0 }` disables). `getQueryMetrics` returns detached snapshots; `resetQueryMetrics` clears the window. No SQL, values or error strings. Nested statement counts remain inclusive; overflow observations count as `dropped`. OpenTelemetry remains a separate Phase 3 milestone.
+- `logging.queries.metrics` opt-in collects bounded per-process model/op metrics (1000 entries by default, `{ maxEntries: 0 }` disables). `getQueryMetrics` returns detached snapshots; `resetQueryMetrics` clears the window. No SQL, values or error strings. Nested statement counts remain inclusive; overflow observations count as `dropped`. Unreleased OpenTelemetry instrumentation is described in the tracing guide.
 
 Auth race guards: generated login CAS includes the verified password hash; login/refresh capture `efc_auth_at` before DB reads, and revocation rejects authentication at/before the cutoff. Generated logout is authenticated and invalidates DB refresh credentials even in bearer mode. The CommonJS testing entry delegates to ESM to share state with imported ESM routes.
 
@@ -184,3 +183,9 @@ Since 0.11.0, OpenAPI and WS are included. OpenAPI is opt-in, uses loaded route 
 0.11.0 network review fixes: OpenAPI document URL collision checks use actual GET/HEAD matchers, including hidden operations. Optional URL variants keep greedy parameter bindings; ambiguous templates across routes fail. Query object combinators retain fields and requiredness; full query constraints remain under `x-efc-query-schema`, and object fields use deepObject. Non-object parameter shapes require explicit operation parameters. WS drains include pending handshakes; active-HTTP pipelined upgrades close safely. Payload/timer options cannot exceed signed int32.
 
 0.11.0 OpenAPI serialization: array query parameter names use bracket syntax (`tags[]`, form/explode) so single values remain arrays. External field refs are preserved without network resolution; root object extraction still needs local structure or explicit parameters. Body requiredness follows converted-schema acceptance of Express’s empty missing-body object, without executing validators; unknown refs remain conservative and explicit requestBody metadata takes precedence.
+
+Unreleased: `tracing?: boolean | TracingOptions` instruments HTTP and native task backends; app SDK/context manager/exporter remain app-owned. Native peers now require BullMQ ≥5.79.1 or pg-boss ≥12.38.0. W3C trace fields only; payloads stay unchanged. HTTP spans end once on finish/abort/101 and use templates instead of raw URLs. Task auth scope is fresh; threads preserve nested enqueue context without copying the SDK. App shutdown is awaited after serving-process HTTP/task drain, within the deadline; rejection exits 1. No new subpath.
+
+Unreleased tracing interoperability: task registry and enqueue implementation share process state across ESM/CJS package formats, matching auth/context/cache. The thread enqueue bridge remains isolate-local.
+
+Unreleased production hardening: all file/global/error middleware is promise-aware; explicit HEAD precedes GET. Thread isolates dispose handles after completion, reject premature exits, and isolate internal commands from progress messages with a per-worker token. Shutdown waits for every task backend before closing shared cache and telemetry, aggregating failures and exiting nonzero. pg-boss escapes reserved payload keys; null acknowledgments reject; queue readiness cannot submit after timeout, but in-flight command outcomes remain ambiguous, so tasks must be idempotent. Response-cache user/method identities cannot collide, Vary/cache-control/cookie rules apply, and completed serialized JSON bytes are replayed without applying Express replacers twice. cache.wrap failures/reconfiguration do not poison keys. Domain cookies clear correctly; auth stops after timeout. Session cutoffs persist, memory revocations cannot be evicted, and protected-capacity exhaustion rejects writes. Cache IPC closes pending requests and handles disconnected sends.

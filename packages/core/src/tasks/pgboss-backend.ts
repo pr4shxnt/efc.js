@@ -1,3 +1,5 @@
+import { boxPgPayload as box, unboxPgPayload as unbox } from './payload.js';
+import { taskContext, tracePropagator } from '../tracing.js';
 import type { PgBoss as PgBossType } from 'pg-boss';
 import type { TaskDefinition } from '../types.js';
 import { taskRegistry, setEnqueueImpl } from './index.js';
@@ -10,23 +12,13 @@ import type { FailedJob, TaskAdmin } from './admin.js';
 // named `<tasks.queue>.<TaskName>` — the prefix keeps apps sharing a database apart.
 
 interface PgBossOpts {
+  tracing?: boolean;
   connectionString: string;
   concurrency: number;
   enqueueTimeout: number;
   queue: string;
   schema?: string;
 }
-
-// pg-boss payloads must be objects; other values are boxed so any enqueue() payload works.
-const BOX = '__efcValue';
-const box = (payload: unknown): object =>
-  payload !== null && typeof payload === 'object' && !Array.isArray(payload)
-    ? (payload as object)
-    : { [BOX]: payload };
-const unbox = (data: unknown): unknown =>
-  data !== null && typeof data === 'object' && BOX in data
-    ? (data as Record<string, unknown>)[BOX]
-    : data;
 
 const retryOptions = (def: TaskDefinition) => ({
   // pg-boss's retryLimit counts re-runs, exactly like EFC's `retries`.
@@ -64,6 +56,11 @@ export async function initPgBoss(opts: PgBossOpts): Promise<void> {
   const PgBoss = await loadPgBoss();
   const boss = new PgBoss({
     connectionString: opts.connectionString,
+    openTelemetry: {
+      enabled: !!opts.tracing,
+      propagateContext: !!opts.tracing,
+      propagator: tracePropagator,
+    },
     ...(opts.schema !== undefined && { schema: opts.schema }),
   });
   boss.on('error', (err: Error) => getLogger().error({ err }, 'pg-boss error'));
@@ -86,8 +83,9 @@ export async function initPgBoss(opts: PgBossOpts): Promise<void> {
         for (const job of jobs) {
           const payload = unbox(job.data);
           try {
-            if (def.options.thread && def.filePath) await runInThread(def.filePath, payload);
-            else await def.handler(payload);
+            if (def.options.thread && def.filePath)
+              await taskContext(() => runInThread(def.filePath!, payload, !!opts.tracing));
+            else await taskContext(() => def.handler(payload));
             getLogger().info({ task: def.name, jobId: job.id }, `Task ${def.name} completed`);
           } catch (err) {
             getLogger().error(
@@ -141,7 +139,11 @@ export async function initPgBoss(opts: PgBossOpts): Promise<void> {
       );
     });
     try {
-      await Promise.race([boss.send(queueFor(name), box(payload), retryOptions(def)), timeout]);
+      const id = await Promise.race([
+        boss.send(queueFor(name), box(payload), retryOptions(def)),
+        timeout,
+      ]);
+      if (id === null) throw new Error(`[EFC] Queue did not accept task "${name}"`);
     } catch (err) {
       if (err instanceof Error && err.message.startsWith('[EFC]')) throw err;
       throw new Error(
@@ -171,6 +173,7 @@ export async function pgBossAdmin(
   const boss = new PgBoss({
     connectionString,
     schema,
+    openTelemetry: { enabled: false },
     supervise: false,
     schedule: false,
     migrate: false,
@@ -219,16 +222,14 @@ export async function pgBossAdmin(
       const rows = (await failedRows([], name ? 10_000 : limit)).filter(
         (r) => !name || taskOf(r.name) === name,
       );
-      return rows.slice(0, limit).map(
-        (r): FailedJob => ({
-          id: r.id,
-          name: taskOf(r.name),
-          data: unbox(r.data),
-          error: String((r.output as { message?: string } | null)?.message ?? r.output ?? ''),
-          attempts: r.retry_count + 1,
-          failedAt: r.completed_on ?? undefined,
-        }),
-      );
+      return rows.slice(0, limit).map((r): FailedJob => ({
+        id: r.id,
+        name: taskOf(r.name),
+        data: unbox(r.data),
+        error: String((r.output as { message?: string } | null)?.message ?? r.output ?? ''),
+        attempts: r.retry_count + 1,
+        failedAt: r.completed_on ?? undefined,
+      }));
     },
     async retry(ids) {
       const rows = await failedRows(ids);

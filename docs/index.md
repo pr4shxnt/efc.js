@@ -51,6 +51,7 @@
 | [OpenAPI (since 0.11.0)](./guides/openapi.md) | Opt-in OpenAPI JSON from route metadata and request schemas |
 | [WebSockets (since 0.11.0)](./guides/websockets.md) | WS file exports, middleware/auth, limits and shutdown |
 | [Validation](./guides/validation.md) | Route `schema` exports with zod, valibot, arktype |
+| [Tracing (unreleased)](./guides/tracing.md) | OpenTelemetry HTTP/task propagation and app-owned SDK setup |
 | [Logging](./guides/logging.md) | pino, request IDs, `getLogger()` |
 | [Caching & Sessions](./guides/caching.md) | `cache`, `cacheResponse`, revoking JWT sessions |
 | [Generated Portals](./guides/generated-portals.md) | Every model and route `create-efc-app` scaffolds for the User/Admin portals |
