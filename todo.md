@@ -387,3 +387,4 @@ Found by actually running each exit criterion end to end, not by reading code:
 - [x] Add three-job app workflow: lint/typecheck/content tests, standalone build/HTTP smoke tests, then upstream-main SSH deployment with pinned host identity and health-check rollback.
 - [x] Document the namespaced Actions secrets, release directory layout, Node.js 24 prerequisite, systemd service, and Nginx proxy setup.
 - [x] Install checksum-verified Node.js 24.22.2 and the systemd/Nginx setup on the hosting server; use the public server IP in canonical URLs and share images.
+- [x] Pin deployment and systemd to a dedicated Node.js 24 runtime so Ubuntu package installs cannot replace the service's runtime; report failed activation lines in workflow logs.

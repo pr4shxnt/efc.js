@@ -10,7 +10,7 @@ WorkingDirectory=/var/www/learn-efc/current
 Environment=NODE_ENV=production
 Environment=HOSTNAME=127.0.0.1
 Environment=PORT=3000
-ExecStart=/usr/bin/node server.js
+ExecStart=/opt/learn-efc-node/bin/node server.js
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
