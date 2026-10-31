@@ -388,3 +388,6 @@ Found by actually running each exit criterion end to end, not by reading code:
 - [x] Document the namespaced Actions secrets, release directory layout, Node.js 24 prerequisite, systemd service, and Nginx proxy setup.
 - [x] Install checksum-verified Node.js 24.22.2 and the systemd/Nginx setup on the hosting server; use the public server IP in canonical URLs and share images.
 - [x] Pin deployment and systemd to a dedicated Node.js 24 runtime so Ubuntu package installs cannot replace the service's runtime; report failed activation lines in workflow logs.
+- [x] Prepare learn.expressfilecluster.com canonical URLs, Nginx hostname, and HTTPS/automatic-renewal setup documentation.
+- [x] Verify the domain's DNS, issue its HTTPS certificate, and enable Certbot's automatic renewal timer.
+- [x] Verify public and origin HTTPS after correcting Oracle ingress to TCP 443, and pass Certbot's renewal simulation.

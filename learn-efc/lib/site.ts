@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const SITE = {
-  url: 'http://130.210.62.210',
+  url: 'https://learn.expressfilecluster.com',
   name: 'learn.efc',
   title: 'learn.efc — Learn backends, Express & EFC from scratch',
   description:
