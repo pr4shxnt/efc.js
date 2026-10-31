@@ -71,8 +71,29 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 The service starts on the first deployment; it listens on `127.0.0.1:3000`, behind Nginx.
-The supplied proxy handles the server IP on HTTP port 80. For a domain, update `server_name`
-and configure TLS before using HTTPS. Ensure the hosting firewall permits HTTP/HTTPS.
+The supplied proxy bootstraps HTTP port 80 for `learn.expressfilecluster.com` and the
+server IP. Ensure the hosting firewall permits ports 80 and 443.
+
+For HTTPS, first add a Cloudflare DNS-only A record named `learn` pointing to
+`130.210.62.210`. Wait until public DNS resolves to this server, then issue the
+certificate on the server using [Certbot's Nginx instructions](https://certbot.eff.org/instructions?ws=nginx&os=snap):
+
+```sh
+sudo snap install --classic certbot
+sudo /snap/bin/certbot --nginx -d learn.expressfilecluster.com --redirect
+sudo /snap/bin/certbot renew --dry-run
+sudo systemctl list-timers --all | grep certbot
+```
+
+Certbot configures HTTPS and the HTTP-to-HTTPS redirect. Its scheduled task renews
+the certificate automatically; the dry run verifies renewal. Keep DNS pointed to
+this server and port 80 reachable for validation. If enabling Cloudflare proxying
+later, use Full (strict) encryption after the origin certificate is verified.
+
+Certbot manages the live Nginx TLS configuration. The checked-in `nginx.conf` is
+only the initial HTTP bootstrap: do not overwrite the live configuration with it
+after HTTPS is enabled. Routine app deployments restart the app service and leave
+the live Nginx configuration and certificates in place.
 
 Each deployment unpacks to `/var/www/learn-efc/releases/<commit>-<run>-<attempt>`, switches
 the `current` symlink, and restarts `learn-efc.service`. A failed startup or health check
@@ -87,7 +108,7 @@ build the same source that was reviewed.
 
 ## SEO and deployment
 
-The site is served at http://130.210.62.210/. `lib/site.ts` holds that URL; every canonical link, Open Graph URL, sitemap entry, share-image hostname and JSON-LD id is built from it, so change it there if the domain moves.
+The canonical site URL is https://learn.expressfilecluster.com/. `lib/site.ts` holds that URL; every canonical link, Open Graph URL, sitemap entry, share-image hostname and JSON-LD id is built from it, so change it there if the domain moves.
 
 - Icons: `app/favicon.ico`, `app/icon.svg` and `app/apple-icon.png` are the EFC favicon set (copied from `client/assets`); `public/icon-192.png` and `icon-512.png` back `app/manifest.ts`.
 - Metadata: `pageMetadata()` in `lib/site.ts` gives each page its title, description, canonical URL, Open Graph and Twitter card. Chapters are `article`s.
