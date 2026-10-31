@@ -1,0 +1,33 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4173",
+        "-d",
+        "client"
+      ],
+      "port": 4173
+    },
+    {
+      "name": "learn",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "learn-efc",
+        "run",
+        "dev",
+        "--",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        "3210"
+      ],
+      "port": 3210
+    }
+  ]
+}

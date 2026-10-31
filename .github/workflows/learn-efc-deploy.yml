@@ -1,0 +1,114 @@
+name: Learn EFC — lint, test, build and deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'learn-efc/**'
+      - '.github/workflows/learn-efc-deploy.yml'
+  pull_request:
+    paths:
+      - 'learn-efc/**'
+      - '.github/workflows/learn-efc-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    name: Lint and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: learn-efc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: learn-efc/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx next typegen && npx tsc --noEmit
+      - run: npm test
+
+  build:
+    name: Build
+    needs: lint-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: learn-efc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: learn-efc/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Package standalone server and assets
+        run: |
+          test -f .next/standalone/server.js
+          cp -r .next/static .next/standalone/.next/static
+          if [ -d public ]; then cp -r public .next/standalone/public; fi
+      - run: npm run test:smoke
+      - name: Archive release
+        run: tar -czf learn-efc.tar.gz -C .next/standalone .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: learn-efc-${{ github.sha }}
+          path: learn-efc/learn-efc.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: github.repository == 'siggold/express-file-cluster' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: learn-efc-production
+      cancel-in-progress: false
+    env:
+      SSH_HOST: ${{ secrets.LEARN_EFC_SSH_HOST }}
+      SSH_USER: ${{ secrets.LEARN_EFC_SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.LEARN_EFC_SSH_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: learn-efc-${{ github.sha }}
+          path: artifact
+      - name: Configure SSH
+        run: |
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_PRIVATE_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/learn-efc
+          chmod 600 ~/.ssh/learn-efc
+          cp learn-efc/deploy/known_hosts ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host learn-efc
+            HostName $SSH_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/learn-efc
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 15
+          EOF
+      - name: Upload and activate release
+        env:
+          RELEASE_ID: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          scp artifact/learn-efc.tar.gz "learn-efc:/tmp/learn-efc-${RELEASE_ID}.tar.gz"
+          ssh learn-efc "bash -s -- '$RELEASE_ID'" < learn-efc/deploy/activate.sh
+      - name: Remove runner SSH credentials
+        if: always()
+        run: rm -f ~/.ssh/learn-efc ~/.ssh/config
