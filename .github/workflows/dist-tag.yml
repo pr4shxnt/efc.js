@@ -1,0 +1,72 @@
+name: Set release channel
+
+# Points an npm dist-tag (e.g. `beta`) at an already-published version of all three packages,
+# and moves a git tag of the same name to that version's release commit. Run it from the
+# Actions tab or with `gh workflow run dist-tag.yml -f version=0.12.0 -f tag=beta`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Published version, e.g. 0.12.0 (its v<version> git tag must exist)'
+        required: true
+      tag:
+        description: 'Channel name (npm dist-tag and git tag)'
+        required: true
+        default: beta
+
+permissions:
+  contents: write
+
+jobs:
+  dist-tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org/'
+
+      - name: Validate inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "✗ invalid version: $VERSION"; exit 1; }
+          [[ "$TAG" =~ ^[a-z][a-z0-9-]*$ ]] || { echo "✗ invalid tag: $TAG"; exit 1; }
+          # A git tag that looks like a version would collide with the release tags.
+          [[ "$TAG" =~ ^v[0-9] ]] && { echo "✗ tag must not look like a version"; exit 1; }
+          git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null || { echo "✗ git tag v$VERSION not found"; exit 1; }
+          for p in express-file-cluster create-efc-app express-file-cluster-mcp; do
+            [ "$(npm view "$p@$VERSION" version 2>/dev/null)" = "$VERSION" ] || { echo "✗ $p@$VERSION is not on npm"; exit 1; }
+          done
+
+      - name: Set npm dist-tags
+        env:
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for p in express-file-cluster create-efc-app express-file-cluster-mcp; do
+            npm dist-tag add "$p@$VERSION" "$TAG"
+          done
+          for p in express-file-cluster create-efc-app express-file-cluster-mcp; do
+            echo "$p: $(npm dist-tag ls "$p" | tr '\n' ' ')"
+          done
+
+      - name: Move git tag
+        env:
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f -a "$TAG" "v$VERSION^{commit}" -m "$TAG channel: $VERSION"
+          git push -f origin "refs/tags/$TAG"
