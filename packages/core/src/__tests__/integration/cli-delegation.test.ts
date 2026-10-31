@@ -39,7 +39,9 @@ describe.skipIf(!fs.existsSync(CLI))('efc CLI — delegation to the project-loca
       for (const dep of Object.keys(pkg.dependencies as Record<string, string>)) {
         const nested = path.join(CORE, 'node_modules', dep);
         const source = fs.existsSync(nested) ? nested : path.join(repoModules, dep);
-        fs.symlinkSync(source, path.join(root, 'node_modules', dep), 'dir');
+        const destination = path.join(root, 'node_modules', dep);
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.symlinkSync(source, destination, 'dir');
       }
     }
     fs.mkdirSync(path.join(root, 'src', 'deep'), { recursive: true });

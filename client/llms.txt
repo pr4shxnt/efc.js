@@ -2,7 +2,7 @@
 
 > An opinionated backend framework on Express: files in src/api become routes, clustering uses every CPU core, src/tasks holds background jobs (BullMQ or pg-boss), and defineModel / defineTable give typed models on MongoDB and PostgreSQL. Started with one ignite() call.
 
-Install: `npx create-efc-app my-api`. Import paths: `express-file-cluster`, `express-file-cluster/auth`, `express-file-cluster/tasks` — no others exist.
+Install: `npx create-efc-app my-api`. Import paths: `express-file-cluster`, `express-file-cluster/auth`, `express-file-cluster/tasks`, `express-file-cluster/testing` — no others exist.
 
 ## Docs
 
@@ -14,3 +14,8 @@ Install: `npx create-efc-app my-api`. Import paths: `express-file-cluster`, `exp
 
 - [Source](https://github.com/pr4shxnt/efc.js)
 - [npm](https://www.npmjs.com/package/express-file-cluster)
+
+## 0.11.0
+
+OpenAPI: `ignite({ openapi: true })` serves `/openapi.json`; `generateOpenAPI()` also supports offline generation. Route validators need Standard JSON Schema or an explicit adapter.
+WebSockets: export `WS` from a route file; middleware/auth run before the upgrade. Origin checks, payload caps, heartbeat and graceful draining are built in. Auth is handshake-only and broadcasts are worker-local.

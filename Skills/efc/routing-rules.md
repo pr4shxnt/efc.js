@@ -112,3 +112,7 @@ Files that do NOT match this pattern are silently ignored by `scanDir`.
 Header: `Allow: GET, POST` (only the implemented methods).
 
 **Only sent when at least one method IS implemented.** A file that exports no HTTP methods gets no 405 handler — Express would return 404.
+
+Since 0.11.0, `WS` exports mount upgrade-only handlers on the same paths; HTTP methods skip upgrade requests. File/global middleware and named params apply, then `schema.WS` validation, then the connection handler. OpenAPI documents HTTP exports only; optional path segments expand into separate required-path variants.
+
+OpenAPI optional variants deduplicate equivalent template shapes using greedy earlier-parameter bindings; conflicting names across separate routes fail generation. Document URL collision checks use actual Express GET/HEAD matchers, including hidden routes. Query object combinators retain fields and requirements; object query fields serialize as deepObject. WS drain destroys pending handshakes; pipelined upgrades behind an active HTTP response close safely.

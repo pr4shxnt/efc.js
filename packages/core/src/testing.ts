@@ -7,8 +7,10 @@ import { configureLogger } from './logger.js';
 import { createHttpApp, mountErrorHandler } from './http-app.js';
 import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
+import { mountOpenAPI } from './openapi.js';
 
 export interface TestAppOptions {
+  openapi?: EFCConfig['openapi'];
   /** Explicit fixtures/app API directory. Does not change cwd or ignite() conventions. */
   apiDir: string;
   basePath?: string;
@@ -56,7 +58,12 @@ export async function createTestApp(options: TestAppOptions): Promise<express.Ex
     ...(options.trustProxy !== undefined && { trustProxy: options.trustProxy }),
   });
   const router = express.Router();
-  await mountRoutes(router, scanDir(apiDir));
+  const mounted = await mountRoutes(router, scanDir(apiDir));
+  if (options.openapi)
+    await mountOpenAPI(app, mounted, {
+      ...(options.openapi === true ? {} : options.openapi),
+      basePath: options.basePath ?? '/v1/api',
+    });
   app.use(options.basePath ?? '/v1/api', router);
   mountErrorHandler(app, options.onError);
   return app;

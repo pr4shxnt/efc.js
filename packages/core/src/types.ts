@@ -1,4 +1,6 @@
 import type { RequestHandler, ErrorRequestHandler } from 'express';
+import type { OpenAPIOptions } from './openapi.js';
+import type { WebSocketOptions } from './websocket.js';
 
 export type DatabaseEngine = 'mongodb' | 'postgresql';
 /**
@@ -108,6 +110,10 @@ export interface DatabasePoolConfig {
 }
 
 export interface EFCConfig {
+  /** Opt-in OpenAPI 3.1 document; default URL /openapi.json. */
+  openapi?: boolean | OpenAPIOptions;
+  /** WS exports enable WebSockets by default; false disables upgrades. */
+  websocket?: false | WebSocketOptions;
   port?: number;
   /**
    * Express's `trust proxy`: set it when the app runs behind a proxy or load balancer
@@ -163,6 +169,11 @@ export interface RouteEntry {
 }
 
 export interface RouteMethodMeta {
+  summary?: string;
+  tags?: string[];
+  operationId?: string;
+  /** Explicit OpenAPI operation fields. hidden omits this operation from docs. */
+  openapi?: Record<string, unknown> & { hidden?: boolean };
   description?: string;
   request?: {
     headers?: Record<string, string>;
@@ -187,7 +198,12 @@ export type RouteMeta = Partial<Record<string, RouteMethodMeta>>;
  * with a zod-style `safeParse`. EFC never imports a validation library itself.
  */
 export type Validator =
-  | { readonly '~standard': { validate: (value: unknown) => unknown } }
+  | {
+      readonly '~standard': {
+        validate: (value: unknown) => unknown;
+        jsonSchema?: { input: (options: { target: 'draft-2020-12' }) => unknown };
+      };
+    }
   | { safeParse: (value: unknown) => unknown };
 
 /** Validators for each part of the request; every key is optional. */
@@ -212,6 +228,8 @@ export interface ValidationIssue {
 
 export interface MountedRoute extends RouteEntry {
   methods: string[];
+  schema?: RouteSchema;
+  websocket?: boolean;
   meta?: RouteMeta;
 }
 

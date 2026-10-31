@@ -26,7 +26,7 @@ export function generateDashboard(
   const safeRoutes = JSON.stringify(
     routes.map((r) => ({
       urlPath: r.urlPath,
-      methods: r.methods,
+      methods: r.websocket ? [...r.methods, 'WS'] : r.methods,
       params: r.params,
       meta: r.meta ?? null,
     })),

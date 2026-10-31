@@ -56,3 +56,12 @@ What each model API does on which engine — and the test that proves it. Every 
 | Query logging + N+1 warnings | ✓ | ✓ | ✓ | ✓ | `db/query-log.integration.test.ts: warns once per request about an N+1 pattern` |
 | `efc db studio --write` (through the model) | ✓ | ✓ | ✓ | ✓ | `db/studio.integration.test.ts: inserts, edits and deletes through the model` · `db/studio.integration.test.ts: writes through defineCollection` |
 | Same table from `defineModel` and `defineTable` | — | ✓ | ✓ | — | `db/table.integration.test.ts: defineModel and defineTable over the same table` |
+
+## HTTP contracts and WebSockets (since 0.11.0)
+
+| Feature | Status | Evidence |
+|---|---|---|
+| OpenAPI 3.1 endpoint/offline generation, adapters, query/body contracts and optional paths | Implemented; opt-in | `openapi.test.ts: generates versioned paths, metadata, examples, JSON-schema parameters and request bodies from Zod` |
+| File WS exports, middleware/auth/context, origin and payload limits, heartbeat and drain | Implemented; worker-local | `websocket.test.ts: shares real middleware, auth, decoded params and async request context, while HTTP coexists` |
+
+No automatic auth-policy inference, message-schema validation, cross-worker broadcast bus or Swagger UI is included.

@@ -1,6 +1,7 @@
 import type { IRouter, RequestHandler } from 'express';
 import type { MountedRoute, RouteMeta, RouteEntry, RouteSchema } from '../types.js';
 import { schemaFor, validateRequest } from './validate.js';
+import { isUpgrade, websocketOnly, websocketHandler, type WebSocketHandler } from '../websocket.js';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 type HttpMethod = (typeof HTTP_METHODS)[number];
@@ -61,6 +62,21 @@ export async function mountRoutes(app: IRouter, routes: RouteEntry[]): Promise<M
     const routePath = route.pattern ?? route.urlPath;
     const paramMapper = route.pattern ? [namedParams(route)] : [];
 
+    const websocket = typeof mod['WS'] === 'function';
+    if (mod['WS'] !== undefined && !websocket)
+      throw new Error(`[EFC] WS must be a function: ${route.filePath}`);
+    if (websocket) {
+      const validation = schemaFor(schema, 'WS');
+      app.all(
+        routePath,
+        websocketOnly,
+        ...paramMapper,
+        ...routeMiddlewares,
+        ...(validation ? [validateRequest(validation)] : []),
+        websocketHandler(mod['WS'] as WebSocketHandler),
+      );
+    }
+    const httpOnly: RequestHandler = (req, _res, next) => (isUpgrade(req) ? next('route') : next());
     const implemented: HttpMethod[] = [];
     const unimplemented: HttpMethod[] = [];
 
@@ -71,6 +87,7 @@ export async function mountRoutes(app: IRouter, routes: RouteEntry[]): Promise<M
         const validation = methodSchema ? [validateRequest(methodSchema)] : [];
         app[method.toLowerCase() as Lowercase<HttpMethod>](
           routePath,
+          httpOnly,
           ...paramMapper,
           ...routeMiddlewares,
           ...validation,
@@ -84,6 +101,7 @@ export async function mountRoutes(app: IRouter, routes: RouteEntry[]): Promise<M
     if (implemented.length > 0 && unimplemented.length > 0) {
       const allowHeader = implemented.join(', ');
       app.all(routePath, (req, res, next) => {
+        if (isUpgrade(req)) return next();
         if ((unimplemented as string[]).includes(req.method)) {
           res.set('Allow', allowHeader).status(405).json({ error: 'Method Not Allowed' });
         } else {
@@ -92,7 +110,13 @@ export async function mountRoutes(app: IRouter, routes: RouteEntry[]): Promise<M
       });
     }
 
-    mounted.push({ ...route, methods: implemented, ...(meta !== undefined && { meta }) });
+    mounted.push({
+      ...route,
+      methods: implemented,
+      ...(meta !== undefined && { meta }),
+      ...(schema && { schema }),
+      ...(websocket && { websocket }),
+    });
   }
 
   return mounted;

@@ -275,3 +275,5 @@ const conn = db.model('User')  // throws: db not ready
 // ❌ With autoSync: false, using a model before `efc db sync` / a migration created its table
 //    → "[EFC] <Model>: table "<t>" does not exist — autoSync is off…"
 ```
+
+Since 0.11.0, WebSockets and OpenAPI are implemented. Read the new guides/API references before using them. Use `WS` file exports and `ignite({openapi})`/`generateOpenAPI`, with the four existing import paths only. No Socket.IO protocol, cross-worker broadcast bus, message-schema validator, Swagger UI, or automatic auth-policy inference is provided.

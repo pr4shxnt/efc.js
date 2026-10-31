@@ -4,6 +4,13 @@ All three packages (`express-file-cluster`, `create-efc-app`, `express-file-clus
 together under one version. Newest first. The public site's changelog (`client/index.html#changelog`)
 mirrors this file — see `AGENTS.md` §5.
 
+## 0.11.0 — 2026-10-31
+
+- **OpenAPI:** opt-in OpenAPI 3.1 JSON generation from HTTP routes, request validators and metadata, with `generateOpenAPI()`, offline generation, schema adapters, components and operation overrides.
+- **WebSockets:** file `WS` exports on the HTTP server share middleware, authentication, validation, params and async context; include origin checks, payload limits, heartbeat and graceful draining.
+- **Reliability:** reject pipelined upgrades safely, drain pending handshakes, bound payload/timer settings, and protect hidden routes from document URL collisions. Preserve union query fields, schema references and optional bodies; match object/array query encoding and collapse equivalent optional paths.
+- **Upgrade:** update all three packages together. OpenAPI remains opt-in; WS support activates when a route exports `WS` and can be disabled with `websocket: false`. Existing HTTP routes retain their behavior. WebSocket broadcasts remain worker-local and authentication is checked at the handshake.
+
 ## 0.10.2 — 2026-10-30
 
 - **Auth fixes:** authenticated User/Admin logout invalidates stored refresh credentials, including

@@ -27,7 +27,7 @@ A backend framework called **express-file-cluster** (`express-file-cluster` on n
 - Cache (`cache`, `cacheResponse`) on Redis or memory, also used as the JWT session-revocation store
 - CLI (`efc` binary) incl. migrations (hand-written or generated from model diffs: `efc db generate`), seeds, `efc db pull`, `efc import-prisma`, a studio (read-only; `--write` edits through the models, page-token + origin checked) and a shadcn-style feature registry (`efc add | list | view | diff | init`)
 
-**Status: v0.10.2 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6 tooling/metrics/prepared statements/benchmarks complete; custom auth entities; `efc add` feature registry). Fixes ship as patch releases (0.9.5, 0.9.6, …); features as minor bumps.** See `README.md` and `docs/` for full documentation.
+**Status: v0.11.0 — Beta (Phase 2 complete; Phase 3 data layer: M1 inferred types, M2 `defineTable`, M3 relations, M4 schema lifecycle, M5 `defineCollection`, M6 tooling/metrics/prepared statements/benchmarks complete; custom auth entities; `efc add` feature registry). Fixes ship as patch releases (0.9.5, 0.9.6, …); features as minor bumps.** See `README.md` and `docs/` for full documentation.
 
 ---
 
@@ -130,8 +130,7 @@ src/api/docs/[...slug].ts    → /docs/a/b  (req.params.slug = ['a', 'b'])
 ## What is NOT implemented (Phase 3+)
 
 - Plugin system
-- WebSockets
-- OpenAPI generation, OpenTelemetry
+- OpenTelemetry
 - `efc lint`, `efc deploy` commands
 
 Do not suggest or generate code for these features.
@@ -179,3 +178,9 @@ Modules: `api-surface.md`, `routing-rules.md`, `pre-flight.md`, `tasks-internals
 Auth race guards: generated login CAS includes the verified password hash; login/refresh capture `efc_auth_at` before DB reads, and revocation rejects authentication at/before the cutoff. Generated logout is authenticated and invalidates DB refresh credentials even in bearer mode. The CommonJS testing entry delegates to ESM to share state with imported ESM routes.
 
 Reset links are consumed by a DB compare-and-set with expiry rechecked after hashing; success clears refresh credentials and pending challenges, preserving active 2FA. ESM/CJS auth/context/cache share internal process state. Custom entity logout must propagate revocation failures.
+
+Since 0.11.0, OpenAPI and WS are included. OpenAPI is opt-in, uses loaded route metadata + Standard JSON Schema/explicit adapters, and supports offline directory generation. File `WS` exports reuse the HTTP middleware/auth/param pipeline; origin checks, payload caps, heartbeat and close draining are built in. Connection sets are worker-local; auth is handshake-only. Read the new API references and guides. No additional import subpaths.
+
+0.11.0 network review fixes: OpenAPI document URL collision checks use actual GET/HEAD matchers, including hidden operations. Optional URL variants keep greedy parameter bindings; ambiguous templates across routes fail. Query object combinators retain fields and requiredness; full query constraints remain under `x-efc-query-schema`, and object fields use deepObject. Non-object parameter shapes require explicit operation parameters. WS drains include pending handshakes; active-HTTP pipelined upgrades close safely. Payload/timer options cannot exceed signed int32.
+
+0.11.0 OpenAPI serialization: array query parameter names use bracket syntax (`tags[]`, form/explode) so single values remain arrays. External field refs are preserved without network resolution; root object extraction still needs local structure or explicit parameters. Body requiredness follows converted-schema acceptance of Express’s empty missing-body object, without executing validators; unknown refs remain conservative and explicit requestBody metadata takes precedence.
