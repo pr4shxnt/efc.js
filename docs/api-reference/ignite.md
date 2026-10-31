@@ -365,3 +365,7 @@ ignite({ port: 3000 })
 On a worker, the signal closes the HTTP server (in-flight requests finish), drains running task jobs, then exits. On the cluster primary it relays `SIGTERM` to every worker — so `docker stop` / Kubernetes, which signal only PID 1, still shut down gracefully — and force-exits after `timeoutMs + 2s` if a worker hangs. Repeated signals are ignored rather than killing a worker mid-drain.
 
 `logging.queries.metrics: true | { maxEntries?: number }` enables bounded per-process query counters and latency summaries (default off; enabled default limit 1000). Read/reset through `getQueryMetrics` / `resetQueryMetrics` from the main package; see [query metrics](../guides/logging.md#query-metrics).
+
+## Since 0.11.0: OpenAPI and WebSockets
+
+`openapi?: boolean | OpenAPIOptions` opts into `/openapi.json` (or `path`) with route-derived OpenAPI 3.1 JSON. `websocket?: false | WebSocketOptions` configures file `WS` upgrades; they attach automatically when exported, unless disabled. Both features share global middleware. See [OpenAPI](./openapi.md) and [WebSockets](./websockets.md) for exact options and lifecycle.

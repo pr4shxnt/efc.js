@@ -134,6 +134,8 @@
             <div class="group"><h2>Core</h2>
               <a href="#routing">File-Based Routing</a>
               <a href="#handlers">Route Handlers</a>
+              <a href="#openapi">OpenAPI</a>
+              <a href="#websockets">WebSockets</a>
               <a href="#middleware">Middleware</a>
               <a href="#errors">Error Handling</a>
             </div>
@@ -395,6 +397,33 @@ export const schema = {
   "statusCode": 400,
   "issues": [{ "path": ["params", "id"], "message": "Invalid uuid" }]
 }</code></pre>
+</article>
+
+<article data-page="openapi" data-group="Core" data-src="guides/openapi.md">
+<h1>OpenAPI</h1>
+<p class="lead">Since 0.11.0, generate an OpenAPI 3.1 document from the routes, request validators and metadata your app already uses.</p>
+<pre data-file="src/index.ts"><code data-lang="ts">import { ignite } from 'express-file-cluster'
+
+await ignite({ openapi: true }) // GET /openapi.json</code></pre>
+<p>OpenAPI is opt-in. Validators need Standard JSON Schema support or an explicit <code>schemaToJSONSchema</code> adapter. Use <code>meta.GET.openapi</code> for response schemas, security declarations and other operation overrides. Hidden/protected GET and HEAD routes cannot be shadowed by the document endpoint.</p>
+<p>Object query fields use bracket syntax such as <code>?filter[name]=Alice</code>; array keys use <code>tags[]</code> so one item remains an array. Optional bodies stay optional, and equivalent optional URL variants preserve Express parameter bindings. For offline use, call <code>generateOpenAPI('/absolute/path/to/api')</code>.</p>
+<p><a href="https://github.com/siggold/express-file-cluster/blob/main/docs/api-reference/openapi.md">Full API reference</a></p>
+</article>
+
+<article data-page="websockets" data-group="Core" data-src="guides/websockets.md">
+<h1>WebSockets</h1>
+<p class="lead">Export WS from a route file to accept WebSockets on the same HTTP server and API base path.</p>
+<pre data-file="src/api/chat.ts"><code data-lang="ts">import type { WebSocketHandler } from 'express-file-cluster'
+import { requireAuth } from 'express-file-cluster/auth'
+
+export const middlewares = [requireAuth]
+export const WS: WebSocketHandler = (socket) =&gt; {
+  socket.on('message', data =&gt; socket.send(data))
+}</code></pre>
+<p>Connect to <code>ws://localhost:3000/v1/api/chat</code>, or use <code>wss://</code> behind TLS. Global/file middleware, cookies, authentication, named params and <code>schema.WS</code> handshake validation apply before upgrade. HTTP handlers can coexist in the same file.</p>
+<p>Defaults: same-origin browser policy, 1 MiB inbound messages, 30-second heartbeat and a 10-second handshake deadline. Configure <code>ignite({ websocket: { origins: ['https://app.example.com'] } })</code>, or disable upgrades with <code>websocket: false</code>. Shutdown drains connections and destroys pending handshakes.</p>
+<aside class="note">Authentication is checked at the handshake. Recheck sensitive messages as needed. Connections and broadcasts are worker-local; message validation and cross-worker pub/sub are application code.</aside>
+<p><a href="https://github.com/siggold/express-file-cluster/blob/main/docs/api-reference/websockets.md">Full API reference</a></p>
 </article>
 
 <article data-page="middleware" data-group="Core" data-src="core-concepts/middleware.md">

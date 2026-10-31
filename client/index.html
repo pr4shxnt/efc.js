@@ -53,7 +53,7 @@
           "applicationCategory": "DeveloperApplication",
           "applicationSubCategory": "Web framework",
           "operatingSystem": "Node.js 18+",
-          "softwareVersion": "0.10.2",
+          "softwareVersion": "0.11.0",
           "license": "https://opensource.org/licenses/MIT",
           "isAccessibleForFree": true,
           "offers": {
@@ -141,7 +141,7 @@
         <div class="hero-glow"></div>
       </div>
       <div class="container hero-inner">
-        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.10.2</span>Auth fixes, route testing and database observability</a>
+        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.11.0</span>OpenAPI generation and file-based WebSockets</a>
         <h1 class="hero-title">Express, but your folder <br />is your <span class="serif">router.</span></h1>
         <p class="hero-sub fade-up" style="--d: .2s">Drop a file in <code>src/api/</code> and it's a route. Clustering,
           background jobs and a typed data layer are already set up.</p>
@@ -463,6 +463,12 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
           <h2 class="h2">Recent releases.</h2>
         </header>
         <ol class="releases">
+          <li><span class="v">0.11.0</span><time datetime="2026-10-31">Oct 31</time>
+            <p>Opt-in OpenAPI 3.1 generation from HTTP routes, request validators and metadata, with offline generation and operation overrides.
+              File <code>WS</code> exports share middleware, authentication, validation and async context, with origin checks, payload limits, heartbeat and graceful draining.</p>
+            <p>Safe pipelined upgrades and pending-handshake shutdown; accurate query encoding, optional bodies and schema references; protected document URLs and unique optional paths.
+              Update all three packages together. Broadcasts remain worker-local; authentication runs at the handshake.</p>
+          </li>
           <li><span class="v">0.10.2</span><time datetime="2026-10-30">Oct 30</time>
             <p>Logout invalidates stored refresh credentials; password snapshots and authentication-time
               revocation prevent stale logins from reviving sessions. Reset links are consumed once and invalidate
@@ -608,7 +614,7 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
       </div>
       <div class="footer-bottom">
         <span>© 2026 EFC Contributors</span>
-        <span>v0.10.2 · Beta</span>
+        <span>v0.11.0 · Beta</span>
       </div>
     </div>
   </footer>

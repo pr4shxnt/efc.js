@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Server } from 'node:http';
+import { WebSocket } from 'ws';
+import { once } from 'node:events';
 import { ignite } from '../index.js';
 
 // helpers ----------------------------------------------------------------
@@ -51,6 +53,32 @@ describe('ignite() — server integration', () => {
     }
     process.chdir(originalCwd);
     fs.rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  it('serves OpenAPI and WebSockets on the same production HTTP server', async () => {
+    writeRoute(
+      apiDir,
+      'echo.js',
+      `export const GET=(_req,res)=>res.json({http:true}); export const WS=socket=>{socket.on('message',data=>socket.send(data));};`,
+    );
+    server = await ignite({ cluster: false, port: 0, openapi: true, logging: false });
+    const document = await request(server!).get('/openapi.json');
+    expect(document.status).toBe(200);
+    expect(document.body.paths['/v1/api/echo']).toHaveProperty('get');
+    const port = (server!.address() as { port: number }).port;
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/v1/api/echo`);
+    try {
+      await once(socket, 'open');
+      const echo = once(socket, 'message');
+      socket.send('production');
+      expect((await echo)[0].toString()).toBe('production');
+      const closed = once(socket, 'close');
+      await closeServer(server!);
+      server = undefined;
+      expect((await closed)[0]).toBe(1001);
+    } finally {
+      socket.terminate();
+    }
   });
 
   // --- route serving ----------------------------------------------------

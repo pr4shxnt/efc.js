@@ -235,3 +235,5 @@ export const GET = async (req, res) => {
 5. Registers an `app.all()` catch for unimplemented methods that returns 405.
 
 `asyncWrap` wraps every handler in `Promise.resolve(...).catch(next)` so that thrown errors and rejected promises are forwarded to the Express error handler automatically.
+
+Since 0.11.0: route files can also export a `WS` connection handler, sharing the file's middleware and params with HTTP methods. See [WebSockets](../guides/websockets.md). Opt-in [OpenAPI](../guides/openapi.md) documents loaded HTTP method/meta/schema exports.

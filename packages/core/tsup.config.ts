@@ -1,5 +1,5 @@
 import { defineConfig } from 'tsup';
-import { copyFile } from 'node:fs/promises';
+import { copyFile, appendFile } from 'node:fs/promises';
 
 export default defineConfig({
   entry: {
@@ -20,6 +20,11 @@ export default defineConfig({
   // Copy verbatim: bundling rewrites native import() to require() in CJS chunks.
   onSuccess: async () => {
     await copyFile('src/testing-cjs.cjs', 'dist/testing-cjs.cjs');
+    await copyFile('src/openapi-cjs.cjs', 'dist/openapi-cjs.cjs');
+    await appendFile(
+      'dist/index.cjs',
+      '\nexports.generateOpenAPI = require("./openapi-cjs.cjs").generateOpenAPI;\n',
+    );
   },
   // CJS entrypoints share modules that resolve workers/CLI files via import.meta.url.
   shims: true,

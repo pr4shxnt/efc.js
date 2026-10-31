@@ -232,8 +232,8 @@ Goal: define a model and use it — no table chores, on either engine.
 ## Phase 3 — Stable v1.0 (Q1 2027)
 
 - [ ] Plugin system (`registerPlugin()`)
-- [ ] WebSocket support (`export const WS = ...`)
-- [ ] OpenAPI auto-generation from route exports
+- [x] WebSocket support (`export const WS = ...`) — since 0.11.0
+- [x] OpenAPI auto-generation from route exports — since 0.11.0
 - [ ] OpenTelemetry distributed tracing
 - [x] CommonJS package loading — tsup shims translate `import.meta.url` used by shared task/CLI modules; regression checks exercise both built testing exports.
 - [x] `express-file-cluster/testing` — `createTestApp()` mounts real route trees with shared production HTTP middleware/error handling, explicit fixture directory, optional auth, no listener/services/cwd mutation. Guide, API reference, package export and regression tests.
@@ -286,10 +286,10 @@ Found by actually running each exit criterion end to end, not by reading code:
    - [x] M3 relations · [x] M4 schema lifecycle · [x] M5 `defineCollection` · [x] M6 query logging/metrics, editable studio, pool settings, bounded prepared statements and strict 10% benchmarks — complete; `bench/results/m6-validation.md` · [x] M7 docs
 
 1. **Completed:** `express-file-cluster/testing` — `createTestApp()` for route integration tests; service boot remains covered by `ignite()` tests.
-2. **OpenAPI generation** — `schema` exports are Standard Schema validators; derive request schemas (+ `meta`) into an OpenAPI document
+2. **OpenAPI generation — implemented in 0.11.0** — `schema` exports are Standard Schema validators; derive request schemas (+ `meta`) into an OpenAPI document
 3. **OpenTelemetry tracing** — request IDs and the request context are already in place
 4. **Plugin system** (`registerPlugin()`)
-5. **WebSockets** (`export const WS = ...`)
+5. **WebSockets — implemented in 0.11.0** (`export const WS = ...`)
 6. Benchmarks vs bare Express / Fastify, security audit, semver/LTS policy, docs site
 
 ## M6 completion — 2026-10-30
@@ -319,3 +319,35 @@ Found by actually running each exit criterion end to end, not by reading code:
 - [x] Validation: lint/typecheck/build passed; full suite with live MongoDB/PostgreSQL/Redis and scaffold/install e2e: 528 passed, 4 skipped (52 files).
 
 - [x] Release CI: build workspace packages before type checking cross-workspace test imports, including the npm publish workflow.
+
+## 0.11.0 OpenAPI + WebSockets
+
+- [x] OpenAPI 3.1 generation, opt-in endpoint, standalone directory generation, schema adapters/components, optional-path expansion and operation overrides.
+- [x] WS route exports, shared middleware/auth/context, origin and payload limits, heartbeat, upgrade timeout and graceful drain.
+- [x] Guides, references and agent cards updated.
+- [x] Validation: full live-service + scaffold e2e run passed 541 tests (4 skipped). After the named-schema correction, final live core/integration/unit run passed 507 tests (35 scaffold e2e cases intentionally not repeated; 4 other skips). Named-schema regression passes; lint/typecheck/build pass. Official OpenAPI 3.1 schema validation and generated-reference resolution pass.
+
+### 0.11.0 OpenAPI/WS review fixes (2026-10-31)
+
+- [x] Reject pipelined upgrades without uncaught socket-assignment errors.
+- [x] Detect OpenAPI endpoint collisions against real routes, including hidden/protected GET and HEAD.
+- [x] Destroy pending upgrade sockets during shutdown rather than waiting for middleware deadlines.
+- [x] Preserve object-union query fields/requirements and the complete query schema; fail clearly for unrepresentable shapes.
+- [x] Match object query serialization to Express deepObject bracket syntax.
+- [x] Deduplicate equivalent optional path expansions with the correct greedy parameter binding.
+- [x] Reject overflowing payload and timer configuration values.
+- [x] Add regression coverage for all seven findings and update guides, API references and skill cards.
+- [x] Final validation: lint, typecheck, all package builds and `git diff --check` pass. Repository suite: 329 passed / 226 skipped (database-dependent and opt-in e2e coverage skipped in this run), including all 22 OpenAPI/WS tests. Official OpenAPI schema validation, local-reference resolution and unique path-shape checks pass; the original isolated pipelining crash reproduction exits cleanly.
+
+### 0.11.0 OpenAPI follow-up fixes (2026-10-31)
+
+- [x] Document array query keys using bracket syntax and verify one/multiple items against real request validation.
+- [x] Keep external query-field refs without attempting to resolve them as local pointers.
+- [x] Infer optional request bodies from converted-schema acceptance of Express’s empty body, preserving required bodies and explicit overrides without executing validators.
+- [x] Add regressions and update guides, API reference, skill card and framework rules.
+- [x] Final validation: lint, typecheck and all package builds pass; all 26 OpenAPI/WS regressions pass, and the full repository run passes (333 passed / 226 skipped, including database-dependent and opt-in e2e skips). Updated document passes the official OpenAPI schema check.
+
+### 0.11.0 release preparation
+
+- [x] Synchronize package/lock/scaffold versions, release notes, public site and bundled documentation.
+- [x] Prepare release artifacts with all ten reviewed fixes and regression coverage; publication runs through the upstream main-branch workflow after CI/e2e. Commits use the configured author without co-authors.

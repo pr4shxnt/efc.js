@@ -112,3 +112,5 @@ Pass a custom timeout (milliseconds) as the second argument:
 ```ts
 gracefulShutdown(server, 30_000);  // 30-second drain window
 ```
+
+WebSockets (since 0.11.0): each worker owns its accepted connections. Broadcasts are worker-local unless the application uses pub/sub. Graceful worker shutdown closes sockets with 1001, waits for acknowledgments, and terminates unresponsive peers within its drain budget.

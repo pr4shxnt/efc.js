@@ -93,3 +93,5 @@ So authentication in `middlewares` still responds 401/403 before any 400 — una
 ## Model-level validation is separate
 
 `schema` validates the HTTP request. `defineModel` validates what you write to the database (types, `required`, `enum`, `min`/`max`, `match`, custom `validate`) and throws a `ModelValidationError` — also a 400 with `issues`. Use both: request schemas for the API contract, model rules for data integrity. See [Database](./database.md).
+
+Since 0.11.0: `schema.WS` validates WebSocket handshake params/query through the same pipeline, before upgrade; message validation belongs in the handler. Opt-in OpenAPI conversion uses a separate Standard JSON Schema input protocol or an explicit adapter; Standard Schema validation alone does not guarantee JSON Schema conversion. See [OpenAPI](./openapi.md).

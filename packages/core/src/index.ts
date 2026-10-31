@@ -1,4 +1,4 @@
-import type http from 'node:http';
+import http from 'node:http';
 import fs from 'node:fs';
 import express from 'express';
 import cluster from 'node:cluster';
@@ -31,6 +31,8 @@ export type {
 } from './table-types.js';
 import { scanDir } from './router/scan.js';
 import { mountRoutes } from './router/mount.js';
+import { mountOpenAPI } from './openapi.js';
+import { attachWebSockets, closeWebSockets } from './websocket.js';
 import { runMaster, shutdownMaster } from './cluster/index.js';
 import { configureAuth } from './auth/index.js';
 import { connectMongo } from './db/mongo.js';
@@ -211,6 +213,15 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   const routes = scanDir(apiDir);
   const apiRouter = express.Router();
   const mounted: MountedRoute[] = await mountRoutes(apiRouter, routes);
+  if (config.openapi) {
+    const meta = readProjectMeta();
+    const options = config.openapi === true ? {} : config.openapi;
+    await mountOpenAPI(app, mounted, {
+      info: { title: meta.name, version: meta.version },
+      ...options,
+      basePath,
+    });
+  }
   app.use(basePath, apiRouter);
 
   if (config.dashboard !== false && process.env['NODE_ENV'] === 'development') {
@@ -224,7 +235,9 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
   mountErrorHandler(app, onError);
 
   return new Promise<http.Server>((resolve, reject) => {
-    const server = app.listen(port);
+    const server = http.createServer(app);
+    if (config.websocket !== false && mounted.some((route) => route.websocket))
+      attachWebSockets(server, app, config.websocket);
 
     server.once('listening', () => {
       const wid = (cluster.worker as { id: number } | undefined)?.id ?? 'primary';
@@ -234,6 +247,7 @@ export async function ignite(config: EFCConfig): Promise<http.Server | undefined
     });
 
     server.once('error', reject);
+    server.listen(port);
   });
 }
 
@@ -246,11 +260,12 @@ export function gracefulShutdown(server: http.Server | undefined, timeoutMs = 10
     shuttingDown = true;
     getLogger().info(`${signal} received — closing server gracefully…`);
     if (server) {
+      const websocketDrain = closeWebSockets(server, Math.max(1, Math.min(1000, timeoutMs / 2)));
       server.closeIdleConnections();
       server.close(() => {
         getLogger().info('Server closed');
         // Let in-flight task jobs finish before exiting; the timeout below still caps it.
-        Promise.all([closeBullMQ(), closePgBoss(), closeCache()])
+        Promise.all([websocketDrain, closeBullMQ(), closePgBoss(), closeCache()])
           .catch((err: unknown) => getLogger().error({ err }, 'Task backend close failed'))
           .finally(() => process.exit(0));
       });
@@ -360,3 +375,8 @@ export type {
   FieldDefinition,
   DefaultOperator,
 } from './types.js';
+
+export { generateOpenAPI } from './openapi.js';
+export type { OpenAPIOptions, OpenAPIDocument, JSONSchema } from './openapi.js';
+export { attachWebSockets, closeWebSockets } from './websocket.js';
+export type { WebSocketHandler, WebSocketOptions } from './websocket.js';

@@ -24,3 +24,5 @@ This helper's `apiDir` is **not** a new `ignite()` option. `createTestApp` is ex
 The CommonJS `/testing` entry delegates to the ESM helper using native `import()`, so dynamically imported ESM routes share its authentication and request context. The Node/runner must support the route files' module format.
 
 The ESM and CommonJS builds share process-wide auth configuration, request AsyncLocalStorage and cache state. CommonJS `requireAuth` global middleware therefore sees helper auth options, preserves `getCurrentUser()` across awaits into ESM routes, and observes the same revocations. Model/queue fixtures are still configured separately.
+
+Since 0.11.0: `openapi?: boolean | OpenAPIOptions` enables the same document endpoint for tests. For WS tests, use `http.createServer(app)` and `attachWebSockets(server, app)`, then close the server in cleanup. The helper itself still never starts a listener.
