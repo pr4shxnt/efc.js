@@ -247,6 +247,8 @@ section { position: relative; scroll-margin-top: 64px; }
 .list > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--border); }
 .list dt { font-weight: 500; }
 .list dd { color: var(--text-dim); font-size: .94rem; }
+#learn .list { grid-template-columns: minmax(0, 1fr); }
+.learn-action { margin-top: 28px; }
 .more { margin-top: 28px; font-size: .92rem; }
 .more a { color: var(--accent-2); }
 .more a:hover { color: var(--accent); }
