@@ -155,3 +155,15 @@ Either way the failure is logged (at most every 30 seconds), and calling `revoke
 `revokeToken(res)` still exists and only clears the cookie — prefer `revokeSession` when a cache is configured.
 
 ESM and CommonJS imports share the configured backend, key prefix, pending cache fills and revocation failure policy within one process. A backend configured by one build is used by the other; closing it closes the shared backend. Use one application/cache configuration per process.
+
+## Since 0.12.0 production hardening
+
+`cache.wrap` recovers after synchronous throws and prevents old in-flight computations from populating a replacement cache namespace. Memory capacity must be a positive safe integer; bad configuration fails before replacing an existing store.
+
+Response keys separate HTTP methods and encode string/numeric user identifiers without delimiter collisions. GET and HEAD cannot poison one another. URL-prefix invalidation remains supported. The cache stores completed, serialized JSON and safe representation headers. It honors `Vary` by checking hashed request-header fingerprints; differing variants are misses (a custom key can keep variants separately). Wildcard `Vary`, `no-store`/`no-cache`, `Set-Cookie` (including late cookies), and private responses without `perUser` are not stored. Per-request headers such as CORS, request IDs and cookies are not replayed from cached handler headers; set custom dynamic headers in middleware.
+
+Memory cache eviction cannot discard protected auth revocations. If protected entries fill its capacity, new revocation writes reject visibly; ordinary cache writes degrade to misses. Per-user revocation cutoffs have no automatic expiry, protecting older tokens if `jwtExpiresIn` is shortened. Use a persistent Redis deployment with a no-eviction policy for production revocation durability; memory state is still lost on restart, and explicitly clearing session keys removes revocations.
+
+IPC cache calls reject on shutdown/disconnection rather than hanging. Rate-limit windows must be finite, at least one millisecond, and safely representable; counter keys isolate route/key tuples even when their components contain colons.
+
+Response-cache hits replay the exact serialized JSON bytes, preserving JSON replacer/escaping output without running the replacer a second time.

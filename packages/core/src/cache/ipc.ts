@@ -47,6 +47,7 @@ export function servePrimaryCache(maxEntries: number): void {
             req.args[0] as string,
             req.args[1] as string,
             req.args[2] as number | undefined,
+            req.args[3] as boolean | undefined,
           );
         case 'del':
           return store.del(req.args[0] as string[]);
@@ -56,13 +57,17 @@ export function servePrimaryCache(maxEntries: number): void {
           return store.incr(req.args[0] as string, req.args[1] as number | undefined);
       }
     };
-    run().then(
-      (result) =>
-        worker.isConnected() &&
-        worker.send({ [TAG]: true, id: req.id, ok: true, result } satisfies Response),
-      (err: unknown) =>
-        worker.isConnected() &&
-        worker.send({ [TAG]: true, id: req.id, ok: false, error: String(err) } satisfies Response),
+    const reply = (response: Response) => {
+      if (!worker.isConnected()) return;
+      try {
+        worker.send(response, () => {});
+      } catch {
+        /* Worker disconnected. */
+      }
+    };
+    void run().then(
+      (result) => reply({ [TAG]: true, id: req.id, ok: true, result }),
+      (error: unknown) => reply({ [TAG]: true, id: req.id, ok: false, error: String(error) }),
     );
   });
 }
@@ -74,6 +79,7 @@ export function servePrimaryCache(maxEntries: number): void {
  */
 export async function connectPrimaryCache(): Promise<Backend | null> {
   if (!process.send) return null;
+  let closed = false;
   const pending = new Map<
     string,
     { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
@@ -92,6 +98,10 @@ export async function connectPrimaryCache(): Promise<Backend | null> {
 
   const call = (op: Op, ...args: unknown[]) =>
     new Promise<unknown>((resolve, reject) => {
+      if (closed || process.connected === false) {
+        reject(new Error('[EFC] Cache IPC connection is closed'));
+        return;
+      }
       const id = randomUUID();
       const timer = setTimeout(() => {
         pending.delete(id);
@@ -99,7 +109,17 @@ export async function connectPrimaryCache(): Promise<Backend | null> {
       }, TIMEOUT_MS);
       timer.unref();
       pending.set(id, { resolve, reject, timer });
-      process.send!({ [TAG]: true, id, op, args } satisfies Request);
+      const failed = (error: Error | null) => {
+        if (!error || !pending.has(id)) return;
+        pending.delete(id);
+        clearTimeout(timer);
+        reject(error);
+      };
+      try {
+        process.send!({ [TAG]: true, id, op, args } satisfies Request, failed);
+      } catch (error) {
+        failed(error instanceof Error ? error : new Error(String(error)));
+      }
     });
 
   try {
@@ -114,16 +134,20 @@ export async function connectPrimaryCache(): Promise<Backend | null> {
 
   return {
     get: async (key) => (await call('get', key)) as string | null,
-    set: async (key, value, ttl) => {
-      await call('set', key, value, ttl);
+    set: async (key, value, ttl, pinned) => {
+      await call('set', key, value, ttl, pinned);
     },
     del: async (keys) => (await call('del', keys)) as number,
     clear: async (prefix) => (await call('clear', prefix)) as number,
     incr: async (key, ttl) =>
       (await call('incr', key, ttl)) as { value: number; ttlMs: number | null },
     close: async () => {
+      closed = true;
       process.off('message', onMessage);
-      for (const p of pending.values()) clearTimeout(p.timer);
+      for (const p of pending.values()) {
+        clearTimeout(p.timer);
+        p.reject(new Error('[EFC] Cache IPC connection is closed'));
+      }
       pending.clear();
     },
   };

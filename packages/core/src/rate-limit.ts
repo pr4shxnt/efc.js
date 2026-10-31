@@ -37,12 +37,13 @@ export interface RateLimitOptions {
 const UNITS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86_400 };
 
 export function parseWindow(window: number | string): number {
-  if (typeof window === 'number') {
-    if (window > 0) return window;
-  } else {
-    const m = /^(\d+(?:\.\d+)?)\s*(s|m|h|d)$/.exec(window.trim());
-    if (m) return Number(m[1]) * UNITS[m[2]!]!;
+  let seconds = typeof window === 'number' ? window : NaN;
+  if (typeof window === 'string') {
+    const match = /^(\d+(?:\.\d+)?)\s*(s|m|h|d)$/.exec(window.trim());
+    if (match) seconds = Number(match[1]) * UNITS[match[2]!]!;
   }
+  if (Number.isFinite(seconds) && seconds * 1000 >= 1 && seconds * 1000 <= Number.MAX_SAFE_INTEGER)
+    return seconds;
   throw new Error(`[EFC] rateLimit: window must be seconds or like '15m' — got ${String(window)}`);
 }
 
@@ -60,7 +61,7 @@ let lastCacheError = 0;
  */
 export function rateLimit(options: RateLimitOptions): RequestHandler {
   const windowSeconds = parseWindow(options.window);
-  if (!Number.isInteger(options.max) || options.max < 1) {
+  if (!Number.isSafeInteger(options.max) || options.max < 1) {
     throw new Error('[EFC] rateLimit: max must be a positive integer');
   }
   const keyOf = options.key ?? ((req: Request) => req.ip ?? req.socket.remoteAddress);
@@ -83,7 +84,12 @@ export function rateLimit(options: RateLimitOptions): RequestHandler {
       const resetMs = (slot + 1) * windowMs - now;
       let count: number;
       try {
-        count = (await rawIncr(`rl:${bucket}:${who}:${slot}`, Math.ceil(resetMs / 1000) + 1)).value;
+        count = (
+          await rawIncr(
+            `rl:${JSON.stringify([String(bucket), who, slot])}`,
+            Math.ceil(resetMs / 1000) + 1,
+          )
+        ).value;
       } catch (err) {
         if (Date.now() - lastCacheError > 30_000) {
           lastCacheError = Date.now();

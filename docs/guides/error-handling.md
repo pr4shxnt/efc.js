@@ -170,3 +170,5 @@ Inspect, retry or purge dead-lettered jobs with `efc tasks failed | retry | purg
 | Unique constraint violated | `409` | `{ "error": "<Model> with this <field> already exists", "statusCode": 409 }` |
 | `requestTimeout` exceeded | `408` | `{ "error": "Request Timeout", "statusCode": 408 }` |
 | Missing/invalid auth token | `401` | `{ "error": "Unauthorized" }` |
+
+Since 0.12.0 hardening: async file/global middleware and custom error handlers are observed on Express 4. Rejected custom error handlers fall back to EFC’s sanitized JSON handler. Errors after partial response headers destroy the unfinished connection instead of hanging it; no second response is sent after a timeout.

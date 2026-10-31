@@ -1,6 +1,12 @@
+import { processState } from '../process-state.js';
 import type { TaskDefinition, TaskOptions } from '../types.js';
 
-export const taskRegistry = new Map<string, TaskDefinition>();
+type EnqueueImpl = (name: string, payload: unknown) => Promise<void>;
+const state = processState('tasks', () => ({
+  registry: new Map<string, TaskDefinition>(),
+  impl: null as EnqueueImpl | null,
+}));
+export const taskRegistry = state.registry;
 
 type HandlerFn<T> = (payload: T) => Promise<void>;
 type DefineTaskOverload = {
@@ -30,11 +36,8 @@ export const defineTask: DefineTaskOverload = <T>(
   };
 };
 
-type EnqueueImpl = (name: string, payload: unknown) => Promise<void>;
-let _impl: EnqueueImpl | null = null;
-
 export function setEnqueueImpl(impl: EnqueueImpl): void {
-  _impl = impl;
+  state.impl = impl;
 }
 
 /** Set inside `{ thread: true }` task threads: forwards enqueue() to the main thread. */
@@ -42,13 +45,13 @@ export const ENQUEUE_BRIDGE = Symbol.for('efc.enqueueBridge');
 
 export async function enqueue<T>(name: string, payload: T): Promise<void> {
   const bridge = (globalThis as Record<symbol, unknown>)[ENQUEUE_BRIDGE] as EnqueueImpl | undefined;
-  if (!_impl && bridge) return bridge(name, payload as unknown);
-  if (!_impl) {
+  if (!state.impl && bridge) return bridge(name, payload as unknown);
+  if (!state.impl) {
     throw new Error(
       `[EFC] Cannot enqueue task "${name}": task queue not initialised. Set tasks.backend in ignite() config.`,
     );
   }
-  return _impl(name, payload as unknown);
+  return state.impl(name, payload as unknown);
 }
 
 export function registerTask(name: string, def: TaskDefinition): void {

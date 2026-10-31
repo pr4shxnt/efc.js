@@ -99,7 +99,7 @@ await enqueue('SendEmail', {
 
 - **Task backend not initialised** — `tasks` was not configured in `ignite()`.
 - **Unknown task name** — no file with that basename exists in `src/tasks/`.
-- **The queue backend is unreachable** — Redis (BullMQ) or PostgreSQL (pg-boss) didn't accept the job within `tasks.enqueueTimeout` (default 5000 ms). It never waits indefinitely, and a rejected job is not queued later behind your back, so it is safe to retry or return a 503.
+- **The queue backend is unreachable** — Redis (BullMQ) or PostgreSQL (pg-boss) didn't accept the job within `tasks.enqueueTimeout` (default 5000 ms). A readiness timeout prevents a later Redis submission. Commands already in flight may have committed despite a lost acknowledgment; do not automatically retry non-idempotent work. A pg-boss null acknowledgment rejects rather than reporting success.
 
 ```ts
 try {
@@ -138,3 +138,7 @@ src/tasks/ResizeImage.ts  →  "ResizeImage"
 ```
 
 The name is case-sensitive. `enqueue('sendEmail', ...)` will not match `SendEmail.ts`.
+
+Since 0.12.0: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.
+
+Since 0.12.0: pg-boss boxes reserved-key objects without changing the handler payload; old primitive wrappers remain readable. Thread execution rejects premature exits and disposes timers/open handles after completion, while awaiting pending bridge acknowledgments. Shutdown preserves shared cache until tasks settle and aggregates cleanup failures before exiting nonzero.

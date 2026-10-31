@@ -10,6 +10,7 @@ import { mountRoutes } from './router/mount.js';
 import { mountOpenAPI } from './openapi.js';
 
 export interface TestAppOptions {
+  tracing?: EFCConfig['tracing'];
   openapi?: EFCConfig['openapi'];
   /** Explicit fixtures/app API directory. Does not change cwd or ignite() conventions. */
   apiDir: string;
@@ -51,6 +52,7 @@ export async function createTestApp(options: TestAppOptions): Promise<express.Ex
   }
   const app = createHttpApp({
     cors: false,
+    ...(options.tracing !== undefined && { tracing: options.tracing }),
     ...(options.globalMiddlewares !== undefined && {
       globalMiddlewares: options.globalMiddlewares,
     }),

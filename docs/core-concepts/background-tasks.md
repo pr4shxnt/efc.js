@@ -120,7 +120,7 @@ export const POST = async (req: Request, res: Response) => {
 `enqueue(name, payload)` rejects if:
 - The task backend has not been initialised (missing `tasks` config in `ignite()`).
 - The task name was not found in the registry (file not in `src/tasks/`, or bad default export).
-- Redis did not accept the job within `tasks.enqueueTimeout` (default 5000 ms). The request fails fast instead of hanging, and the rejected job is not silently queued later.
+- Redis did not accept the job within `tasks.enqueueTimeout` (default 5000 ms). The request fails fast instead of hanging. A readiness wait cannot submit a Redis job after its deadline. If a backend command was already sent, a timeout or connection failure means its acknowledgment is unknown: the job may have committed. Make handlers idempotent before retrying an enqueue.
 
 ---
 
@@ -229,3 +229,7 @@ import { enqueue } from 'express-file-cluster/tasks';
 ```
 
 Both are exported from the `tasks` sub-path export of `express-file-cluster`.
+
+Since 0.12.0 hardening: thread jobs reject if the worker exits before reporting completion, ignore unrelated progress messages, and dispose the owned worker after the handler and pending enqueue acknowledgments finish. Await all task work; timers/open handles in a completed task are disposed. pg-boss preserves application objects containing its reserved wrapper keys and still reads legacy scalar jobs. A null pg-boss job acknowledgment is an enqueue failure. Shutdown drains jobs before closing cache and telemetry, waits for every backend even if another fails, and exits nonzero on cleanup failure.
+
+Thread task progress messages are isolated from the internal completion/enqueue protocol by a per-worker token. Ordinary `parentPort.postMessage()` payloads cannot accidentally acknowledge a task or enqueue another one. This is protocol isolation, not a security sandbox for untrusted task code.

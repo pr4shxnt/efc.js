@@ -1,16 +1,13 @@
+import { asyncWrap } from '../middleware.js';
 import type { IRouter, RequestHandler } from 'express';
 import type { MountedRoute, RouteMeta, RouteEntry, RouteSchema } from '../types.js';
 import { schemaFor, validateRequest } from './validate.js';
 import { isUpgrade, websocketOnly, websocketHandler, type WebSocketHandler } from '../websocket.js';
 
+import { traceRoute } from '../tracing.js';
+
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 type HttpMethod = (typeof HTTP_METHODS)[number];
-
-function asyncWrap(handler: RequestHandler): RequestHandler {
-  return (req, res, next) => {
-    Promise.resolve(handler(req, res, next)).catch(next);
-  };
-}
 
 /**
  * For RegExp-mounted (catch-all) routes, Express exposes captures as params[0..n].
@@ -70,32 +67,31 @@ export async function mountRoutes(app: IRouter, routes: RouteEntry[]): Promise<M
       app.all(
         routePath,
         websocketOnly,
+        traceRoute(route.urlPath),
         ...paramMapper,
-        ...routeMiddlewares,
+        ...routeMiddlewares.map(asyncWrap),
         ...(validation ? [validateRequest(validation)] : []),
         websocketHandler(mod['WS'] as WebSocketHandler),
       );
     }
     const httpOnly: RequestHandler = (req, _res, next) => (isUpgrade(req) ? next('route') : next());
-    const implemented: HttpMethod[] = [];
-    const unimplemented: HttpMethod[] = [];
-
-    for (const method of HTTP_METHODS) {
-      if (typeof mod[method] === 'function') {
-        implemented.push(method);
-        const methodSchema = schemaFor(schema, method);
-        const validation = methodSchema ? [validateRequest(methodSchema)] : [];
-        app[method.toLowerCase() as Lowercase<HttpMethod>](
-          routePath,
-          httpOnly,
-          ...paramMapper,
-          ...routeMiddlewares,
-          ...validation,
-          asyncWrap(mod[method] as RequestHandler),
-        );
-      } else {
-        unimplemented.push(method);
-      }
+    const implemented = HTTP_METHODS.filter((method) => typeof mod[method] === 'function');
+    const unimplemented = HTTP_METHODS.filter((method) => typeof mod[method] !== 'function');
+    // Express GET also matches HEAD, so explicit HEAD must be registered first.
+    const order = ['HEAD', ...HTTP_METHODS.filter((method) => method !== 'HEAD')] as HttpMethod[];
+    for (const method of order) {
+      if (!implemented.includes(method)) continue;
+      const methodSchema = schemaFor(schema, method);
+      const validation = methodSchema ? [validateRequest(methodSchema)] : [];
+      app[method.toLowerCase() as Lowercase<HttpMethod>](
+        routePath,
+        httpOnly,
+        traceRoute(route.urlPath),
+        ...paramMapper,
+        ...routeMiddlewares.map(asyncWrap),
+        ...validation,
+        asyncWrap(mod[method] as RequestHandler),
+      );
     }
 
     if (implemented.length > 0 && unimplemented.length > 0) {
@@ -103,6 +99,7 @@ export async function mountRoutes(app: IRouter, routes: RouteEntry[]): Promise<M
       app.all(routePath, (req, res, next) => {
         if (isUpgrade(req)) return next();
         if ((unimplemented as string[]).includes(req.method)) {
+          traceRoute(route.urlPath)(req, res, () => {});
           res.set('Allow', allowHeader).status(405).json({ error: 'Method Not Allowed' });
         } else {
           next();

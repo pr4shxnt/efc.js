@@ -234,7 +234,7 @@ Goal: define a model and use it — no table chores, on either engine.
 - [ ] Plugin system (`registerPlugin()`)
 - [x] WebSocket support (`export const WS = ...`) — since 0.11.0
 - [x] OpenAPI auto-generation from route exports — since 0.11.0
-- [ ] OpenTelemetry distributed tracing
+- [x] OpenTelemetry distributed tracing — unreleased; app-owned SDK/exporter, HTTP/templates/errors, native task propagation/retries, threads and shutdown.
 - [x] CommonJS package loading — tsup shims translate `import.meta.url` used by shared task/CLI modules; regression checks exercise both built testing exports.
 - [x] `express-file-cluster/testing` — `createTestApp()` mounts real route trees with shared production HTTP middleware/error handling, explicit fixture directory, optional auth, no listener/services/cwd mutation. Guide, API reference, package export and regression tests.
 - [ ] `efc studio` — live route map + worker/queue dashboard
@@ -287,7 +287,7 @@ Found by actually running each exit criterion end to end, not by reading code:
 
 1. **Completed:** `express-file-cluster/testing` — `createTestApp()` for route integration tests; service boot remains covered by `ignite()` tests.
 2. **OpenAPI generation — implemented in 0.11.0** — `schema` exports are Standard Schema validators; derive request schemas (+ `meta`) into an OpenAPI document
-3. **OpenTelemetry tracing** — request IDs and the request context are already in place
+3. **OpenTelemetry tracing — implemented, unreleased** — HTTP/native task propagation, retries, threads, correlated logging and app SDK shutdown. Next: plugin system.
 4. **Plugin system** (`registerPlugin()`)
 5. **WebSockets — implemented in 0.11.0** (`export const WS = ...`)
 6. Benchmarks vs bare Express / Fastify, security audit, semver/LTS policy, docs site
@@ -351,3 +351,26 @@ Found by actually running each exit criterion end to end, not by reading code:
 
 - [x] Synchronize package/lock/scaffold versions, release notes, public site and bundled documentation.
 - [x] Prepare release artifacts with all ten reviewed fixes and regression coverage; publication runs through the upstream main-branch workflow after CI/e2e. Commits use the configured author without co-authors.
+
+### Unreleased OpenTelemetry implementation
+
+- [x] Opt-in HTTP spans, W3C parentage, route templates, status/error/abort lifecycle and trace-correlated logging.
+- [x] Native BullMQ/pg-boss propagation, unchanged payloads, per-attempt errors and clean task auth/request scopes.
+- [x] Worker-thread/CJS nested enqueue parentage and app SDK shutdown after drain.
+- [x] SDK-backed unit, real Redis/PostgreSQL and built worker-thread/SIGTERM regressions.
+- [x] Update guides, API references, skill cards, runtime rules and backend upgrade requirements.
+- [x] Final validation: all workspace builds, lint/typechecks and diff checks pass; repository run 469 passed / 101 skipped (MongoDB-dependent and opt-in e2e cases skipped), including all 11 tracing regressions with real Redis, temporary PostgreSQL, CJS route/thread enqueue and SIGTERM SDK drain. Runtime dependency audit: 0 findings.
+
+### Repeated production-hardening review (2026-10-31)
+
+- [x] Pass 1: reproduce/fix thread exit hangs/handle leaks, async middleware crashes, partial-response hangs, pg-boss payload collisions and shutdown dependency/failure ordering.
+- [x] Pass 2: reproduce/fix response-cache user/method collisions, explicit HEAD shadowing, wrap failure poisoning and namespace races; add cookie/Vary/cache-control/serialization guards.
+- [x] Pass 3: reproduce/fix revoked-session revival from memory pressure and shorter token lifetimes, domain-cookie clearing, auth timeout races, IPC disconnect hangs and rate-limit input/counter isolation.
+- [x] Prevent Redis submissions after a readiness timeout and reject null pg-boss acknowledgments; document uncertain in-flight enqueue outcomes.
+- [x] Fresh review: isolate worker progress frames from internal commands; replay serialized cache bytes without applying JSON replacers twice.
+- [x] Full live-service + replica-set regression, scaffold e2e, static/type/build checks, and a fresh review after fixes. Full run: 598 passed / 4 backend-inapplicable skips, including 35 generated-app e2e cases. After the final JSON-byte regression/fix: 564 unit/integration tests passed, 35 e2e cases intentionally excluded from that repeat and 4 backend-inapplicable cases skipped; all 8 response-cache hardening regressions pass. MongoDB standalone/replica set, PostgreSQL and Redis were available; built CJS/thread/SIGTERM test also verifies cache remains usable while a job drains. Lint, typecheck, all package builds and diff checks pass. These checks do not certify deployment-specific load behavior or replace an independent security audit.
+
+### 0.12.0 release
+
+- [x] Synchronize all package versions, lockfile, scaffold dependency ranges, public site, changelog and bundled documentation.
+- [ ] Publish all three packages through upstream main after CI and verify npm latest.

@@ -26,7 +26,9 @@
 
 EFC is an opinionated backend framework built on Express. Drop files in `src/api/` and they become routes. Every CPU core serves traffic automatically. One model API runs on MongoDB or PostgreSQL. Heavy work goes to a queue-backed task system — Redis or Postgres — so your request handlers stay fast.
 
-**New in 0.11.0:** [OpenAPI generation](./docs/guides/openapi.md) from route metadata and request schemas, plus [file-based WebSockets](./docs/guides/websockets.md) with HTTP middleware/auth, limits, heartbeat and graceful shutdown.
+**New in 0.12.0:** [OpenTelemetry tracing](./docs/guides/tracing.md) for HTTP/tasks with app-owned SDK setup, plus session, cache and lifecycle hardening.
+
+**Since 0.11.0:** [OpenAPI generation](./docs/guides/openapi.md) from route metadata and request schemas, plus [file-based WebSockets](./docs/guides/websockets.md) with HTTP middleware/auth, limits, heartbeat and graceful shutdown.
 
 ```bash
 npx create-efc-app my-api      # the base: server, src/api, src/tasks, database
@@ -696,7 +698,7 @@ npm run lint         # ESLint
 |---|---|---|
 | **1** | ✅ Complete | Router, clustering, MongoDB, BullMQ, auth, CLI, scaffolder |
 | **2** | ✅ Complete | PostgreSQL (Drizzle), pg-boss, `defineModel` upgrades, request validation, structured logging, cron tasks, catch-all/optional routes, migrations & studio, dead-letter CLI |
-| **3** | 🟡 In progress | Shipped: testing utilities, OpenAPI and WebSockets. Next: OpenTelemetry, plugins and stable-release validation. |
+| **3** | 🟡 In progress | Shipped: testing utilities, OpenAPI, WebSockets and OpenTelemetry tracing. Next: plugins and stable-release validation. |
 | **4** | ⬜ Planned | Edge/serverless adapter, gRPC, GraphQL |
 
 See [`todo.md`](./todo.md) for the full implementation checklist.

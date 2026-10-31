@@ -16,7 +16,7 @@ import { connectPrimaryCache } from './ipc.js';
 
 export interface Backend {
   get(key: string): Promise<string | null>;
-  set(key: string, value: string, ttlSeconds: number | undefined): Promise<void>;
+  set(key: string, value: string, ttlSeconds: number | undefined, pinned?: boolean): Promise<void>;
   del(keys: string[]): Promise<number>;
   clear(prefix: string): Promise<number>;
   /**
@@ -32,7 +32,18 @@ export interface Backend {
 }
 
 export function memoryBackend(maxEntries: number): Backend {
-  const store = new Map<string, { value: string; expires: number }>();
+  if (!Number.isSafeInteger(maxEntries) || maxEntries < 1)
+    throw new Error('[EFC] cache.maxEntries must be a positive safe integer');
+  const store = new Map<string, { value: string; expires: number; pinned: boolean }>();
+  const reserve = (key: string) => {
+    if (store.has(key) || store.size < maxEntries) return;
+    for (const [candidate, value] of store) {
+      if ((value.expires !== 0 && value.expires <= Date.now()) || !value.pinned)
+        store.delete(candidate);
+      if (store.size < maxEntries) return;
+    }
+    throw new Error('[EFC] Memory cache is full of protected session revocations');
+  };
   const live = (key: string) => {
     const hit = store.get(key);
     if (!hit) return undefined;
@@ -51,10 +62,11 @@ export function memoryBackend(maxEntries: number): Backend {
       store.set(key, hit);
       return hit.value;
     },
-    async set(key, value, ttl) {
+    async set(key, value, ttl, pinned = false) {
+      const protectedEntry = pinned || live(key)?.pinned === true;
+      reserve(key);
       store.delete(key);
-      store.set(key, { value, expires: ttl ? Date.now() + ttl * 1000 : 0 });
-      while (store.size > maxEntries) store.delete(store.keys().next().value!);
+      store.set(key, { value, expires: ttl ? Date.now() + ttl * 1000 : 0, pinned: protectedEntry });
     },
     async del(keys) {
       let n = 0;
@@ -73,9 +85,9 @@ export function memoryBackend(maxEntries: number): Backend {
       const current = hit ? Number(hit.value) : 0;
       if (!Number.isInteger(current)) throw new Error(`cache incr: "${key}" is not an integer`);
       const expires = hit ? hit.expires : ttl ? Date.now() + ttl * 1000 : 0;
+      reserve(key);
       store.delete(key);
-      store.set(key, { value: String(current + 1), expires });
-      while (store.size > maxEntries) store.delete(store.keys().next().value!);
+      store.set(key, { value: String(current + 1), expires, pinned: hit?.pinned ?? false });
       return {
         value: current + 1,
         ttlMs: expires === 0 ? null : Math.max(0, expires - Date.now()),
@@ -175,6 +187,11 @@ export function revocationFailureMode(): 'reject' | 'allow' {
 }
 
 export async function configureCache(config: CacheConfig): Promise<void> {
+  if (
+    config.backend === 'memory' &&
+    (!Number.isSafeInteger(config.maxEntries ?? 10_000) || (config.maxEntries ?? 10_000) < 1)
+  )
+    throw new Error('[EFC] cache.maxEntries must be a positive safe integer');
   await closeCache();
   state.prefix = config.prefix ?? 'efc:';
   state.revocationFailure = config.onRevocationCheckError ?? 'reject';
@@ -267,21 +284,28 @@ export const cache: Cache = {
     return safely('del', (b) => b.del(keys.map((k) => state.prefix + k)), 0);
   },
   async wrap<T>(key: string, options: CacheSetOptions | number, fn: () => Promise<T>) {
+    const backend = requireBackend();
+    const prefix = state.prefix;
     const hit = await cache.get<T>(key);
     if (hit !== undefined) return hit;
+    // A reconfiguration during the read must not join or write another namespace.
+    if (state.backend !== backend || state.prefix !== prefix) return fn();
     const inflight = state.pending.get(key) as Promise<T> | undefined;
     if (inflight) return inflight;
-    const run = (async () => {
-      try {
-        const value = await fn();
-        await cache.set(key, value, typeof options === 'number' ? { ttl: options } : options);
+    // Register before invoking fn, including when it throws synchronously.
+    const run = Promise.resolve()
+      .then(fn)
+      .then(async (value) => {
+        if (state.backend === backend && state.prefix === prefix)
+          await cache.set(key, value, typeof options === 'number' ? { ttl: options } : options);
         return value;
-      } finally {
-        state.pending.delete(key);
-      }
-    })();
+      });
     state.pending.set(key, run);
-    return run;
+    try {
+      return await run;
+    } finally {
+      if (state.pending.get(key) === run) state.pending.delete(key);
+    }
   },
   async clear(keyPrefix = '') {
     return safely('clear', (b) => b.clear(state.prefix + keyPrefix), 0);
@@ -305,6 +329,6 @@ export async function rawGet(key: string): Promise<string | null> {
   return requireBackend().get(state.prefix + key);
 }
 
-export async function rawSet(key: string, value: string, ttlSeconds: number): Promise<void> {
-  await requireBackend().set(state.prefix + key, value, ttlSeconds);
+export async function rawSet(key: string, value: string, ttlSeconds?: number): Promise<void> {
+  await requireBackend().set(state.prefix + key, value, ttlSeconds, true);
 }

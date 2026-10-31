@@ -1,5 +1,6 @@
 import type { RequestHandler, ErrorRequestHandler } from 'express';
 import type { OpenAPIOptions } from './openapi.js';
+import type { TracingOptions } from './tracing.js';
 import type { WebSocketOptions } from './websocket.js';
 
 export type DatabaseEngine = 'mongodb' | 'postgresql';
@@ -110,6 +111,8 @@ export interface DatabasePoolConfig {
 }
 
 export interface EFCConfig {
+  /** Opt-in OpenTelemetry instrumentation; the app owns its SDK/exporter. */
+  tracing?: boolean | TracingOptions;
   /** Opt-in OpenAPI 3.1 document; default URL /openapi.json. */
   openapi?: boolean | OpenAPIOptions;
   /** WS exports enable WebSockets by default; false disables upgrades. */

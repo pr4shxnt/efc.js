@@ -26,3 +26,5 @@ The CommonJS `/testing` entry delegates to the ESM helper using native `import()
 The ESM and CommonJS builds share process-wide auth configuration, request AsyncLocalStorage and cache state. CommonJS `requireAuth` global middleware therefore sees helper auth options, preserves `getCurrentUser()` across awaits into ESM routes, and observes the same revocations. Model/queue fixtures are still configured separately.
 
 Since 0.11.0: `openapi?: boolean | OpenAPIOptions` enables the same document endpoint for tests. For WS tests, use `http.createServer(app)` and `attachWebSockets(server, app)`, then close the server in cleanup. The helper itself still never starts a listener.
+
+Since 0.12.0: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.

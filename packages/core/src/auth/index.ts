@@ -61,7 +61,9 @@ export async function issueToken(
 }
 
 export function revokeToken(res: Response): void {
-  res.clearCookie('efc_token');
+  res.clearCookie('efc_token', {
+    ...(state.config?.cookieDomain !== undefined && { domain: state.config.cookieDomain }),
+  });
 }
 
 export async function signToken(payload: Record<string, unknown>): Promise<string> {
@@ -144,7 +146,7 @@ function requireRevocationStore(): void {
 export async function revokeSession(req: Request, res?: Response): Promise<void> {
   requireRevocationStore();
   const token = tokenFrom(req);
-  if (res && getConfig().strategy === 'http-only') res.clearCookie('efc_token');
+  if (res && getConfig().strategy === 'http-only') revokeToken(res);
   if (!token) return;
   let payload: JWTPayload;
   try {
@@ -163,7 +165,8 @@ export async function revokeSession(req: Request, res?: Response): Promise<void>
  */
 export async function revokeAllSessions(userId: string | number): Promise<void> {
   requireRevocationStore();
-  await rawSet(`sess:user:${String(userId)}`, String(Date.now()), tokenLifetimeSeconds());
+  // A shorter future jwtExpiresIn cannot determine the lifetime of older tokens.
+  await rawSet(`sess:user:${String(userId)}`, String(Date.now()));
 }
 
 async function authenticate(
@@ -181,6 +184,7 @@ async function authenticate(
     }
 
     const payload = await verify(token);
+    if (res.headersSent || res.destroyed) return;
 
     if (isCacheConfigured()) {
       let revoked = false;
@@ -197,11 +201,13 @@ async function authenticate(
         }
         // 503, not 401: the session isn't invalid, the check is unavailable — clients
         // shouldn't discard the token and force a re-login over a cache blip.
+        if (res.headersSent || res.destroyed) return;
         if (reject) {
           res.status(503).json({ error: 'Service Unavailable', statusCode: 503 });
           return;
         }
       }
+      if (res.headersSent || res.destroyed) return;
       if (revoked) {
         res.status(401).json({ error: 'Unauthorized' });
         return;
@@ -220,7 +226,7 @@ async function authenticate(
     setCurrentUser(payload as Record<string, unknown>);
     next();
   } catch {
-    res.status(401).json({ error: 'Unauthorized' });
+    if (!res.headersSent && !res.destroyed) res.status(401).json({ error: 'Unauthorized' });
   }
 }
 
@@ -238,11 +244,11 @@ export const requireAuth: RequireAuth = ((...args: unknown[]) => {
   if (args.length > 0 && typeof args[0] === 'string') {
     const roles = args as string[];
     return (req: Request, res: Response, next: NextFunction) => {
-      void authenticate(req, res, next, roles);
+      return authenticate(req, res, next, roles);
     };
   }
   const [req, res, next] = args as [Request, Response, NextFunction];
-  void authenticate(req, res, next, []);
+  return authenticate(req, res, next, []);
 }) as RequireAuth;
 
 // Reads the JWT payload requireAuth attached for the in-flight request, from

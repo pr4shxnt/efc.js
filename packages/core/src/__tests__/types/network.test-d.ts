@@ -17,6 +17,7 @@ const WS: WebSocketHandler = async (socket, request) => {
   socket.on('message', (data, binary) => socket.send(binary ? data : String(request.params.room)));
 };
 const config: EFCConfig = {
+  tracing: { http: true, tasks: true, shutdown: async () => {} },
   openapi: {
     info: { title: 'API', version: '1' },
     schemaToJSONSchema: async () => ({ type: 'object' }),
@@ -36,3 +37,11 @@ const invalid: EFCConfig = {
   },
 };
 void invalid;
+
+const invalidTracing: EFCConfig = {
+  tracing: {
+    // @ts-expect-error Shutdown must return a Promise.
+    shutdown: () => 123,
+  },
+};
+void invalidTracing;
