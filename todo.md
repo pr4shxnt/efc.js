@@ -390,4 +390,4 @@ Found by actually running each exit criterion end to end, not by reading code:
 - [x] Pin deployment and systemd to a dedicated Node.js 24 runtime so Ubuntu package installs cannot replace the service's runtime; report failed activation lines in workflow logs.
 - [x] Prepare learn.expressfilecluster.com canonical URLs, Nginx hostname, and HTTPS/automatic-renewal setup documentation.
 - [x] Verify the domain's DNS, issue its HTTPS certificate, and enable Certbot's automatic renewal timer.
-- [ ] Verify public HTTPS after Oracle ingress permits TCP 443, finish the renewal simulation, and deploy the domain metadata.
+- [x] Verify public and origin HTTPS after correcting Oracle ingress to TCP 443, and pass Certbot's renewal simulation.
