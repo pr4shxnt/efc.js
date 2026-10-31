@@ -18,6 +18,11 @@ on:
 permissions:
   contents: write
 
+# One channel change at a time: two overlapping runs race on the git tag push.
+concurrency:
+  group: dist-tag
+  cancel-in-progress: false
+
 jobs:
   dist-tag:
     runs-on: ubuntu-latest
