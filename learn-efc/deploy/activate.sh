@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'code=$?; printf "Release activation failed at line %s (exit %s)\n" "$LINENO" "$code" >&2' ERR
 
 release_id=${1:?Release ID required}
 [[ "$release_id" =~ ^[a-f0-9]{40}-[0-9]+-[0-9]+$ ]] || exit 1
@@ -10,7 +11,7 @@ trap 'rm -f "$archive"' EXIT
 
 # One-time setup is documented in README.md; fail before changing the live release.
 test "$(uname -m)" = x86_64
-/usr/bin/node -e 'if (Number(process.versions.node.split(".")[0]) !== 24) process.exit(1)'
+/opt/learn-efc-node/bin/node -e 'if (Number(process.versions.node.split(".")[0]) !== 24) { console.error("Learn EFC requires Node.js 24; found " + process.version); process.exit(1); }'
 test -w "$base/releases"
 sudo -n systemctl cat learn-efc.service >/dev/null
 test ! -e "$release"

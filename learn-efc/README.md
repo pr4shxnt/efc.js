@@ -46,8 +46,11 @@ No private key belongs in the repository.
 
 One-time server prerequisites for `ubuntu@130.210.62.210`:
 
-- An x86_64 Ubuntu host with Node.js **24** installed at `/usr/bin/node`, plus `curl`, `tar`, and Nginx.
-  Install Node.js from a trusted distribution, then check `/usr/bin/node --version`.
+- An x86_64 Ubuntu host with Node.js **24** available at `/opt/learn-efc-node/bin/node`, plus `curl`, `tar`, and Nginx.
+  Install Node.js from a trusted distribution and point `/opt/learn-efc-node` at that distribution's directory.
+  The current host uses `/opt/node-v24.22.2`. This dedicated runtime keeps the service
+  independent of Ubuntu's older `/usr/bin/node`, which an `apt install nodejs npm` can replace.
+  Check `/opt/learn-efc-node/bin/node --version` before deployment.
 - Passwordless `sudo` for the deployment user to restart/stop `learn-efc.service` and
   inspect it with `systemctl cat`. The current Ubuntu user already has passwordless sudo.
 - The service and proxy configuration below. Run from the repository root on your computer
@@ -56,6 +59,7 @@ One-time server prerequisites for `ubuntu@130.210.62.210`:
 ```sh
 scp learn-efc/deploy/learn-efc.service learn-efc/deploy/nginx.conf learn-efc:/tmp/
 ssh learn-efc
+sudo ln -sfn /opt/node-v24.22.2 /opt/learn-efc-node
 sudo install -d -o ubuntu -g ubuntu /var/www/learn-efc/releases
 sudo chown ubuntu:ubuntu /var/www/learn-efc
 sudo install -m 644 /tmp/learn-efc.service /etc/systemd/system/learn-efc.service
