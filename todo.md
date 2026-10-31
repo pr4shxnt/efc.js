@@ -391,3 +391,5 @@ Found by actually running each exit criterion end to end, not by reading code:
 - [x] Prepare learn.expressfilecluster.com canonical URLs, Nginx hostname, and HTTPS/automatic-renewal setup documentation.
 - [x] Verify the domain's DNS, issue its HTTPS certificate, and enable Certbot's automatic renewal timer.
 - [x] Verify public and origin HTTPS after correcting Oracle ingress to TCP 443, and pass Certbot's renewal simulation.
+
+- [x] Add a dedicated Learn EFC section and desktop/mobile navigation and footer links to the marketing homepage (2026-10-31).
