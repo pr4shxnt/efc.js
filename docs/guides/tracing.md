@@ -1,6 +1,6 @@
-# OpenTelemetry tracing (unreleased)
+# OpenTelemetry tracing (since 0.12.0)
 
-EFC can trace incoming HTTP requests and background work across BullMQ, pg-boss and worker-thread handoffs. Enable `ignite({ tracing: true })`, or select components with `tracing: { http: true, tasks: true }`. Instrumentation is off by default and is not included in published 0.11.0.
+EFC can trace incoming HTTP requests and background work across BullMQ, pg-boss and worker-thread handoffs. Enable `ignite({ tracing: true })`, or select components with `tracing: { http: true, tasks: true }`. Instrumentation is off by default and is available since 0.12.0.
 
 Your application owns the OpenTelemetry SDK, sampling, resources and exporter. EFC uses the standard API and W3C trace-context propagator; it does not create a global provider, read OTLP environment variables, install auto-instrumentation, or choose a collector. Without a registered SDK, tracing safely remains no-op.
 
@@ -51,7 +51,7 @@ EFC HTTP attributes omit raw URLs, query strings, bodies, cookies and credential
 
 ## Queues, retries and threads
 
-The new minimum optional backend versions are **BullMQ 5.79.1** and **pg-boss 12.38.0**; upgrade these peers before using this development build. Native backend metadata persists W3C context separately from application payloads. Existing jobs without trace metadata and scheduled jobs start independent traces. Each retry has its own consumer span under the producer context. Queue/admin payloads and dead-letter retry behavior remain unchanged.
+The new minimum optional backend versions are **BullMQ 5.79.1** and **pg-boss 12.38.0**; upgrade these peers before using 0.12.0. Native backend metadata persists W3C context separately from application payloads. Existing jobs without trace metadata and scheduled jobs start independent traces. Each retry has its own consumer span under the producer context. Queue/admin payloads and dead-letter retry behavior remain unchanged.
 
 A `thread: true` job's consumer span covers the entire thread execution. W3C context crosses the worker boundary and returns with nested `enqueue()` calls, including mixed ESM/CommonJS route and task modules. The task registry and enqueue implementation are shared between package formats within each isolate. The application SDK is not copied into a worker isolate: instrumenting additional operations inside the thread requires initializing an SDK there. Task-level spans still export from the queue worker's SDK.
 

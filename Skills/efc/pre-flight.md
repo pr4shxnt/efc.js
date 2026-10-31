@@ -149,6 +149,6 @@ const clusterEnabled = config.cluster ?? (process.env['NODE_ENV'] === 'productio
 
 Since 0.11.0: after route mounting metadata is loaded, optional OpenAPI is generated/served before attaching the API router. The HTTP server is explicitly created, WS upgrades attach when a WS export exists, then it listens. Graceful shutdown drains WS sockets before completing backend shutdown. Origin policy is separate from CORS; middleware/auth runs during upgrade.
 
-Unreleased tracing: SDK initialization belongs to the app, before ignite, per serving process. HTTP instrumentation precedes request logging; native queue hooks receive `tracing.tasks` at backend init. After HTTP/WS/task drain, gracefulShutdown awaits the app `tracing.shutdown` once under the existing deadline; callback rejection exits 1. Cluster-primary SDK lifecycle for custom primary spans is app-owned.
+Since 0.12.0 tracing: SDK initialization belongs to the app, before ignite, per serving process. HTTP instrumentation precedes request logging; native queue hooks receive `tracing.tasks` at backend init. After HTTP/WS/task drain, gracefulShutdown awaits the app `tracing.shutdown` once under the existing deadline; callback rejection exits 1. Cluster-primary SDK lifecycle for custom primary spans is app-owned.
 
 Hardening: shutdown waits for every transport/task close result, then closes cache, then app telemetry; all cleanup is attempted and any failure exits 1. Invalid memory capacity fails before replacing a live store.

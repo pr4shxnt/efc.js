@@ -238,4 +238,4 @@ export const GET = async (req, res) => {
 
 Since 0.11.0: route files can also export a `WS` connection handler, sharing the file's middleware and params with HTTP methods. See [WebSockets](../guides/websockets.md). Opt-in [OpenAPI](../guides/openapi.md) documents loaded HTTP method/meta/schema exports.
 
-Unreleased fix: explicit HEAD exports register before GET, so Express’s implicit HEAD fallback cannot shadow them. Other exported-method ordering and 405 metadata stay unchanged.
+Since 0.12.0 fix: explicit HEAD exports register before GET, so Express’s implicit HEAD fallback cannot shadow them. Other exported-method ordering and 405 metadata stay unchanged.

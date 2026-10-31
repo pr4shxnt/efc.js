@@ -370,4 +370,4 @@ On a worker, the signal closes the HTTP server (in-flight requests finish), drai
 
 `openapi?: boolean | OpenAPIOptions` opts into `/openapi.json` (or `path`) with route-derived OpenAPI 3.1 JSON. `websocket?: false | WebSocketOptions` configures file `WS` upgrades; they attach automatically when exported, unless disabled. Both features share global middleware. See [OpenAPI](./openapi.md) and [WebSockets](./websockets.md) for exact options and lifecycle.
 
-Unreleased: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.
+Since 0.12.0: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.

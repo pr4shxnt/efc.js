@@ -139,6 +139,6 @@ src/tasks/ResizeImage.ts  →  "ResizeImage"
 
 The name is case-sensitive. `enqueue('sendEmail', ...)` will not match `SendEmail.ts`.
 
-Unreleased: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.
+Since 0.12.0: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.
 
-Unreleased: pg-boss boxes reserved-key objects without changing the handler payload; old primitive wrappers remain readable. Thread execution rejects premature exits and disposes timers/open handles after completion, while awaiting pending bridge acknowledgments. Shutdown preserves shared cache until tasks settle and aggregates cleanup failures before exiting nonzero.
+Since 0.12.0: pg-boss boxes reserved-key objects without changing the handler payload; old primitive wrappers remain readable. Thread execution rejects premature exits and disposes timers/open handles after completion, while awaiting pending bridge acknowledgments. Shutdown preserves shared cache until tasks settle and aggregates cleanup failures before exiting nonzero.

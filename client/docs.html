@@ -136,6 +136,7 @@
               <a href="#handlers">Route Handlers</a>
               <a href="#openapi">OpenAPI</a>
               <a href="#websockets">WebSockets</a>
+              <a href="#tracing">Tracing</a>
               <a href="#middleware">Middleware</a>
               <a href="#errors">Error Handling</a>
             </div>
@@ -424,6 +425,14 @@ export const WS: WebSocketHandler = (socket) =&gt; {
 <p>Defaults: same-origin browser policy, 1 MiB inbound messages, 30-second heartbeat and a 10-second handshake deadline. Configure <code>ignite({ websocket: { origins: ['https://app.example.com'] } })</code>, or disable upgrades with <code>websocket: false</code>. Shutdown drains connections and destroys pending handshakes.</p>
 <aside class="note">Authentication is checked at the handshake. Recheck sensitive messages as needed. Connections and broadcasts are worker-local; message validation and cross-worker pub/sub are application code.</aside>
 <p><a href="https://github.com/siggold/express-file-cluster/blob/main/docs/api-reference/websockets.md">Full API reference</a></p>
+</article>
+
+<article data-page="tracing" data-group="Core" data-src="guides/tracing.md">
+<h1>OpenTelemetry tracing</h1>
+<p class="lead">Since 0.12.0, trace HTTP requests and background tasks across BullMQ, pg-boss, retries and worker-thread handoffs.</p>
+<p>After initializing your application's OpenTelemetry SDK and context manager, enable <code>ignite({ tracing: true })</code>. Select components with <code>tracing: { http: true, tasks: true }</code>. Tracing is off by default; your application owns sampling, exporters and SDK configuration.</p>
+<p>W3C trace context travels separately from task payloads. Request logs include trace and span IDs. HTTP spans use route templates; task handlers start with a fresh request/auth scope. Configure <code>tracing.shutdown</code> to flush your SDK after HTTP and task drain.</p>
+<p>Upgrade optional peers to BullMQ 5.79.1+ or pg-boss 12.38.0+. Read the <a href="https://github.com/siggold/express-file-cluster/blob/main/docs/guides/tracing.md">SDK setup guide</a> and <a href="https://github.com/siggold/express-file-cluster/blob/main/docs/api-reference/tracing.md">API reference</a>.</p>
 </article>
 
 <article data-page="middleware" data-group="Core" data-src="core-concepts/middleware.md">

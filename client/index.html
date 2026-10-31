@@ -53,7 +53,7 @@
           "applicationCategory": "DeveloperApplication",
           "applicationSubCategory": "Web framework",
           "operatingSystem": "Node.js 18+",
-          "softwareVersion": "0.11.0",
+          "softwareVersion": "0.12.0",
           "license": "https://opensource.org/licenses/MIT",
           "isAccessibleForFree": true,
           "offers": {
@@ -141,7 +141,7 @@
         <div class="hero-glow"></div>
       </div>
       <div class="container hero-inner">
-        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.11.0</span>OpenAPI generation and file-based WebSockets</a>
+        <a href="#changelog" class="release fade-up" style="--d: 0s"><span class="release-tag">0.12.0</span>OpenTelemetry tracing and production hardening</a>
         <h1 class="hero-title">Express, but your folder <br />is your <span class="serif">router.</span></h1>
         <p class="hero-sub fade-up" style="--d: .2s">Drop a file in <code>src/api/</code> and it's a route. Clustering,
           background jobs and a typed data layer are already set up.</p>
@@ -463,6 +463,11 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
           <h2 class="h2">Recent releases.</h2>
         </header>
         <ol class="releases">
+          <li><span class="v">0.12.0</span><time datetime="2026-10-31">Oct 31</time>
+            <p>Opt-in OpenTelemetry instrumentation for HTTP and background tasks, with W3C parentage, retry/thread propagation, trace log fields and app-owned SDK shutdown after drain. Mixed ESM/CommonJS modules share queue state.</p>
+            <p>Production hardening for async middleware, explicit HEAD handlers, partial responses, pg-boss payloads, thread and shutdown lifecycles, session revocation and response-cache isolation. Cache hits replay exact JSON bytes; queue deadlines prevent late readiness submissions.</p>
+            <p>Update all three packages together and upgrade optional queue peers to BullMQ 5.79.1+ or pg-boss 12.38.0+. SDK/exporter setup remains application-owned; in-flight queue acknowledgments can be uncertain, so handlers must be idempotent.</p>
+          </li>
           <li><span class="v">0.11.0</span><time datetime="2026-10-31">Oct 31</time>
             <p>Opt-in OpenAPI 3.1 generation from HTTP routes, request validators and metadata, with offline generation and operation overrides.
               File <code>WS</code> exports share middleware, authentication, validation and async context, with origin checks, payload limits, heartbeat and graceful draining.</p>
@@ -614,7 +619,7 @@ res.<span class="c-blue">status</span>(<span class="c-orange">202</span>).<span 
       </div>
       <div class="footer-bottom">
         <span>© 2026 EFC Contributors</span>
-        <span>v0.11.0 · Beta</span>
+        <span>v0.12.0 · Beta</span>
       </div>
     </div>
   </footer>

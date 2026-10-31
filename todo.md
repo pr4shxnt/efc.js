@@ -369,3 +369,8 @@ Found by actually running each exit criterion end to end, not by reading code:
 - [x] Prevent Redis submissions after a readiness timeout and reject null pg-boss acknowledgments; document uncertain in-flight enqueue outcomes.
 - [x] Fresh review: isolate worker progress frames from internal commands; replay serialized cache bytes without applying JSON replacers twice.
 - [x] Full live-service + replica-set regression, scaffold e2e, static/type/build checks, and a fresh review after fixes. Full run: 598 passed / 4 backend-inapplicable skips, including 35 generated-app e2e cases. After the final JSON-byte regression/fix: 564 unit/integration tests passed, 35 e2e cases intentionally excluded from that repeat and 4 backend-inapplicable cases skipped; all 8 response-cache hardening regressions pass. MongoDB standalone/replica set, PostgreSQL and Redis were available; built CJS/thread/SIGTERM test also verifies cache remains usable while a job drains. Lint, typecheck, all package builds and diff checks pass. These checks do not certify deployment-specific load behavior or replace an independent security audit.
+
+### 0.12.0 release
+
+- [x] Synchronize all package versions, lockfile, scaffold dependency ranges, public site, changelog and bundled documentation.
+- [ ] Publish all three packages through upstream main after CI and verify npm latest.

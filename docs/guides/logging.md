@@ -124,4 +124,4 @@ Snapshots are detached from internal state and contain no SQL, parameter values,
 
 When the entry limit is reached, existing pairs keep updating; observations for new pairs increment `dropped`. Reset/reconfiguration clears entries, dropped counts and the `since` timestamp. Metrics are off by default. These are per-process counters, not a cluster-wide service or an OpenTelemetry exporter; collect from each worker/instance separately and secure any diagnostic endpoint you add.
 
-Unreleased: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.
+Since 0.12.0: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.

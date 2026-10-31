@@ -27,4 +27,4 @@ The ESM and CommonJS builds share process-wide auth configuration, request Async
 
 Since 0.11.0: `openapi?: boolean | OpenAPIOptions` enables the same document endpoint for tests. For WS tests, use `http.createServer(app)` and `attachWebSockets(server, app)`, then close the server in cleanup. The helper itself still never starts a listener.
 
-Unreleased: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.
+Since 0.12.0: opt-in OpenTelemetry instrumentation uses `tracing: true | TracingOptions`; the app owns its SDK and exporter. See [tracing](../guides/tracing.md) for HTTP/task propagation, trace log fields, thread behavior and shutdown ownership.

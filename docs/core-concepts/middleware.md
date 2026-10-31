@@ -143,4 +143,4 @@ efc generate middleware authorize
 
 > Route-level role protection doesn't need a custom middleware like `authorize` above — `requireAuth` itself accepts role names: `requireAuth('admin')`. The routes `efc add` generates use this shorthand, and `efc add admin-admins` adds a `Role` model. See [RBAC](../guides/rbac.md).
 
-Unreleased hardening: file/global middleware may return promises; rejections and synchronous throws reach error handling without unhandled worker rejections. Express `next()`, `next("route")` and `next("router")` semantics are retained. Middleware entries must be functions and invalid entries fail at boot. Custom error middleware is also promise-aware and has a sanitized JSON fallback.
+Since 0.12.0 hardening: file/global middleware may return promises; rejections and synchronous throws reach error handling without unhandled worker rejections. Express `next()`, `next("route")` and `next("router")` semantics are retained. Middleware entries must be functions and invalid entries fail at boot. Custom error middleware is also promise-aware and has a sanitized JSON fallback.

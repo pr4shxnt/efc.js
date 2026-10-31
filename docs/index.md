@@ -2,7 +2,7 @@
 
 **express-file-cluster (EFC)** is an opinionated backend framework built on Express. It removes routing ceremony, saturates every CPU core automatically, and ships a production-grade background-task subsystem — all from a single `ignite()` call.
 
-> **Status: v0.11.0 — Beta.** File-based routing (incl. catch-all and optional segments), request validation, clustering, auth, structured logging, MongoDB and PostgreSQL models with types inferred from the schema, PostgreSQL-native `defineTable` (Prisma-style queries and relations: foreign keys, many-to-many, `include`, relation filters, nested writes), query logging, BullMQ and pg-boss tasks with cron and dead-letter tooling, migrations (written for you from model changes: `efc db generate`, plus `efc db pull` and `efc import-prisma`), and the `efc add` feature registry (auth, admin, billing… copied into your app as source you own) are all implemented.
+> **Status: v0.12.0 — Beta.** File-based routing (incl. catch-all and optional segments), request validation, clustering, auth, structured logging, MongoDB and PostgreSQL models with types inferred from the schema, PostgreSQL-native `defineTable` (Prisma-style queries and relations: foreign keys, many-to-many, `include`, relation filters, nested writes), query logging, BullMQ and pg-boss tasks with cron and dead-letter tooling, migrations (written for you from model changes: `efc db generate`, plus `efc db pull` and `efc import-prisma`), and the `efc add` feature registry (auth, admin, billing… copied into your app as source you own) are all implemented.
 
 ---
 
@@ -51,7 +51,7 @@
 | [OpenAPI (since 0.11.0)](./guides/openapi.md) | Opt-in OpenAPI JSON from route metadata and request schemas |
 | [WebSockets (since 0.11.0)](./guides/websockets.md) | WS file exports, middleware/auth, limits and shutdown |
 | [Validation](./guides/validation.md) | Route `schema` exports with zod, valibot, arktype |
-| [Tracing (unreleased)](./guides/tracing.md) | OpenTelemetry HTTP/task propagation and app-owned SDK setup |
+| [Tracing (since 0.12.0)](./guides/tracing.md) | OpenTelemetry HTTP/task propagation and app-owned SDK setup |
 | [Logging](./guides/logging.md) | pino, request IDs, `getLogger()` |
 | [Caching & Sessions](./guides/caching.md) | `cache`, `cacheResponse`, revoking JWT sessions |
 | [Generated Portals](./guides/generated-portals.md) | Every model and route `create-efc-app` scaffolds for the User/Admin portals |

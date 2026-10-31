@@ -156,7 +156,7 @@ Either way the failure is logged (at most every 30 seconds), and calling `revoke
 
 ESM and CommonJS imports share the configured backend, key prefix, pending cache fills and revocation failure policy within one process. A backend configured by one build is used by the other; closing it closes the shared backend. Use one application/cache configuration per process.
 
-## Unreleased production hardening
+## Since 0.12.0 production hardening
 
 `cache.wrap` recovers after synchronous throws and prevents old in-flight computations from populating a replacement cache namespace. Memory capacity must be a positive safe integer; bad configuration fails before replacing an existing store.
 

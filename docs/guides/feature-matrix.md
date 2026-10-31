@@ -66,7 +66,7 @@ What each model API does on which engine — and the test that proves it. Every 
 
 No automatic auth-policy inference, message-schema validation, cross-worker broadcast bus or Swagger UI is included.
 
-## Tracing (unreleased)
+## Tracing (since 0.12.0)
 
 | Feature | Status | Evidence |
 |---|---|---|

@@ -4,11 +4,10 @@ All three packages (`express-file-cluster`, `create-efc-app`, `express-file-clus
 together under one version. Newest first. The public site's changelog (`client/index.html#changelog`)
 mirrors this file — see `AGENTS.md` §5.
 
-## Unreleased
+## 0.12.0 — 2026-10-31
 
 - Production hardening: catch async middleware failures, prefer explicit HEAD handlers, close partial error responses, preserve pg-boss reserved-key payloads, and make thread/shutdown lifecycles deterministic, with isolated thread protocol frames.
 - Protect per-user cache identities and session revocations under memory pressure; retain user cutoffs across token-lifetime changes, clear domain-scoped cookies, and stop auth after timeout. Response caching honors method/variant/cookie/cache-control boundaries and replays exact JSON bytes; cache.wrap and IPC recover cleanly. Queue deadlines prevent late readiness submissions, and documentation describes uncertain in-flight acknowledgments and idempotency.
-
 - Opt-in OpenTelemetry instrumentation for HTTP and background tasks, with W3C parentage, retry/thread propagation, trace log fields and app-owned SDK shutdown after drain. SDK/exporter setup remains application-owned.
 - Mixed ESM/CommonJS route and task modules share their queue registry/enqueue implementation, preserving producer context across formats.
 - Upgrade optional queue peers to BullMQ 5.79.1+ or pg-boss 12.38.0+ for the native tracing hooks; task payloads remain unchanged.

@@ -1,4 +1,4 @@
-# Tracing API (unreleased)
+# Tracing API (since 0.12.0)
 
 ```ts
 import type { TracingOptions, EFCConfig } from 'express-file-cluster';

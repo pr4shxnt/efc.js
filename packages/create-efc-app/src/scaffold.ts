@@ -281,15 +281,15 @@ export async function scaffold(opts: ScaffoldOptions): Promise<void> {
 
 async function writePackageJson(dest: string, opts: ScaffoldOptions): Promise<void> {
   const deps: Record<string, string> = {
-    'express-file-cluster': '^0.11.0',
+    'express-file-cluster': '^0.12.0',
   };
   if (opts.database === 'mongodb') deps['mongoose'] = '^9.7.2';
   if (opts.database === 'postgresql') {
     deps['pg'] = '^8.11.0';
     deps['drizzle-orm'] = '^0.45.0';
   }
-  if (opts.tasks && opts.taskBackend === 'bullmq') deps['bullmq'] = '^5.0.0';
-  if (opts.tasks && opts.taskBackend === 'pg-boss') deps['pg-boss'] = '^12.0.0';
+  if (opts.tasks && opts.taskBackend === 'bullmq') deps['bullmq'] = '^5.79.1';
+  if (opts.tasks && opts.taskBackend === 'pg-boss') deps['pg-boss'] = '^12.38.0';
   if (opts.mailer) deps['nodemailer'] = '^10.2.1';
   if (usesOAuth(opts)) deps['jose'] = '^6.2.3';
 

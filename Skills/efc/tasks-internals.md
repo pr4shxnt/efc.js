@@ -172,7 +172,7 @@ BullMQ: `queue.getFailed`, `job.retry('failed')`, `job.remove()`. pg-boss: reads
 then `boss.retry` / `boss.deleteJob`. A retried job gets exactly one more attempt on both backends.
 CLI picks BullMQ when `REDIS_URL` is set, else pg-boss for a `postgres` `DATABASE_URL`; `--backend/--queue` override.
 
-Unreleased tracing: `tracing: true`/`{tasks:true}` enables native BullMQ telemetry (minimum 5.79.1) or pg-boss openTelemetry + propagateContext (minimum 12.38.0), using W3C trace-only metadata without changing payloads. Retries have separate consumer spans; cron runs have no boot-time parent. Task handlers get a fresh EFC auth/request scope. Thread consumer spans export on the queue worker; W3C context crosses thread/nested-enqueue messages without copying the SDK.
+Since 0.12.0 tracing: `tracing: true`/`{tasks:true}` enables native BullMQ telemetry (minimum 5.79.1) or pg-boss openTelemetry + propagateContext (minimum 12.38.0), using W3C trace-only metadata without changing payloads. Retries have separate consumer spans; cron runs have no boot-time parent. Task handlers get a fresh EFC auth/request scope. Thread consumer spans export on the queue worker; W3C context crosses thread/nested-enqueue messages without copying the SDK.
 
 The task registry and enqueue implementation share process state across the package’s ESM/CJS exports; the worker-thread enqueue bridge stays isolate-local.
 
